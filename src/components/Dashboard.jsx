@@ -84,7 +84,7 @@ export default function Dashboard() {
                 }
 
                 if (category.toLowerCase().includes('shop')) dailyMap[date].shop += amount;
-                else if (category.toLowerCase().includes('cafe')) dailyMap[date].cafe += amount;
+                else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) dailyMap[date].cafe += amount;
                 else if (category.toLowerCase().includes('bosch service') || category.toLowerCase().includes('main d\'oeuvre')) dailyMap[date].bosch += amount;
                 else if (category.toLowerCase().includes('lubrifiant')) {
                     if (location === 'bosch') dailyMap[date].lub_bosch += amount;
