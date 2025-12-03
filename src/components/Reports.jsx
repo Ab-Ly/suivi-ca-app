@@ -6,6 +6,9 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from '../lib/supabase';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 export default function Reports() {
     const [salesData, setSalesData] = useState([]);
@@ -90,7 +93,30 @@ export default function Reports() {
         }
     };
 
-    const exportToExcel = () => {
+
+
+    const saveAndShareFile = async (fileName, base64Data, mimeType) => {
+        try {
+            const savedFile = await Filesystem.writeFile({
+                path: fileName,
+                data: base64Data,
+                directory: Directory.Cache,
+                // encoding: Encoding.UTF8 // Don't specify encoding for binary data if passing base64 string directly
+            });
+
+            await Share.share({
+                title: 'Export Suivi CA',
+                text: `Voici le fichier ${fileName}`,
+                url: savedFile.uri,
+                dialogTitle: 'Partager le rapport',
+            });
+        } catch (error) {
+            console.error('Error sharing file:', error);
+            alert(`Erreur lors du partage: ${error.message}`);
+        }
+    };
+
+    const exportToExcel = async () => {
         if (salesData.length === 0) {
             alert("Aucune donnée à exporter.");
             return;
@@ -111,7 +137,13 @@ export default function Reports() {
             const ws = XLSX.utils.json_to_sheet(excelData);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Ventes");
-            XLSX.writeFile(wb, "rapport_ventes_complet.xlsx");
+
+            if (Capacitor.isNativePlatform()) {
+                const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+                await saveAndShareFile("rapport_ventes.xlsx", wbout, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            } else {
+                XLSX.writeFile(wb, "rapport_ventes_complet.xlsx");
+            }
         } catch (error) {
             console.error("Export Excel failed", error);
             alert("Erreur lors de l'export Excel");
@@ -120,7 +152,7 @@ export default function Reports() {
         }
     };
 
-    const exportToPDF = () => {
+    const exportToPDF = async () => {
         if (salesData.length === 0) {
             alert("Aucune donnée à exporter.");
             return;
@@ -151,7 +183,12 @@ export default function Reports() {
                 headStyles: { fillColor: [66, 66, 66] }
             });
 
-            doc.save("rapport_ventes_complet.pdf");
+            if (Capacitor.isNativePlatform()) {
+                const pdfBase64 = doc.output('datauristring').split(',')[1];
+                await saveAndShareFile("rapport_ventes.pdf", pdfBase64, 'application/pdf');
+            } else {
+                doc.save("rapport_ventes_complet.pdf");
+            }
         } catch (error) {
             console.error("Export PDF failed", error);
             alert(`Erreur lors de l'export PDF: ${error.message}`);
@@ -160,20 +197,26 @@ export default function Reports() {
         }
     };
 
-    const exportToJSON = () => {
+    const exportToJSON = async () => {
         if (salesData.length === 0) {
             alert("Aucune donnée à exporter.");
             return;
         }
         setExporting(true);
         try {
-            const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
-                JSON.stringify(salesData, null, 2)
-            )}`;
-            const link = document.createElement("a");
-            link.href = jsonString;
-            link.download = "rapport_ventes_complet.json";
-            link.click();
+            const jsonString = JSON.stringify(salesData, null, 2);
+
+            if (Capacitor.isNativePlatform()) {
+                // Encode to Base64 manually for text content
+                const base64Json = btoa(unescape(encodeURIComponent(jsonString)));
+                await saveAndShareFile("rapport_ventes.json", base64Json, 'application/json');
+            } else {
+                const dataUri = `data:text/json;chatset=utf-8,${encodeURIComponent(jsonString)}`;
+                const link = document.createElement("a");
+                link.href = dataUri;
+                link.download = "rapport_ventes_complet.json";
+                link.click();
+            }
         } catch (error) {
             console.error("Export JSON failed", error);
             alert("Erreur lors de l'export JSON");
