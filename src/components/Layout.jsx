@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, ShoppingCart, Package, BarChart3, Menu, X, PlusCircle, LogOut, User } from 'lucide-react';
+import { PullToRefresh } from './ui/PullToRefresh';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import SalesEntry from './SalesEntry';
@@ -58,9 +59,19 @@ export default function Layout() {
         { to: '/profile', icon: User, label: 'Profil' },
     ];
 
+
+
+    // ... imports
+
     const handleSaleSuccess = () => {
         setRefreshTrigger(prev => prev + 1);
         setIsSalesModalOpen(false);
+    };
+
+    const handleRefresh = async () => {
+        setRefreshTrigger(prev => prev + 1);
+        // Simulate a small delay for visual feedback
+        await new Promise(resolve => setTimeout(resolve, 1000));
     };
 
     const handleLogout = async () => {
@@ -169,10 +180,12 @@ export default function Layout() {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 p-4 md:p-8 overflow-auto">
-                <div className="max-w-7xl mx-auto">
-                    <Outlet context={{ refreshTrigger }} />
-                </div>
+            <main className="flex-1 p-4 md:p-8 overflow-auto" id="main-content">
+                <PullToRefresh onRefresh={handleRefresh} className="h-full">
+                    <div className="max-w-7xl mx-auto min-h-[calc(100vh-4rem)]">
+                        <Outlet context={{ refreshTrigger }} />
+                    </div>
+                </PullToRefresh>
             </main>
 
             <SalesEntry

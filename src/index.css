@@ -119,3 +119,7 @@
 .react-datepicker__navigation-icon::before {
   border-color: #9ca3af !important;
 }
+
+.react-datepicker-popper {
+  z-index: 9999 !important;
+}
