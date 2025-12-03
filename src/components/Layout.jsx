@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, ShoppingCart, Package, BarChart3, Menu, X, PlusCircle, LogOut, User } from 'lucide-react';
 import { PullToRefresh } from './ui/PullToRefresh';
