@@ -46,7 +46,13 @@ export default function Reports() {
                 query = query.lte('sale_date', end.toISOString());
             }
             if (category) {
-                query = query.eq('articles.category', category);
+                if (category === 'Lubrifiants Piste') {
+                    query = query.eq('articles.category', 'Lubrifiants').eq('sales_location', 'piste');
+                } else if (category === 'Lubrifiants Bosch') {
+                    query = query.eq('articles.category', 'Lubrifiants').eq('sales_location', 'bosch');
+                } else {
+                    query = query.eq('articles.category', category);
+                }
             }
             if (searchTerm) {
                 query = query.ilike('articles.name', `%${searchTerm}%`);
@@ -281,7 +287,9 @@ export default function Reports() {
                                 <option value="Shop">Shop</option>
                                 <option value="Café">Café</option>
                                 <option value="Bosch Service">Bosch Service</option>
-                                <option value="Lubrifiants">Lubrifiants</option>
+                                <option value="Lubrifiants">Lubrifiants (Tout)</option>
+                                <option value="Lubrifiants Piste">Lubrifiants Piste</option>
+                                <option value="Lubrifiants Bosch">Lubrifiants Bosch</option>
                             </select>
                         </div>
                         <div>

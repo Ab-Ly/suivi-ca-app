@@ -1,28 +1,34 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
+import Login from './components/Login';
+import ProtectedRoute from './components/ProtectedRoute';
 
 import Dashboard from './components/Dashboard';
-
 import StockStatus from './components/StockStatus';
-
 import Reports from './components/Reports';
-
 import Sales from './components/Sales';
-
-// Placeholder components
-// const Sales = () => <div><h2 className="text-2xl font-bold mb-4">Ventes</h2><p>Sales entry and history.</p></div>;
+import Profile from './components/Profile';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Layout />}>
+        <Route path="/login" element={<Login />} />
+
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }>
           <Route index element={<Dashboard />} />
           <Route path="sales" element={<Sales />} />
           <Route path="stock" element={<StockStatus />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="profile" element={<Profile />} />
         </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

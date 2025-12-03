@@ -1,33 +1,51 @@
 import React, { useState } from 'react';
-import { Outlet, useLocation, Link } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, BarChart3, Menu, X, PlusCircle } from 'lucide-react';
+import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, ShoppingCart, Package, BarChart3, Menu, X, PlusCircle, LogOut, User } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import SalesEntry from './SalesEntry';
+import { supabase } from '../lib/supabase';
 
 function cn(...inputs) {
     return twMerge(clsx(inputs));
 }
 
 // eslint-disable-next-line no-unused-vars
-const NavItem = ({ to, icon: IconComponent, label, active, onClick }) => (
-    <Link
-        to={to}
-        onClick={onClick}
-        className={cn(
-            "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group",
-            active
-                ? "bg-gradient-purple text-white shadow-md shadow-purple-200"
-                : "text-text-muted hover:bg-gray-50 hover:text-text-main"
-        )}
-    >
-        <IconComponent size={20} className={cn("transition-transform duration-200", active ? "" : "group-hover:scale-110")} />
-        <span>{label}</span>
-    </Link>
-);
+const NavItem = ({ to, icon: IconComponent, label, active, onClick, isButton, onLogout }) => {
+    if (isButton) {
+        return (
+            <button
+                onClick={onLogout}
+                className={cn(
+                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group text-red-500 hover:bg-red-50"
+                )}
+            >
+                <IconComponent size={20} className="transition-transform duration-200 group-hover:scale-110" />
+                <span>{label}</span>
+            </button>
+        );
+    }
+
+    return (
+        <Link
+            to={to}
+            onClick={onClick}
+            className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group",
+                active
+                    ? "bg-gradient-purple text-white shadow-md shadow-purple-200"
+                    : "text-text-muted hover:bg-gray-50 hover:text-text-main"
+            )}
+        >
+            <IconComponent size={20} className={cn("transition-transform duration-200", active ? "" : "group-hover:scale-110")} />
+            <span>{label}</span>
+        </Link>
+    );
+};
 
 export default function Layout() {
     const location = useLocation();
+    const navigate = useNavigate();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isSalesModalOpen, setIsSalesModalOpen] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -37,11 +55,17 @@ export default function Layout() {
         { to: '/sales', icon: ShoppingCart, label: 'Ventes' },
         { to: '/stock', icon: Package, label: 'Stock' },
         { to: '/reports', icon: BarChart3, label: 'Rapports' },
+        { to: '/profile', icon: User, label: 'Profil' },
     ];
 
     const handleSaleSuccess = () => {
         setRefreshTrigger(prev => prev + 1);
         setIsSalesModalOpen(false);
+    };
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        navigate('/login');
     };
 
     return (
@@ -74,6 +98,13 @@ export default function Layout() {
                                 onClick={() => setIsMobileMenuOpen(false)}
                             />
                         ))}
+                        <div className="h-px bg-gray-100 my-2"></div>
+                        <NavItem
+                            isButton
+                            icon={LogOut}
+                            label="Déconnexion"
+                            onLogout={handleLogout}
+                        />
                     </nav>
                 </div>
             )}
@@ -101,7 +132,7 @@ export default function Layout() {
                     <span>Nouvelle Vente</span>
                 </button>
 
-                <nav className="flex flex-col gap-2">
+                <nav className="flex flex-col gap-2 flex-1">
                     {navItems.map((item) => (
                         <NavItem
                             key={item.to}
@@ -111,11 +142,21 @@ export default function Layout() {
                     ))}
                 </nav>
 
-                <div className="mt-auto p-4 bg-bg-main rounded-xl">
-                    <div className="text-xs font-medium text-text-muted mb-2">Statut du système</div>
-                    <div className="flex items-center gap-2 text-sm font-medium text-green-600">
-                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                        En ligne
+                <div className="mt-auto">
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium text-red-500 hover:bg-red-50 group mb-4"
+                    >
+                        <LogOut size={20} className="transition-transform duration-200 group-hover:scale-110" />
+                        <span>Déconnexion</span>
+                    </button>
+
+                    <div className="p-4 bg-bg-main rounded-xl">
+                        <div className="text-xs font-medium text-text-muted mb-2">Statut du système</div>
+                        <div className="flex items-center gap-2 text-sm font-medium text-green-600">
+                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                            En ligne
+                        </div>
                     </div>
                 </div>
             </aside>
