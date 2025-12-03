@@ -79,6 +79,38 @@ export default function Layout() {
         navigate('/login');
     };
 
+    // Auto-logout on inactivity
+    useEffect(() => {
+        const TIMEOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+        let logoutTimer;
+
+        const resetTimer = () => {
+            if (logoutTimer) clearTimeout(logoutTimer);
+            logoutTimer = setTimeout(() => {
+                handleLogout();
+            }, TIMEOUT_DURATION);
+        };
+
+        // Events to listen for
+        const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+
+        // Attach listeners
+        events.forEach(event => {
+            document.addEventListener(event, resetTimer);
+        });
+
+        // Initial start
+        resetTimer();
+
+        // Cleanup
+        return () => {
+            if (logoutTimer) clearTimeout(logoutTimer);
+            events.forEach(event => {
+                document.removeEventListener(event, resetTimer);
+            });
+        };
+    }, [navigate]);
+
     return (
         <div className="min-h-screen bg-bg-main text-text-main flex flex-col md:flex-row font-sans">
             {/* Mobile Header */}
