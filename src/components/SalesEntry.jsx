@@ -369,7 +369,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                         <button
                             onClick={handleSubmit}
                             disabled={selectedItems.length === 0 || submitting}
-                            className="bg-notion-text text-white px-6 py-3 rounded-md font-medium hover:bg-black transition-colors disabled:opacity-50 flex items-center gap-2"
+                            className="bg-gradient-purple text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-purple-200 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
                         >
                             {submitting ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />}
                             {submitting ? 'Validation...' : 'Valider la vente'}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Card, CardHeader, StatCard } from './ui/Card';
+import { Card } from './ui/Card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { DollarSign, Coffee, Wrench, Droplet, ShoppingBag, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';

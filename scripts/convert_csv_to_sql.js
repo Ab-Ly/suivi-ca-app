@@ -8,7 +8,7 @@ const outputPath = path.join(__dirname, '../supabase/seed.sql');
 
 const csvContent = fs.readFileSync(csvPath, 'utf-8');
 const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-const headers = lines[0].split(',');
+
 
 // ref,name,unit,pu,stock_qty,stock_val
 
@@ -25,12 +25,9 @@ for (let i = 1; i < lines.length; i++) {
 
     if (cols.length < 6) continue;
 
-    const ref = cols[0].trim();
     const name = cols[1].trim().replace(/'/g, "''"); // Escape single quotes
-    const unit = cols[2].trim();
     const pu = parseFloat(cols[3].trim()) || 0;
     const stock_qty = parseInt(cols[4].trim()) || 0;
-    const stock_val = parseFloat(cols[5].trim()) || 0;
 
     // Determine category
     let category = 'lubricant_piste';

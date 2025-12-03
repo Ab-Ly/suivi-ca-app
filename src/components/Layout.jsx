@@ -9,7 +9,8 @@ function cn(...inputs) {
     return twMerge(clsx(inputs));
 }
 
-const NavItem = ({ to, icon: Icon, label, active, onClick }) => (
+// eslint-disable-next-line no-unused-vars
+const NavItem = ({ to, icon: IconComponent, label, active, onClick }) => (
     <Link
         to={to}
         onClick={onClick}
@@ -20,7 +21,7 @@ const NavItem = ({ to, icon: Icon, label, active, onClick }) => (
                 : "text-text-muted hover:bg-gray-50 hover:text-text-main"
         )}
     >
-        <Icon size={20} className={cn("transition-transform duration-200", active ? "" : "group-hover:scale-110")} />
+        <IconComponent size={20} className={cn("transition-transform duration-200", active ? "" : "group-hover:scale-110")} />
         <span>{label}</span>
     </Link>
 );
