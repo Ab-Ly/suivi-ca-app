@@ -18,7 +18,8 @@ export default function StockStatus() {
     const [loadingMovements, setLoadingMovements] = useState(false);
     const [movementDateFilter, setMovementDateFilter] = useState({
         start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0], // Last 30 days
-        end: new Date().toISOString().split('T')[0]
+        end: new Date().toISOString().split('T')[0],
+        modalDate: new Date().toISOString().split('T')[0]
     });
 
     // Movement Modal State
@@ -108,7 +109,7 @@ export default function StockStatus() {
                     article_id: selectedArticle.id,
                     type: movementType,
                     quantity: movementQty,
-                    movement_date: new Date().toISOString()
+                    movement_date: new Date(movementDateFilter.modalDate || new Date()).toISOString()
                 });
 
             if (moveError) throw moveError;
@@ -149,8 +150,8 @@ export default function StockStatus() {
                     <button
                         onClick={() => setActiveTab('status')}
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'status'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
+                            ? 'bg-white text-primary shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         <LayoutGrid size={16} />
@@ -159,8 +160,8 @@ export default function StockStatus() {
                     <button
                         onClick={() => setActiveTab('movements')}
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'movements'
-                                ? 'bg-white text-primary shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
+                            ? 'bg-white text-primary shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         <History size={16} />
@@ -386,8 +387,8 @@ export default function StockStatus() {
                                             </td>
                                             <td className="py-3 px-4">
                                                 <span className={`px-2 py-1 rounded text-xs font-medium border ${move.type === 'in'
-                                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                                        : 'bg-red-50 text-red-700 border-red-200'
+                                                    ? 'bg-green-50 text-green-700 border-green-200'
+                                                    : 'bg-red-50 text-red-700 border-red-200'
                                                     }`}>
                                                     {move.type === 'in' ? 'Entrée' : 'Sortie'}
                                                 </span>
