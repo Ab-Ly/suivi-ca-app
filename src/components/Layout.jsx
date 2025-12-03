@@ -71,20 +71,27 @@ export default function Layout() {
     return (
         <div className="min-h-screen bg-bg-main text-text-main flex flex-col md:flex-row font-sans">
             {/* Mobile Header */}
-            <div className="md:hidden flex items-center justify-between p-4 bg-white shadow-sm sticky top-0 z-20">
+            <div className="md:hidden flex items-center justify-between p-4 bg-white shadow-sm sticky top-0 z-30">
+                <button
+                    onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                    className="p-2 -ml-2 text-text-muted hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                    {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                </button>
+
                 <h1 className="font-bold text-lg bg-gradient-purple bg-clip-text text-transparent">Suivi CH Affaire</h1>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setIsSalesModalOpen(true)}
-                        className="p-2 bg-gradient-purple text-white rounded-lg shadow-md active:scale-95 transition-transform"
-                    >
-                        <PlusCircle size={20} />
-                    </button>
-                    <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-text-muted">
-                        {isMobileMenuOpen ? <X /> : <Menu />}
-                    </button>
-                </div>
+
+                <div className="w-10"></div> {/* Spacer to center title */}
             </div>
+
+            {/* Mobile FAB for New Sale */}
+            <button
+                onClick={() => setIsSalesModalOpen(true)}
+                className="md:hidden fixed bottom-6 right-6 z-40 p-4 bg-gradient-purple text-white rounded-full shadow-lg shadow-purple-200 active:scale-95 transition-transform hover:scale-105 flex items-center justify-center"
+                aria-label="Nouvelle vente"
+            >
+                <PlusCircle size={28} />
+            </button>
 
             {/* Mobile Menu Overlay */}
             {isMobileMenuOpen && (

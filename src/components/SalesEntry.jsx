@@ -182,9 +182,9 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
 
                 {/* Entry Form Row */}
                 <div className="bg-notion-sidebar p-4 rounded-lg border border-notion-border shadow-sm">
-                    <div className="grid grid-cols-12 gap-4 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                         {/* Article Search */}
-                        <div className="col-span-4 relative" ref={dropdownRef}>
+                        <div className="md:col-span-4 relative" ref={dropdownRef}>
                             <label className="block text-xs font-medium text-notion-gray mb-1">Article</label>
                             <div className="relative">
                                 <input
@@ -226,7 +226,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                         </div>
 
                         {/* Quantity */}
-                        <div className="col-span-2">
+                        <div className="md:col-span-2">
                             <label className="block text-xs font-medium text-notion-gray mb-1">Quantité</label>
                             <input
                                 type="number"
@@ -238,7 +238,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                         </div>
 
                         {/* Price (Editable for Services) */}
-                        <div className="col-span-2">
+                        <div className="md:col-span-2">
                             <label className="block text-xs font-medium text-notion-gray mb-1">Prix U.</label>
                             <input
                                 type="number"
@@ -251,7 +251,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                         </div>
 
                         {/* Sales Location (Visible for Lubricants) */}
-                        <div className="col-span-3">
+                        <div className="md:col-span-3">
                             {isLubricant ? (
                                 <div>
                                     <label className="block text-xs font-medium text-notion-gray mb-1">Lieu de vente</label>
@@ -286,7 +286,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                         </div>
 
                         {/* Add Button */}
-                        <div className="col-span-1">
+                        <div className="md:col-span-1">
                             <button
                                 onClick={handleAddItem}
                                 disabled={!newItem.article || newItem.quantity <= 0}
@@ -300,7 +300,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
 
                 {/* Items Table */}
                 <div className="flex-1 overflow-auto border border-notion-border rounded-lg bg-white">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full text-left text-sm min-w-[600px] md:min-w-0">
                         <thead className="bg-notion-sidebar sticky top-0 z-10">
                             <tr>
                                 <th className="py-3 px-4 font-medium text-notion-gray border-b border-notion-border">Article</th>
@@ -348,28 +348,28 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between pt-4 border-t border-notion-border">
-                    <div className="flex items-center gap-4">
+                <div className="flex flex-col md:flex-row items-center justify-between pt-4 border-t border-notion-border gap-4">
+                    <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
                         <div className="text-sm text-notion-gray">
                             {selectedItems.length} article{selectedItems.length > 1 ? 's' : ''}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
                             <DateInput
                                 value={saleDate}
                                 onChange={(e) => setSaleDate(e.target.value)}
-                                className="w-40"
+                                className="w-full sm:w-40"
                             />
                         </div>
                     </div>
-                    <div className="flex items-center gap-6">
-                        <div className="text-right">
+                    <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                        <div className="text-right w-full sm:w-auto flex justify-between sm:block items-center">
                             <div className="text-xs text-notion-gray uppercase font-medium">Total à payer</div>
                             <div className="text-2xl font-bold text-notion-text">{total.toLocaleString()} MAD</div>
                         </div>
                         <button
                             onClick={handleSubmit}
                             disabled={selectedItems.length === 0 || submitting}
-                            className="bg-gradient-purple text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-purple-200 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
+                            className="w-full sm:w-auto bg-gradient-purple text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-purple-200 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
                         >
                             {submitting ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />}
                             {submitting ? 'Validation...' : 'Valider la vente'}
