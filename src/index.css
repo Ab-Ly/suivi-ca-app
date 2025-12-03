@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: 'Poppins', sans-serif;
+
+  --color-bg-main: #F5F7FA;
+  --color-sidebar-bg: #FFFFFF;
+  --color-border: #E2E8F0;
+  --color-text-main: #2D3748;
+  --color-text-muted: #718096;
+
+  --color-primary: #667EEA;
+  --color-secondary: #764BA2;
+
+  --image-gradient-purple: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+  --image-gradient-orange: linear-gradient(135deg, #FCCF31 0%, #F55555 100%);
+  --image-gradient-green: linear-gradient(135deg, #43E97B 0%, #38F9D7 100%);
+  --image-gradient-blue: linear-gradient(135deg, #4FACFE 0%, #00F2FE 100%);
+  --image-gradient-dark: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+}
+
+@layer base {
+  body {
+    @apply bg-bg-main text-text-main antialiased font-sans;
+  }
+}
+
+@layer utilities {
+  .bg-gradient-purple {
+    background-image: var(--image-gradient-purple);
+  }
+
+  .bg-gradient-orange {
+    background-image: var(--image-gradient-orange);
+  }
+
+  .bg-gradient-green {
+    background-image: var(--image-gradient-green);
+  }
+
+  .bg-gradient-blue {
+    background-image: var(--image-gradient-blue);
+  }
+
+  .bg-gradient-dark {
+    background-image: var(--image-gradient-dark);
+  }
+}
