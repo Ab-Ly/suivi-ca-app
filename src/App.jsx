@@ -8,6 +8,7 @@ import Dashboard from './components/Dashboard';
 import StockStatus from './components/StockStatus';
 import Sales from './components/Sales';
 import Statistics from './components/Statistics';
+import Reports from './components/Reports';
 import Profile from './components/Profile';
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
           <Route path="sales" element={<Sales />} />
           <Route path="statistics" element={<Statistics />} />
           <Route path="stock" element={<StockStatus />} />
+          <Route path="reports" element={<Reports />} />
           <Route path="profile" element={<Profile />} />
         </Route>
 
