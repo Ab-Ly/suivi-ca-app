@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from 'recharts';
-import { Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+const CATEGORIES = ['Shop', 'Café', 'Bosch Service', "Main d'oeuvre", 'Pneumatique', 'Lubrifiant Piste', 'Lubrifiant Bosch'];
 
 export default function ComparisonCharts() {
     const [year, setYear] = useState(new Date().getFullYear());
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState([]);
     const [kpis, setKpis] = useState({ currentTotal: 0, previousTotal: 0, growth: 0 });
+    const [categoryDetails, setCategoryDetails] = useState([]);
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
     useEffect(() => {
         fetchComparisonData();
@@ -24,7 +27,14 @@ export default function ComparisonCharts() {
 
             const { data: currentSales, error: currentError } = await supabase
                 .from('sales')
-                .select('sale_date, total_price')
+                .select(`
+                    sale_date, 
+                    total_price,
+                    sales_location,
+                    articles (
+                        category
+                    )
+                `)
                 .gte('sale_date', startDate)
                 .lte('sale_date', endDate);
 
@@ -38,7 +48,7 @@ export default function ComparisonCharts() {
 
             if (historyError) throw historyError;
 
-            // Process Data
+            // Process Data for Chart
             const monthlyData = MONTHS.map((label, index) => ({
                 name: label,
                 current: 0,
@@ -46,16 +56,45 @@ export default function ComparisonCharts() {
                 index: index + 1
             }));
 
+            // Process Data for Category Details
+            const categoryStats = {};
+            CATEGORIES.forEach(cat => {
+                categoryStats[cat] = { current: 0, previous: 0 };
+            });
+
             // Aggregate Current Sales
             currentSales.forEach(sale => {
                 const monthIndex = new Date(sale.sale_date).getMonth();
-                monthlyData[monthIndex].current += sale.total_price;
+                const amount = sale.total_price;
+                const category = sale.articles?.category || 'Autre';
+                const location = sale.sales_location;
+
+                monthlyData[monthIndex].current += amount;
+
+                // Map to specific categories
+                let mappedCategory = null;
+                if (category.toLowerCase().includes('shop')) mappedCategory = 'Shop';
+                else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) mappedCategory = 'Café';
+                else if (category.toLowerCase().includes('bosch service')) mappedCategory = 'Bosch Service';
+                else if (category.toLowerCase().includes('main d\'oeuvre')) mappedCategory = "Main d'oeuvre";
+                else if (category.toLowerCase().includes('pneumatique')) mappedCategory = 'Pneumatique';
+                else if (category.toLowerCase().includes('lubrifiant')) {
+                    if (location === 'bosch') mappedCategory = 'Lubrifiant Bosch';
+                    else mappedCategory = 'Lubrifiant Piste';
+                }
+
+                if (mappedCategory && categoryStats[mappedCategory]) {
+                    categoryStats[mappedCategory].current += amount;
+                }
             });
 
             // Aggregate Historical Sales
             history.forEach(item => {
                 if (item.month >= 1 && item.month <= 12) {
                     monthlyData[item.month - 1].previous += item.amount;
+                }
+                if (categoryStats[item.category]) {
+                    categoryStats[item.category].previous += item.amount;
                 }
             });
 
@@ -64,8 +103,17 @@ export default function ComparisonCharts() {
             const previousTotal = monthlyData.reduce((sum, item) => sum + item.previous, 0);
             const growth = previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal) * 100 : 0;
 
+            // Format Category Details
+            const details = CATEGORIES.map(cat => {
+                const curr = categoryStats[cat].current;
+                const prev = categoryStats[cat].previous;
+                const growth = prev > 0 ? ((curr - prev) / prev) * 100 : 0;
+                return { name: cat, current: curr, previous: prev, growth };
+            });
+
             setData(monthlyData);
             setKpis({ currentTotal, previousTotal, growth });
+            setCategoryDetails(details);
 
         } catch (error) {
             console.error('Error fetching comparison data:', error);
@@ -131,6 +179,49 @@ export default function ComparisonCharts() {
                                 <Bar dataKey="current" name={`Année ${year}`} fill="#667EEA" radius={[4, 4, 0, 0]} barSize={20} />
                             </BarChart>
                         </ResponsiveContainer>
+                    </div>
+                )}
+            </div>
+
+            {/* Detailed Breakdown */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <button
+                    onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+                    className="w-full flex items-center justify-between p-6 hover:bg-gray-50 transition-colors"
+                >
+                    <h3 className="font-bold text-lg text-gray-900">Détails par Catégorie</h3>
+                    {isDetailsOpen ? <ChevronUp className="text-gray-500" /> : <ChevronDown className="text-gray-500" />}
+                </button>
+
+                {isDetailsOpen && (
+                    <div className="p-6 pt-0 border-t border-gray-100">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-gray-500 font-medium border-b border-gray-100">
+                                    <tr>
+                                        <th className="py-3 pr-4">Catégorie</th>
+                                        <th className="py-3 px-4 text-right">CA {year - 1}</th>
+                                        <th className="py-3 px-4 text-right">CA {year}</th>
+                                        <th className="py-3 pl-4 text-right">Évolution</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {categoryDetails.map((cat) => (
+                                        <tr key={cat.name} className="hover:bg-gray-50/50">
+                                            <td className="py-3 pr-4 font-medium text-gray-900">{cat.name}</td>
+                                            <td className="py-3 px-4 text-right text-gray-600">{cat.previous.toLocaleString()} MAD</td>
+                                            <td className="py-3 px-4 text-right text-gray-900 font-medium">{cat.current.toLocaleString()} MAD</td>
+                                            <td className="py-3 pl-4 text-right">
+                                                <div className={`flex items-center justify-end gap-1 ${cat.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {cat.growth >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                                                    <span className="font-medium">{Math.abs(cat.growth).toFixed(1)}%</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
             </div>

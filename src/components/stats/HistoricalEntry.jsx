@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Loader2, Save, AlertCircle } from 'lucide-react';
 
-const CATEGORIES = ['Shop', 'Café', 'Bosch Service', 'Pneumatique', 'Lubrifiants'];
+const CATEGORIES = ['Shop', 'Café', 'Bosch Service', "Main d'oeuvre", 'Pneumatique', 'Lubrifiant Piste', 'Lubrifiant Bosch'];
 const MONTHS = [
     { value: 1, label: 'Janvier' },
     { value: 2, label: 'Février' },
