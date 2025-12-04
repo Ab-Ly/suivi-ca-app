@@ -41,12 +41,20 @@ export default function ComparisonCharts() {
             if (currentError) throw currentError;
 
             // 2. Fetch Previous Year Sales (Historical Data)
-            const { data: history, error: historyError } = await supabase
+            const { data: historyPrevious, error: historyErrorPrevious } = await supabase
                 .from('historical_sales')
                 .select('*')
                 .eq('year', year - 1);
 
-            if (historyError) throw historyError;
+            if (historyErrorPrevious) throw historyErrorPrevious;
+
+            // 3. Fetch Current Year Manual Entries (Historical Data for current year)
+            const { data: historyCurrent, error: historyErrorCurrent } = await supabase
+                .from('historical_sales')
+                .select('*')
+                .eq('year', year);
+
+            if (historyErrorCurrent) throw historyErrorCurrent;
 
             // Process Data for Chart
             const monthlyData = MONTHS.map((label, index) => ({
@@ -62,7 +70,7 @@ export default function ComparisonCharts() {
                 categoryStats[cat] = { current: 0, previous: 0 };
             });
 
-            // Aggregate Current Sales
+            // Aggregate Current Sales (Real)
             currentSales.forEach(sale => {
                 const monthIndex = new Date(sale.sale_date).getMonth();
                 const amount = sale.total_price;
@@ -88,8 +96,18 @@ export default function ComparisonCharts() {
                 }
             });
 
-            // Aggregate Historical Sales
-            history.forEach(item => {
+            // Aggregate Current Sales (Manual Entries)
+            historyCurrent?.forEach(item => {
+                if (item.month >= 1 && item.month <= 12) {
+                    monthlyData[item.month - 1].current += item.amount;
+                }
+                if (categoryStats[item.category]) {
+                    categoryStats[item.category].current += item.amount;
+                }
+            });
+
+            // Aggregate Historical Sales (Previous Year)
+            historyPrevious?.forEach(item => {
                 if (item.month >= 1 && item.month <= 12) {
                     monthlyData[item.month - 1].previous += item.amount;
                 }
