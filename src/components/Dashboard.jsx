@@ -53,15 +53,53 @@ export default function Dashboard() {
 
             if (error) throw error;
 
+            // Fetch Historical Data (Manual Entries) if period is 'year'
+            let historicalData = [];
+            if (period === 'year') {
+                const { data: history, error: historyError } = await supabase
+                    .from('historical_sales')
+                    .select('*')
+                    .eq('year', now.getFullYear());
+
+                if (!historyError && history) {
+                    historicalData = history;
+                }
+            }
+
             // Process Data
             let total = 0;
             let shop = 0, cafe = 0, bosch = 0, pneumatique = 0, lub_piste = 0, lub_bosch = 0;
             const dailyMap = {};
 
+            // Helper to initialize map entry
+            const initMapEntry = (dateKey) => {
+                if (!dailyMap[dateKey]) {
+                    dailyMap[dateKey] = { name: dateKey, shop: 0, cafe: 0, bosch: 0, pneumatique: 0, lub_piste: 0, lub_bosch: 0 };
+                }
+            };
+
+            // Process Real Sales
             sales.forEach(sale => {
                 const amount = sale.total_price;
                 const category = sale.articles?.category || 'Autre';
-                const date = new Date(sale.sale_date).toLocaleDateString('fr-FR', { weekday: 'short' });
+                // For year view, we might want to group by month if we are mixing with monthly historical data
+                // But existing chart might be daily. Let's stick to daily for real sales, and add monthly historical to the 1st of month?
+                // Or better: if period is year, chart should probably be monthly? 
+                // The current implementation uses `dailyMap` with `date` as key.
+                // If period is year, `date` from `toLocaleDateString` might be full date.
+                // Let's check how `date` is formatted.
+                // `new Date(sale.sale_date).toLocaleDateString('fr-FR', { weekday: 'short' })` -> This gives "lun.", "mar." etc.
+                // This looks like it was designed for 'week' view mainly. For 'year', it would just overwrite days?
+                // Wait, if period is 'year', grouping by 'weekday' (Mon, Tue...) is wrong. It aggregates all Mondays of the year together?
+                // Let's fix the grouping logic first.
+
+                let dateKey;
+                if (period === 'year') {
+                    dateKey = new Date(sale.sale_date).toLocaleDateString('fr-FR', { month: 'short' }); // Jan, Fév...
+                } else {
+                    dateKey = new Date(sale.sale_date).toLocaleDateString('fr-FR', { weekday: 'short' });
+                }
+
                 const location = sale.sales_location; // 'piste' or 'bosch'
 
                 total += amount;
@@ -80,23 +118,63 @@ export default function Dashboard() {
                     }
                 }
 
-                // Chart Data (Daily aggregation)
-                if (!dailyMap[date]) {
-                    dailyMap[date] = { name: date, shop: 0, cafe: 0, bosch: 0, pneumatique: 0, lub_piste: 0, lub_bosch: 0 };
-                }
+                // Chart Data
+                initMapEntry(dateKey);
 
-                if (category.toLowerCase().includes('shop')) dailyMap[date].shop += amount;
-                else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) dailyMap[date].cafe += amount;
-                else if (category.toLowerCase().includes('bosch service') || category.toLowerCase().includes('main d\'oeuvre')) dailyMap[date].bosch += amount;
-                else if (category.toLowerCase().includes('pneumatique')) dailyMap[date].pneumatique += amount;
+                if (category.toLowerCase().includes('shop')) dailyMap[dateKey].shop += amount;
+                else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) dailyMap[dateKey].cafe += amount;
+                else if (category.toLowerCase().includes('bosch service') || category.toLowerCase().includes('main d\'oeuvre')) dailyMap[dateKey].bosch += amount;
+                else if (category.toLowerCase().includes('pneumatique')) dailyMap[dateKey].pneumatique += amount;
                 else if (category.toLowerCase().includes('lubrifiant')) {
-                    if (location === 'bosch') dailyMap[date].lub_bosch += amount;
-                    else dailyMap[date].lub_piste += amount;
+                    if (location === 'bosch') dailyMap[dateKey].lub_bosch += amount;
+                    else dailyMap[dateKey].lub_piste += amount;
                 }
             });
 
+            // Process Historical Data (Manual Entries)
+            const MONTH_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+            historicalData.forEach(item => {
+                const amount = item.amount;
+                const category = item.category;
+                // Map month number (1-12) to label (Jan, Fév...) to match the chart key if period is year
+                const dateKey = MONTH_LABELS[item.month - 1];
+
+                total += amount;
+
+                // Category Stats
+                if (category === 'Shop') shop += amount;
+                else if (category === 'Café') cafe += amount;
+                else if (category === 'Bosch Service') bosch += amount;
+                else if (category === "Main d'oeuvre") bosch += amount; // Group with Bosch
+                else if (category === 'Pneumatique') pneumatique += amount;
+                else if (category === 'Lubrifiant Piste') lub_piste += amount;
+                else if (category === 'Lubrifiant Bosch') lub_bosch += amount;
+
+                // Chart Data
+                if (period === 'year') {
+                    initMapEntry(dateKey);
+
+                    if (category === 'Shop') dailyMap[dateKey].shop += amount;
+                    else if (category === 'Café') dailyMap[dateKey].cafe += amount;
+                    else if (category === 'Bosch Service') dailyMap[dateKey].bosch += amount;
+                    else if (category === "Main d'oeuvre") dailyMap[dateKey].bosch += amount;
+                    else if (category === 'Pneumatique') dailyMap[dateKey].pneumatique += amount;
+                    else if (category === 'Lubrifiant Piste') dailyMap[dateKey].lub_piste += amount;
+                    else if (category === 'Lubrifiant Bosch') dailyMap[dateKey].lub_bosch += amount;
+                }
+            });
+
+            // Sort chart data for year view to ensure months are in order
+            let chartDataArray = Object.values(dailyMap);
+            if (period === 'year') {
+                chartDataArray.sort((a, b) => {
+                    return MONTH_LABELS.indexOf(a.name) - MONTH_LABELS.indexOf(b.name);
+                });
+            }
+
             setStats({ total, shop, cafe, bosch, pneumatique, lub_piste, lub_bosch });
-            setChartData(Object.values(dailyMap));
+            setChartData(chartDataArray);
             setLubData([
                 { name: 'Lub. Piste', value: lub_piste },
                 { name: 'Lub. Bosch', value: lub_bosch }
