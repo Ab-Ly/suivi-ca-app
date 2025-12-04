@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, BarChart3, Menu, X, PlusCircle, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2 } from 'lucide-react';
 import { PullToRefresh } from './ui/PullToRefresh';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -52,7 +52,8 @@ export default function Layout() {
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     const navItems = [
-        { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+        { to: '/', icon: LayoutDashboard, label: 'Tableau de bord' },
+        { to: '/statistics', icon: BarChart2, label: 'Statistiques' },
         { to: '/sales', icon: ShoppingCart, label: 'Ventes' },
         { to: '/stock', icon: Package, label: 'Stock' },
         { to: '/reports', icon: BarChart3, label: 'Rapports' },
