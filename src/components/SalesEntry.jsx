@@ -132,7 +132,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
             // 2. Update Stock Levels (Only for stockable items)
             for (const item of selectedItems) {
                 // Check if item is a service based on category or type
-                const isService = ['Shop', 'Café', 'Bosch Car Service', "Main d'oeuvre"].includes(item.category) || item.type === 'service';
+                const isService = ['Shop', 'Café', 'Bosch Car Service', "Main d'oeuvre", 'Pneumatique'].includes(item.category) || item.type === 'service';
 
                 if (!isService) {
                     let { error: updateError } = await supabase.rpc('decrement_stock', {
