@@ -16,6 +16,7 @@ export default function Dashboard() {
         shop: 0,
         cafe: 0,
         bosch: 0,
+        pneumatique: 0,
         lub_piste: 0,
         lub_bosch: 0
     });
@@ -54,7 +55,7 @@ export default function Dashboard() {
 
             // Process Data
             let total = 0;
-            let shop = 0, cafe = 0, bosch = 0, lub_piste = 0, lub_bosch = 0;
+            let shop = 0, cafe = 0, bosch = 0, pneumatique = 0, lub_piste = 0, lub_bosch = 0;
             const dailyMap = {};
 
             sales.forEach(sale => {
@@ -70,6 +71,7 @@ export default function Dashboard() {
                 else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) cafe += amount;
                 else if (category.toLowerCase().includes('bosch service')) bosch += amount;
                 else if (category.toLowerCase().includes('main d\'oeuvre')) bosch += amount;
+                else if (category.toLowerCase().includes('pneumatique')) pneumatique += amount;
                 else if (category.toLowerCase().includes('lubrifiant')) {
                     if (location === 'bosch') {
                         lub_bosch += amount;
@@ -80,19 +82,20 @@ export default function Dashboard() {
 
                 // Chart Data (Daily aggregation)
                 if (!dailyMap[date]) {
-                    dailyMap[date] = { name: date, shop: 0, cafe: 0, bosch: 0, lub_piste: 0, lub_bosch: 0 };
+                    dailyMap[date] = { name: date, shop: 0, cafe: 0, bosch: 0, pneumatique: 0, lub_piste: 0, lub_bosch: 0 };
                 }
 
                 if (category.toLowerCase().includes('shop')) dailyMap[date].shop += amount;
                 else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) dailyMap[date].cafe += amount;
                 else if (category.toLowerCase().includes('bosch service') || category.toLowerCase().includes('main d\'oeuvre')) dailyMap[date].bosch += amount;
+                else if (category.toLowerCase().includes('pneumatique')) dailyMap[date].pneumatique += amount;
                 else if (category.toLowerCase().includes('lubrifiant')) {
                     if (location === 'bosch') dailyMap[date].lub_bosch += amount;
                     else dailyMap[date].lub_piste += amount;
                 }
             });
 
-            setStats({ total, shop, cafe, bosch, lub_piste, lub_bosch });
+            setStats({ total, shop, cafe, bosch, pneumatique, lub_piste, lub_bosch });
             setChartData(Object.values(dailyMap));
             setLubData([
                 { name: 'Lub. Piste', value: lub_piste },
@@ -165,10 +168,10 @@ export default function Dashboard() {
                         <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
                             <Wrench size={24} />
                         </div>
-                        <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">Service</span>
+                        <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">Services Auto</span>
                     </div>
-                    <div className="text-3xl font-bold mb-1">{stats.bosch.toLocaleString()} MAD</div>
-                    <div className="text-blue-100 text-sm">Bosch & Main d'oeuvre</div>
+                    <div className="text-3xl font-bold mb-1">{(stats.bosch + stats.pneumatique).toLocaleString()} MAD</div>
+                    <div className="text-blue-100 text-sm">Bosch, Main d'oeuvre & Pneu</div>
                 </div>
 
                 <div className="bg-gradient-green rounded-2xl p-6 text-white shadow-lg shadow-green-200 transform transition-transform hover:-translate-y-1">
@@ -204,6 +207,7 @@ export default function Dashboard() {
                                 <Bar dataKey="shop" stackId="a" fill="#FCCF31" name="Shop" radius={[0, 0, 4, 4]} barSize={32} />
                                 <Bar dataKey="cafe" stackId="a" fill="#43E97B" name="Café" />
                                 <Bar dataKey="bosch" stackId="a" fill="#4FACFE" name="Bosch Service" />
+                                <Bar dataKey="pneumatique" stackId="a" fill="#00C9FF" name="Pneumatique" />
                                 <Bar dataKey="lub_piste" stackId="a" fill="#667EEA" name="Lub. Piste" />
                                 <Bar dataKey="lub_bosch" stackId="a" fill="#764BA2" name="Lub. Bosch" radius={[4, 4, 0, 0]} />
                             </BarChart>

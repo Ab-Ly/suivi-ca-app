@@ -102,6 +102,7 @@ export default function Sales() {
                             <option value="Shop">Shop</option>
                             <option value="Café">Café</option>
                             <option value="Bosch Service">Bosch Service</option>
+                            <option value="Pneumatique">Pneumatique</option>
                             <option value="Lubrifiants">Lubrifiants</option>
                         </select>
                     </div>
