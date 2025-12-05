@@ -352,15 +352,16 @@ export default function Dashboard() {
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} dy={10} />
                                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} />
                                 <Tooltip
-                                    contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                    contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', fontSize: '12px', padding: '8px' }}
                                     cursor={{ fill: '#F7FAFC' }}
                                     formatter={(value) => formatPrice(value)}
+                                    itemStyle={{ padding: 0 }}
                                 />
-                                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                                <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
                                 <Bar dataKey="shop" stackId="a" fill="#FCCF31" name="Shop" radius={[0, 0, 4, 4]} barSize={32} />
                                 <Bar dataKey="cafe" stackId="a" fill="#43E97B" name="Café" />
-                                <Bar dataKey="bosch" stackId="a" fill="#4FACFE" name="Bosch Service" />
-                                <Bar dataKey="pneumatique" stackId="a" fill="#00C9FF" name="Pneumatique" />
+                                <Bar dataKey="bosch" stackId="a" fill="#4FACFE" name="Bosch" />
+                                <Bar dataKey="pneumatique" stackId="a" fill="#00C9FF" name="Pneu" />
                                 <Bar dataKey="lub_piste" stackId="a" fill="#667EEA" name="Lub. Piste" />
                                 <Bar dataKey="lub_bosch" stackId="a" fill="#764BA2" name="Lub. Bosch" radius={[4, 4, 0, 0]} />
                             </BarChart>
