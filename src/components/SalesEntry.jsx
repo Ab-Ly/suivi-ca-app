@@ -423,8 +423,8 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                         </div>
                     </>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                        <div className="w-full max-w-md space-y-6 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                        <div className="w-full max-w-md space-y-6 bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-gray-100">
                             <div className="text-center mb-6">
                                 <h3 className="text-lg font-bold text-gray-900">Saisie Volume Carburant</h3>
                                 <p className="text-sm text-gray-500">Ces ventes ne sont pas comptabilisées dans le CA financier.</p>
