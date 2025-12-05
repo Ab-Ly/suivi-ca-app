@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Loader2, Save, AlertCircle } from 'lucide-react';
 
 const CATEGORIES = ['Shop', 'Café', 'Bosch Service', "Main d'oeuvre", 'Pneumatique', 'Lubrifiant Piste', 'Lubrifiant Bosch'];
+const FUEL_CATEGORIES = ['Gasoil Volume', 'SSP Volume'];
 const MONTHS = [
     { value: 1, label: 'Janvier' },
     { value: 2, label: 'Février' },
@@ -67,7 +68,23 @@ export default function HistoricalEntry() {
             const upsertData = [];
 
             MONTHS.forEach(m => {
+                // Regular Categories
                 CATEGORIES.forEach(cat => {
+                    const key = `${m.value}_${cat}`;
+                    const amount = parseFloat(data[key]) || 0;
+
+                    if (amount > 0 || data[key] !== undefined) {
+                        upsertData.push({
+                            year,
+                            month: m.value,
+                            category: cat,
+                            amount: amount
+                        });
+                    }
+                });
+
+                // Fuel Categories
+                FUEL_CATEGORIES.forEach(cat => {
                     const key = `${m.value}_${cat}`;
                     const amount = parseFloat(data[key]) || 0;
 
@@ -136,37 +153,76 @@ export default function HistoricalEntry() {
                     <Loader2 className="animate-spin text-gray-400" size={32} />
                 </div>
             ) : (
-                <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-gray-50 text-gray-700 font-medium">
-                            <tr>
-                                <th className="px-4 py-3 border-b">Mois</th>
-                                {CATEGORIES.map(cat => (
-                                    <th key={cat} className="px-4 py-3 border-b text-right min-w-[120px]">{cat}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 bg-white">
-                            {MONTHS.map(month => (
-                                <tr key={month.value} className="hover:bg-gray-50/50">
-                                    <td className="px-4 py-3 font-medium text-gray-900">{month.label}</td>
+                <div className="space-y-8">
+                    {/* Sales Table */}
+                    <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 text-gray-700 font-medium">
+                                <tr>
+                                    <th className="px-4 py-3 border-b">Mois</th>
                                     {CATEGORIES.map(cat => (
-                                        <td key={cat} className="px-2 py-2">
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                className="w-full px-3 py-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-primary/20 focus:border-primary text-right transition-all"
-                                                placeholder="0.00"
-                                                value={data[`${month.value}_${cat}`] || ''}
-                                                onChange={(e) => handleChange(month.value, cat, e.target.value)}
-                                            />
-                                        </td>
+                                        <th key={cat} className="px-4 py-3 border-b text-right min-w-[120px]">{cat}</th>
                                     ))}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 bg-white">
+                                {MONTHS.map(month => (
+                                    <tr key={month.value} className="hover:bg-gray-50/50">
+                                        <td className="px-4 py-3 font-medium text-gray-900">{month.label}</td>
+                                        {CATEGORIES.map(cat => (
+                                            <td key={cat} className="px-2 py-2">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    className="w-full px-3 py-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-primary/20 focus:border-primary text-right transition-all"
+                                                    placeholder="0.00"
+                                                    value={data[`${month.value}_${cat}`] || ''}
+                                                    onChange={(e) => handleChange(month.value, cat, e.target.value)}
+                                                />
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Fuel Table */}
+                    <div>
+                        <h4 className="font-bold text-lg text-gray-900 mb-4">Saisie Historique Carburant (Volume en Litres)</h4>
+                        <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm max-w-3xl">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-gray-50 text-gray-700 font-medium">
+                                    <tr>
+                                        <th className="px-4 py-3 border-b">Mois</th>
+                                        <th className="px-4 py-3 border-b text-right min-w-[150px]">Gasoil (L)</th>
+                                        <th className="px-4 py-3 border-b text-right min-w-[150px]">SSP (L)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 bg-white">
+                                    {MONTHS.map(month => (
+                                        <tr key={month.value} className="hover:bg-gray-50/50">
+                                            <td className="px-4 py-3 font-medium text-gray-900">{month.label}</td>
+                                            {FUEL_CATEGORIES.map(cat => (
+                                                <td key={cat} className="px-2 py-2">
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        className="w-full px-3 py-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-primary/20 focus:border-primary text-right transition-all font-mono"
+                                                        placeholder="0"
+                                                        value={data[`${month.value}_${cat}`] || ''}
+                                                        onChange={(e) => handleChange(month.value, cat, e.target.value)}
+                                                    />
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

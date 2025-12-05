@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatPrice, formatNumber } from '../utils/formatters';
 
 export default function DailyCashTracking() {
     const [activeTab, setActiveTab] = useState('entities'); // entities, expense, operations, reconciliation
@@ -333,25 +334,25 @@ export default function DailyCashTracking() {
                                                     <div className="flex justify-between items-center text-sm pb-2 border-b border-gray-100">
                                                         <span className="text-gray-500">Solde J-1</span>
                                                         <span className={`font-mono font-medium ${openingBalance >= 0 ? 'text-gray-700' : 'text-red-600'}`}>
-                                                            {openingBalance.toFixed(2)}
+                                                            {formatPrice(openingBalance)}
                                                         </span>
                                                     </div>
                                                     <div className="flex justify-between items-center text-sm">
                                                         <span className="text-gray-500">Entrées</span>
                                                         <span className="font-mono font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded">
-                                                            +{movement.in.toFixed(2)}
+                                                            +{formatPrice(movement.in)}
                                                         </span>
                                                     </div>
                                                     <div className="flex justify-between items-center text-sm">
                                                         <span className="text-gray-500">Sorties</span>
                                                         <span className="font-mono font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded">
-                                                            -{movement.out.toFixed(2)}
+                                                            -{formatPrice(movement.out)}
                                                         </span>
                                                     </div>
                                                     <div className="pt-3 border-t border-gray-200 flex justify-between items-center">
                                                         <span className="font-medium text-gray-700">Solde Actuel</span>
                                                         <span className={`font-mono font-bold text-lg ${closingBalance >= 0 ? 'text-indigo-600' : 'text-orange-600'}`}>
-                                                            {closingBalance.toFixed(2)}
+                                                            {formatPrice(closingBalance)}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -385,7 +386,7 @@ export default function DailyCashTracking() {
                                         <div className="relative z-10">
                                             <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Report (J-1)</div>
                                             <div className={`text-3xl font-bold ${expenseOpeningBalance < 0 ? 'text-red-500' : 'text-gray-900'}`}>
-                                                {expenseOpeningBalance.toFixed(2)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                                {formatPrice(expenseOpeningBalance)} <span className="text-sm font-medium text-gray-400">MAD</span>
                                             </div>
                                         </div>
                                         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-orange-400 to-orange-100"></div>
@@ -399,7 +400,7 @@ export default function DailyCashTracking() {
                                         <div className="relative z-10">
                                             <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Dépenses du Jour</div>
                                             <div className="text-3xl font-bold text-gray-900">
-                                                {(expenseClosingBalance - expenseOpeningBalance).toFixed(2)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                                {formatPrice(expenseClosingBalance - expenseOpeningBalance)} <span className="text-sm font-medium text-gray-400">MAD</span>
                                             </div>
                                         </div>
                                         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-purple-200"></div>
@@ -413,7 +414,7 @@ export default function DailyCashTracking() {
                                         <div className="relative z-10">
                                             <div className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">Solde Fin Journée</div>
                                             <div className={`text-3xl font-bold ${expenseClosingBalance < 0 ? 'text-red-400' : 'text-white'}`}>
-                                                {expenseClosingBalance.toFixed(2)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                                {formatPrice(expenseClosingBalance)} <span className="text-sm font-medium text-gray-400">MAD</span>
                                             </div>
                                         </div>
                                     </div>
@@ -459,7 +460,7 @@ export default function DailyCashTracking() {
                                                                     {op.description || 'Dépense diverse'}
                                                                 </td>
                                                                 <td className="p-4 text-right font-bold text-red-600 font-mono">
-                                                                    -{Math.abs(op.amount).toFixed(2)}
+                                                                    -{formatPrice(Math.abs(op.amount))}
                                                                 </td>
                                                                 <td className="p-4 text-center">
                                                                     <button
@@ -479,10 +480,9 @@ export default function DailyCashTracking() {
                                                     <tr>
                                                         <td colSpan="2" className="p-4 text-right uppercase text-xs tracking-wider text-gray-500">Total Dépenses</td>
                                                         <td className="p-4 text-right text-red-600 font-mono text-lg">
-                                                            -{operations
+                                                            -{formatPrice(operations
                                                                 .filter(op => op.category === 'EXPENSE_FUND')
-                                                                .reduce((sum, op) => sum + Number(op.amount), 0)
-                                                                .toFixed(2)}
+                                                                .reduce((sum, op) => sum + Number(op.amount), 0))}
                                                         </td>
                                                         <td></td>
                                                     </tr>
@@ -541,7 +541,7 @@ export default function DailyCashTracking() {
                                                         </td>
                                                         <td className={`p-3 text-right font-bold ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'
                                                             }`}>
-                                                            {op.type === 'IN' ? '+' : '-'}{Number(op.amount).toFixed(2)}
+                                                            {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
                                                         </td>
                                                         <td className="p-3 text-center">
                                                             <button
@@ -689,12 +689,12 @@ export default function DailyCashTracking() {
                                                                     <td className={`py-3 px-4 border-r border-gray-200 text-right font-mono text-sm ${debitItem?.isReste ? 'text-indigo-700 font-bold bg-indigo-50/30' :
                                                                         debitItem ? 'text-emerald-700 font-medium' : ''
                                                                         }`}>
-                                                                        {debitItem ? Math.abs(debitItem.amount).toFixed(2) : ''}
+                                                                        {debitItem ? formatPrice(Math.abs(debitItem.amount)) : ''}
                                                                     </td>
 
                                                                     {/* SORTIE (CRÉDIT) */}
                                                                     <td className="py-3 px-4 text-right font-mono text-sm text-rose-700 font-medium">
-                                                                        {creditItem ? Math.abs(creditItem.amount).toFixed(2) : ''}
+                                                                        {creditItem ? formatPrice(Math.abs(creditItem.amount)) : ''}
                                                                     </td>
                                                                     <td
                                                                         className={`py-3 px-4 border-l border-gray-100 truncate max-w-[200px] ${creditItem?.isBalance ? 'cursor-pointer hover:bg-gray-100 transition-colors' : ''}`}
@@ -727,10 +727,10 @@ export default function DailyCashTracking() {
                                                         <tr className="bg-gray-50 border-t-2 border-gray-200">
                                                             <td className="py-4 px-4 text-right font-black tracking-wider text-gray-600 border-r border-gray-200">TOTAL</td>
                                                             <td className="py-4 px-4 text-right font-mono font-black text-emerald-600 text-lg border-r border-gray-200 bg-emerald-50/30">
-                                                                {totalDebit.toFixed(2)}
+                                                                {formatPrice(totalDebit)}
                                                             </td>
                                                             <td className="py-4 px-4 text-right font-mono font-black text-rose-600 text-lg border-r border-gray-200 bg-rose-50/30">
-                                                                {totalCredit.toFixed(2)}
+                                                                {formatPrice(totalCredit)}
                                                             </td>
                                                             <td className="py-4 px-4 text-left font-black tracking-wider text-gray-600">TOTAL</td>
                                                         </tr>
@@ -740,11 +740,11 @@ export default function DailyCashTracking() {
                                                             <td className="py-6 px-4 text-right font-bold text-gray-400 tracking-wider border-r border-gray-100">ÉCART</td>
                                                             <td colSpan="2" className="py-6 px-4 text-center">
                                                                 <div className={`inline-flex items-center px-6 py-2 rounded-xl border-2 ${ecart === 0
-                                                                        ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
-                                                                        : 'bg-amber-50 border-amber-100 text-amber-700'
+                                                                    ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                                                                    : 'bg-amber-50 border-amber-100 text-amber-700'
                                                                     }`}>
                                                                     <span className="font-mono font-black text-2xl tracking-tight">
-                                                                        {ecart.toFixed(2)}
+                                                                        {formatPrice(ecart)}
                                                                     </span>
                                                                     <span className="ml-2 text-xs font-bold uppercase opacity-70">MAD</span>
                                                                 </div>
@@ -773,7 +773,7 @@ export default function DailyCashTracking() {
 
                                             <div className="flex items-baseline gap-2">
                                                 <div className="text-4xl font-black tracking-tight text-gray-900">
-                                                    {(dailyTotalCredit - dailyTotalDebit).toFixed(2)}
+                                                    {formatPrice(dailyTotalCredit - dailyTotalDebit)}
                                                 </div>
                                                 <span className="text-lg font-bold text-gray-400">MAD</span>
                                             </div>
@@ -806,7 +806,7 @@ export default function DailyCashTracking() {
                                             <div className="text-green-800 font-medium">Total Recettes (Crédit)</div>
                                         </div>
                                         <div className="text-3xl font-bold text-green-900">
-                                            {dailyTotalCredit.toFixed(2)} MAD
+                                            {formatPrice(dailyTotalCredit)}
                                         </div>
                                     </div>
 
@@ -818,7 +818,7 @@ export default function DailyCashTracking() {
                                             <div className="text-red-800 font-medium">Total Dépenses (Débit)</div>
                                         </div>
                                         <div className="text-3xl font-bold text-red-900">
-                                            {dailyTotalDebit.toFixed(2)} MAD
+                                            {formatPrice(dailyTotalDebit)}
                                         </div>
                                     </div>
 
@@ -831,7 +831,7 @@ export default function DailyCashTracking() {
                                         </div>
                                         <div className={`text-3xl font-bold ${(dailyTotalCredit - dailyTotalDebit) >= 0 ? 'text-blue-900' : 'text-red-900'
                                             }`}>
-                                            {(dailyTotalCredit - dailyTotalDebit).toFixed(2)} MAD
+                                            {formatPrice(dailyTotalCredit - dailyTotalDebit)}
                                         </div>
                                     </div>
                                 </div>
@@ -1121,16 +1121,16 @@ export default function DailyCashTracking() {
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="p-4 bg-green-50 rounded-xl border border-green-100">
                                             <div className="text-sm text-green-800 font-medium mb-1">Total Entrées</div>
-                                            <div className="text-xl font-bold text-green-900">+{movement.in.toFixed(2)}</div>
+                                            <div className="text-xl font-bold text-green-900">+{formatPrice(movement.in)}</div>
                                         </div>
                                         <div className="p-4 bg-red-50 rounded-xl border border-red-100">
                                             <div className="text-sm text-red-800 font-medium mb-1">Total Sorties</div>
-                                            <div className="text-xl font-bold text-red-900">-{movement.out.toFixed(2)}</div>
+                                            <div className="text-xl font-bold text-red-900">-{formatPrice(movement.out)}</div>
                                         </div>
                                         <div className={`p-4 rounded-xl border ${movement.in - movement.out >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'}`}>
                                             <div className={`text-sm font-medium mb-1 ${movement.in - movement.out >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>Solde du Jour</div>
                                             <div className={`text-xl font-bold ${movement.in - movement.out >= 0 ? 'text-blue-900' : 'text-orange-900'}`}>
-                                                {(movement.in - movement.out).toFixed(2)}
+                                                {formatPrice(movement.in - movement.out)}
                                             </div>
                                         </div>
                                     </div>
@@ -1170,7 +1170,7 @@ export default function DailyCashTracking() {
                                                                     {op.description}
                                                                 </td>
                                                                 <td className={`p-4 text-right font-bold font-mono ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
-                                                                    {op.type === 'IN' ? '+' : '-'}{Number(op.amount).toFixed(2)}
+                                                                    {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
                                                                 </td>
                                                                 <td className="p-4 text-center">
                                                                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${op.type === 'IN'

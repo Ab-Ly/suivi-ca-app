@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Card } from './ui/Card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
 import { DollarSign, Coffee, Wrench, Droplet, ShoppingBag, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { formatPrice, formatNumber } from '../utils/formatters';
 
 const COLORS = ['#FCCF31', '#43E97B', '#4FACFE', '#667EEA', '#764BA2'];
 
@@ -18,10 +19,14 @@ export default function Dashboard() {
         bosch: 0,
         pneumatique: 0,
         lub_piste: 0,
-        lub_bosch: 0
+        lub_bosch: 0,
+        fuel_gasoil: 0,
+        fuel_ssp: 0
     });
     const [chartData, setChartData] = useState([]);
     const [lubData, setLubData] = useState([]);
+    const [fuelChartData, setFuelChartData] = useState([]);
+    const [fuelUnit, setFuelUnit] = useState('L'); // 'L' or 'm3'
 
     useEffect(() => {
         fetchDashboardData();
@@ -39,6 +44,7 @@ export default function Dashboard() {
             else if (period === 'month') startDate = new Date(now.getFullYear(), now.getMonth(), 1); // Start of current month
             else if (period === 'year') startDate = new Date(now.getFullYear(), 0, 1);
 
+            // Fetch Sales
             const { data: sales, error } = await supabase
                 .from('sales')
                 .select(`
@@ -52,6 +58,24 @@ export default function Dashboard() {
                 .lte('sale_date', now.toISOString());
 
             if (error) throw error;
+
+            // Fetch Fuel Sales
+            let fuelSales = [];
+            try {
+                const { data, error: fuelError } = await supabase
+                    .from('fuel_sales')
+                    .select('*')
+                    .gte('sale_date', startDate.toISOString())
+                    .lte('sale_date', now.toISOString());
+
+                if (fuelError) {
+                    console.warn('Error fetching fuel sales (table might be missing):', fuelError);
+                } else {
+                    fuelSales = data || [];
+                }
+            } catch (err) {
+                console.warn('Exception fetching fuel sales:', err);
+            }
 
             // Fetch Historical Data (Manual Entries) if period is 'year'
             let historicalData = [];
@@ -69,12 +93,17 @@ export default function Dashboard() {
             // Process Data
             let total = 0;
             let shop = 0, cafe = 0, bosch = 0, pneumatique = 0, lub_piste = 0, lub_bosch = 0;
+            let fuel_gasoil = 0, fuel_ssp = 0;
             const dailyMap = {};
+            const fuelMap = {};
 
             // Helper to initialize map entry
             const initMapEntry = (dateKey) => {
                 if (!dailyMap[dateKey]) {
                     dailyMap[dateKey] = { name: dateKey, shop: 0, cafe: 0, bosch: 0, pneumatique: 0, lub_piste: 0, lub_bosch: 0 };
+                }
+                if (!fuelMap[dateKey]) {
+                    fuelMap[dateKey] = { name: dateKey, gasoil: 0, ssp: 0 };
                 }
             };
 
@@ -82,16 +111,6 @@ export default function Dashboard() {
             sales.forEach(sale => {
                 const amount = sale.total_price;
                 const category = sale.articles?.category || 'Autre';
-                // For year view, we might want to group by month if we are mixing with monthly historical data
-                // But existing chart might be daily. Let's stick to daily for real sales, and add monthly historical to the 1st of month?
-                // Or better: if period is year, chart should probably be monthly? 
-                // The current implementation uses `dailyMap` with `date` as key.
-                // If period is year, `date` from `toLocaleDateString` might be full date.
-                // Let's check how `date` is formatted.
-                // `new Date(sale.sale_date).toLocaleDateString('fr-FR', { weekday: 'short' })` -> This gives "lun.", "mar." etc.
-                // This looks like it was designed for 'week' view mainly. For 'year', it would just overwrite days?
-                // Wait, if period is 'year', grouping by 'weekday' (Mon, Tue...) is wrong. It aggregates all Mondays of the year together?
-                // Let's fix the grouping logic first.
 
                 let dateKey;
                 if (period === 'year') {
@@ -131,13 +150,34 @@ export default function Dashboard() {
                 }
             });
 
+            // Process Fuel Sales
+            fuelSales.forEach(sale => {
+                const qty = Number(sale.quantity_liters);
+                let dateKey;
+                if (period === 'year') {
+                    dateKey = new Date(sale.sale_date).toLocaleDateString('fr-FR', { month: 'short' });
+                } else {
+                    dateKey = new Date(sale.sale_date).toLocaleDateString('fr-FR', { weekday: 'short' });
+                }
+
+                initMapEntry(dateKey);
+
+                if (sale.fuel_type === 'Gasoil') {
+                    fuel_gasoil += qty;
+                    fuelMap[dateKey].gasoil += qty;
+                }
+                else if (sale.fuel_type === 'SSP') {
+                    fuel_ssp += qty;
+                    fuelMap[dateKey].ssp += qty;
+                }
+            });
+
             // Process Historical Data (Manual Entries)
             const MONTH_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
             historicalData.forEach(item => {
                 const amount = item.amount;
                 const category = item.category;
-                // Map month number (1-12) to label (Jan, Fév...) to match the chart key if period is year
                 const dateKey = MONTH_LABELS[item.month - 1];
 
                 total += amount;
@@ -167,14 +207,17 @@ export default function Dashboard() {
 
             // Sort chart data for year view to ensure months are in order
             let chartDataArray = Object.values(dailyMap);
+            let fuelChartArray = Object.values(fuelMap);
+
             if (period === 'year') {
-                chartDataArray.sort((a, b) => {
-                    return MONTH_LABELS.indexOf(a.name) - MONTH_LABELS.indexOf(b.name);
-                });
+                const sorter = (a, b) => MONTH_LABELS.indexOf(a.name) - MONTH_LABELS.indexOf(b.name);
+                chartDataArray.sort(sorter);
+                fuelChartArray.sort(sorter);
             }
 
-            setStats({ total, shop, cafe, bosch, pneumatique, lub_piste, lub_bosch });
+            setStats({ total, shop, cafe, bosch, pneumatique, lub_piste, lub_bosch, fuel_gasoil, fuel_ssp });
             setChartData(chartDataArray);
+            setFuelChartData(fuelChartArray);
             setLubData([
                 { name: 'Lub. Piste', value: lub_piste },
                 { name: 'Lub. Bosch', value: lub_bosch }
@@ -185,6 +228,11 @@ export default function Dashboard() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const formatFuel = (liters) => {
+        if (fuelUnit === 'm3') return formatNumber(liters / 1000, 3);
+        return formatNumber(liters, 0);
     };
 
     if (loading) {
@@ -218,7 +266,7 @@ export default function Dashboard() {
             </div>
 
             {/* Gradient Stat Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                 <div className="bg-gradient-purple rounded-2xl p-6 text-white shadow-lg shadow-purple-200 transform transition-transform hover:-translate-y-1">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
@@ -226,7 +274,7 @@ export default function Dashboard() {
                         </div>
                         <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">Total</span>
                     </div>
-                    <div className="text-3xl font-bold mb-1">{stats.total.toLocaleString()} MAD</div>
+                    <div className="text-3xl font-bold mb-1">{formatPrice(stats.total)}</div>
                     <div className="text-purple-100 text-sm">Chiffre d'affaire global</div>
                 </div>
 
@@ -237,7 +285,7 @@ export default function Dashboard() {
                         </div>
                         <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">Shop</span>
                     </div>
-                    <div className="text-3xl font-bold mb-1">{stats.shop.toLocaleString()} MAD</div>
+                    <div className="text-3xl font-bold mb-1">{formatPrice(stats.shop)}</div>
                     <div className="text-orange-100 text-sm">Ventes boutique</div>
                 </div>
 
@@ -248,7 +296,7 @@ export default function Dashboard() {
                         </div>
                         <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">Services Auto</span>
                     </div>
-                    <div className="text-3xl font-bold mb-1">{(stats.bosch + stats.pneumatique).toLocaleString()} MAD</div>
+                    <div className="text-3xl font-bold mb-1">{formatPrice(stats.bosch + stats.pneumatique)}</div>
                     <div className="text-blue-100 text-sm">Bosch, Main d'oeuvre & Pneu</div>
                 </div>
 
@@ -259,8 +307,34 @@ export default function Dashboard() {
                         </div>
                         <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">Café</span>
                     </div>
-                    <div className="text-3xl font-bold mb-1">{stats.cafe.toLocaleString()} MAD</div>
+                    <div className="text-3xl font-bold mb-1">{formatPrice(stats.cafe)}</div>
                     <div className="text-green-100 text-sm">Ventes café</div>
+                </div>
+
+                {/* Fuel Volume Card */}
+                <div className="bg-gradient-to-br from-slate-700 to-slate-900 rounded-2xl p-6 text-white shadow-lg shadow-slate-200 transform transition-transform hover:-translate-y-1 relative group">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                            <Droplet size={24} />
+                        </div>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setFuelUnit(prev => prev === 'L' ? 'm3' : 'L'); }}
+                            className="text-xs font-bold bg-white/20 px-2 py-1 rounded-full hover:bg-white/30 transition-colors cursor-pointer"
+                        >
+                            {fuelUnit}
+                        </button>
+                    </div>
+                    <div className="text-2xl font-bold mb-1">{formatFuel(stats.fuel_gasoil + stats.fuel_ssp)} <span className="text-sm font-normal opacity-70">{fuelUnit}</span></div>
+                    <div className="text-slate-300 text-xs flex flex-col gap-0.5 mt-2">
+                        <div className="flex justify-between">
+                            <span>Gasoil:</span>
+                            <span className="font-medium text-white">{formatFuel(stats.fuel_gasoil)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span>SSP:</span>
+                            <span className="font-medium text-white">{formatFuel(stats.fuel_ssp)}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -280,6 +354,7 @@ export default function Dashboard() {
                                 <Tooltip
                                     contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                     cursor={{ fill: '#F7FAFC' }}
+                                    formatter={(value) => formatPrice(value)}
                                 />
                                 <Legend wrapperStyle={{ paddingTop: '20px' }} />
                                 <Bar dataKey="shop" stackId="a" fill="#FCCF31" name="Shop" radius={[0, 0, 4, 4]} barSize={32} />
@@ -314,14 +389,17 @@ export default function Dashboard() {
                                         <Cell key={`cell-${index}`} fill={index === 0 ? '#667EEA' : '#764BA2'} />
                                     ))}
                                 </Pie>
-                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }} />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                    formatter={(value) => formatPrice(value)}
+                                />
                             </PieChart>
                         </ResponsiveContainer>
                         {/* Center Text */}
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <div className="text-center mt-4">
                                 <div className="text-xs text-text-muted">Total</div>
-                                <div className="font-bold text-text-main">{(stats.lub_piste + stats.lub_bosch).toLocaleString()}</div>
+                                <div className="font-bold text-text-main">{formatNumber(stats.lub_piste + stats.lub_bosch)}</div>
                             </div>
                         </div>
                     </div>
@@ -332,9 +410,44 @@ export default function Dashboard() {
                                     <div className={`w-3 h-3 rounded-full ${index === 0 ? 'bg-primary' : 'bg-secondary'}`}></div>
                                     <span className="text-text-main font-medium">{entry.name}</span>
                                 </div>
-                                <span className="font-bold text-text-main">{entry.value.toLocaleString()} MAD</span>
+                                <span className="font-bold text-text-main">{formatPrice(entry.value)}</span>
                             </div>
                         ))}
+                    </div>
+                </Card>
+
+                {/* Fuel Evolution Chart */}
+                <Card className="lg:col-span-3 border-none shadow-lg shadow-gray-100/50 rounded-2xl overflow-hidden">
+                    <div className="p-6 border-b border-border">
+                        <h3 className="font-bold text-lg text-text-main">Évolution Volume Carburant</h3>
+                        <p className="text-sm text-text-muted">Gasoil vs Sans Plomb (Litres)</p>
+                    </div>
+                    <div className="h-80 p-6">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={fuelChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                <defs>
+                                    <linearGradient id="colorGasoil" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#F6AD55" stopOpacity={0.8} />
+                                        <stop offset="95%" stopColor="#F6AD55" stopOpacity={0} />
+                                    </linearGradient>
+                                    <linearGradient id="colorSSP" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#48BB78" stopOpacity={0.8} />
+                                        <stop offset="95%" stopColor="#48BB78" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} dy={10} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} />
+                                <Tooltip
+                                    contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                    cursor={{ fill: '#F7FAFC' }}
+                                    formatter={(value) => formatNumber(value) + ' L'}
+                                />
+                                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                                <Area type="monotone" dataKey="gasoil" stroke="#DD6B20" fillOpacity={1} fill="url(#colorGasoil)" name="Gasoil" strokeWidth={2} />
+                                <Area type="monotone" dataKey="ssp" stroke="#38A169" fillOpacity={1} fill="url(#colorSSP)" name="SSP" strokeWidth={2} />
+                            </AreaChart>
+                        </ResponsiveContainer>
                     </div>
                 </Card>
             </div>

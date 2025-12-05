@@ -5,6 +5,7 @@ import { PullToRefresh } from './ui/PullToRefresh';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import SalesEntry from './SalesEntry';
+import UpdateNotification from './UpdateNotification';
 import { supabase } from '../lib/supabase';
 
 function cn(...inputs) {
@@ -16,7 +17,7 @@ const NavItem = ({ to, icon: IconComponent, label, active, onClick, isButton, on
     if (isButton) {
         return (
             <button
-                onClick={onLogout}
+                onClick={onClick}
                 className={cn(
                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group text-red-500 hover:bg-red-50"
                 )}
@@ -155,7 +156,7 @@ export default function Layout() {
                             isButton
                             icon={LogOut}
                             label="Déconnexion"
-                            onLogout={handleLogout}
+                            onClick={handleLogout}
                         />
                     </nav>
                 </div>
@@ -189,18 +190,14 @@ export default function Layout() {
                     </div>
                 </div>
 
-                <button
-                    onClick={() => setIsSalesModalOpen(true)}
-                    className="mb-8 w-full flex items-center justify-center gap-3 bg-indigo-600 text-white py-4 rounded-2xl hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200 hover:-translate-y-0.5 transition-all duration-300 font-bold shadow-md group relative overflow-hidden"
-                >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <div className="p-1 bg-white/20 rounded-full group-hover:rotate-90 transition-transform duration-300">
-                        <PlusCircle size={18} />
-                    </div>
-                    <span>Nouvelle Vente</span>
-                </button>
-
                 <nav className="flex flex-col gap-2 flex-1">
+                    <button
+                        onClick={() => setIsSalesModalOpen(true)}
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 mb-2"
+                    >
+                        <PlusCircle size={20} className="transition-transform duration-200 group-hover:scale-110" />
+                        <span>Nouvelle Vente</span>
+                    </button>
                     {navItems.map((item) => (
                         <NavItem
                             key={item.to}
@@ -244,6 +241,7 @@ export default function Layout() {
                 onClose={() => setIsSalesModalOpen(false)}
                 onSuccess={handleSaleSuccess}
             />
+            <UpdateNotification />
         </div>
     );
 }
