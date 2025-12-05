@@ -203,6 +203,26 @@ export default function Dashboard() {
                     else if (category === 'Lubrifiant Piste') dailyMap[dateKey].lub_piste += amount;
                     else if (category === 'Lubrifiant Bosch') dailyMap[dateKey].lub_bosch += amount;
                 }
+
+                // Fuel Historical Data
+                const cat = (category || '').toLowerCase();
+                const numAmount = Number(amount) || 0;
+
+                // Robust check for Fuel
+                if (cat.includes('gasoil')) {
+                    fuel_gasoil += numAmount;
+                    if (period === 'year') {
+                        initMapEntry(dateKey);
+                        fuelMap[dateKey].gasoil += numAmount;
+                    }
+                }
+                else if (cat.includes('ssp') || cat.includes('sans plomb')) {
+                    fuel_ssp += numAmount;
+                    if (period === 'year') {
+                        initMapEntry(dateKey);
+                        fuelMap[dateKey].ssp += numAmount;
+                    }
+                }
             });
 
             // Sort chart data for year view to ensure months are in order
