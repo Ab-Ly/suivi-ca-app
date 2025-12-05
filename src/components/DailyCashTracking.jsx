@@ -570,89 +570,168 @@ export default function DailyCashTracking() {
                                     </div>
                                 </div>
 
-                                <div className="overflow-hidden border border-gray-200 rounded-2xl shadow-lg bg-white">
-                                    <table className="w-full border-collapse">
-                                        <thead>
-                                            <tr>
-                                                <th colSpan="2" className="bg-gradient-to-r from-emerald-50 to-emerald-100/50 border-b-2 border-emerald-100 py-4 px-6 text-emerald-800 font-bold uppercase tracking-wider w-1/2">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <ArrowDownLeft size={20} />
-                                                        ENTRÉE (DÉBIT)
+                                {(() => {
+                                    // Refactored Data Logic
+                                    const debitItems = [];
+                                    const creditItems = [];
+                                    let totalDebit = 0;
+                                    let totalCredit = 0;
+                                    let ecart = 0;
+
+                                    // 1. Prepare Special Operations
+                                    const recette8hOps = operations.filter(op => {
+                                        const desc = op.description?.toLowerCase() || '';
+                                        return desc.includes('recette a 8h') || desc.includes('recette à 8h');
+                                    }).map(op => ({ name: 'RECETTE A 8H', amount: Number(op.amount), isOp: true }));
+
+                                    const comptageMatinOps = operations.filter(op => {
+                                        const desc = op.description?.toLowerCase() || '';
+                                        return desc.includes('comptage matin');
+                                    }).map(op => ({ name: 'COMPTAGE MATIN', amount: Number(op.amount), isOp: true }));
+
+                                    const resteJ1Ops = operations.filter(op => {
+                                        const desc = op.description?.toLowerCase() || '';
+                                        return desc.includes('reste j-1');
+                                    }).map(op => ({ name: 'RESTE J-1', amount: Number(op.amount), isReste: true }));
+
+                                    const otherInOps = operations.filter(op => {
+                                        const desc = op.description?.toLowerCase() || '';
+                                        const isSpecial = desc.includes('recette a 8h') || desc.includes('recette à 8h') || desc.includes('comptage matin') || desc.includes('reste j-1');
+                                        return op.type === 'IN' && op.category === 'OTHER' && !isSpecial;
+                                    }).map(op => ({ name: op.description || 'Autre Entrée', amount: Number(op.amount), isOp: true }));
+
+                                    const otherOutOps = operations.filter(op => {
+                                        const desc = op.description?.toLowerCase() || '';
+                                        const isSpecial = desc.includes('recette a 8h') || desc.includes('recette à 8h') || desc.includes('comptage matin') || desc.includes('reste j-1');
+                                        return op.type === 'OUT' && op.category === 'OTHER' && !isSpecial;
+                                    }).map(op => ({ name: op.description || 'Autre Sortie', amount: Number(op.amount), isOp: true }));
+
+                                    // Build Debit List
+                                    debitItems.push(...resteJ1Ops, ...recette8hOps, ...otherInOps);
+
+                                    const positiveBalances = [];
+                                    if (expenseClosingBalance > 0) positiveBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
+                                    Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
+                                        if (val > 0) positiveBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
+                                    });
+                                    debitItems.push(...positiveBalances);
+
+                                    // Build Credit List
+                                    creditItems.push(...comptageMatinOps, ...otherOutOps);
+
+                                    const negativeBalances = [];
+                                    if (expenseClosingBalance < 0) negativeBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
+                                    Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
+                                        if (val < 0) negativeBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
+                                    });
+                                    creditItems.push(...negativeBalances);
+
+                                    const maxRows = Math.max(debitItems.length, creditItems.length, 1);
+                                    totalDebit = debitItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+                                    totalCredit = creditItems.reduce((sum, item) => sum + Math.abs(item.amount || 0), 0);
+                                    ecart = totalDebit - totalCredit;
+
+                                    return (
+                                        <>
+                                            {/* MOBILE VIEW (Stacked) */}
+                                            <div className="md:hidden space-y-6">
+                                                {/* ENTRÉES Card */}
+                                                <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl overflow-hidden">
+                                                    <div className="bg-emerald-100/50 px-4 py-3 flex items-center justify-between">
+                                                        <h4 className="font-bold text-emerald-800 flex items-center gap-2">
+                                                            <ArrowDownLeft size={18} /> ENTRÉE (DÉBIT)
+                                                        </h4>
+                                                        <span className="font-mono font-bold text-emerald-700">{formatPrice(totalDebit)}</span>
                                                     </div>
-                                                </th>
-                                                <th colSpan="2" className="bg-gradient-to-r from-rose-50 to-rose-100/50 border-b-2 border-rose-100 py-4 px-6 text-rose-800 font-bold uppercase tracking-wider w-1/2">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <ArrowUpRight size={20} />
-                                                        SORTIE (CRÉDIT)
+                                                    <div className="divide-y divide-emerald-100/50">
+                                                        {debitItems.length === 0 ? (
+                                                            <div className="p-4 text-center text-sm text-gray-500 italic">Aucune entrée</div>
+                                                        ) : (
+                                                            debitItems.map((item, i) => (
+                                                                <div key={i} className="px-4 py-3 flex justify-between items-center text-sm"
+                                                                    onClick={() => {
+                                                                        if (item?.isBalance) {
+                                                                            if (item.isExpense) handleViewEntityHistory({ name: 'Caisse Dépense', isExpense: true });
+                                                                            else if (item.entityId) {
+                                                                                const entity = entities.find(e => e.id === item.entityId);
+                                                                                if (entity) handleViewEntityHistory(entity);
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <span className={`font-medium ${item.isBalance ? 'underline decoration-dotted decoration-emerald-300' : ''}`}>{item.name}</span>
+                                                                    <span className="font-mono font-bold text-emerald-700">{formatPrice(Math.abs(item.amount))}</span>
+                                                                </div>
+                                                            ))
+                                                        )}
                                                     </div>
-                                                </th>
-                                            </tr>
-                                            <tr className="text-xs font-bold text-gray-500 bg-gray-50/80 border-b border-gray-200">
-                                                <th className="py-3 px-4 text-left w-1/3 uppercase tracking-wide">Désignation</th>
-                                                <th className="py-3 px-4 text-right w-1/6 border-r border-gray-200 uppercase tracking-wide">Montant</th>
-                                                <th className="py-3 px-4 text-right w-1/6 uppercase tracking-wide">Montant</th>
-                                                <th className="py-3 px-4 text-left w-1/3 uppercase tracking-wide">Désignation</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="text-sm divide-y divide-gray-100">
-                                            {(() => {
-                                                // ... (Data preparation logic remains the same, just keeping it concise here for the replacement)
+                                                </div>
 
-                                                // 2. Prepare Special Operations
-                                                const recette8hOps = operations.filter(op => {
-                                                    const desc = op.description?.toLowerCase() || '';
-                                                    return desc.includes('recette a 8h') || desc.includes('recette à 8h');
-                                                }).map(op => ({ name: 'RECETTE A 8H', amount: Number(op.amount), isOp: true }));
+                                                {/* SORTIES Card */}
+                                                <div className="bg-rose-50/50 border border-rose-100 rounded-xl overflow-hidden">
+                                                    <div className="bg-rose-100/50 px-4 py-3 flex items-center justify-between">
+                                                        <h4 className="font-bold text-rose-800 flex items-center gap-2">
+                                                            <ArrowUpRight size={18} /> SORTIE (CRÉDIT)
+                                                        </h4>
+                                                        <span className="font-mono font-bold text-rose-700">{formatPrice(totalCredit)}</span>
+                                                    </div>
+                                                    <div className="divide-y divide-rose-100/50">
+                                                        {creditItems.length === 0 ? (
+                                                            <div className="p-4 text-center text-sm text-gray-500 italic">Aucune sortie</div>
+                                                        ) : (
+                                                            creditItems.map((item, i) => (
+                                                                <div key={i} className="px-4 py-3 flex justify-between items-center text-sm"
+                                                                    onClick={() => {
+                                                                        if (item?.isBalance) {
+                                                                            if (item.isExpense) handleViewEntityHistory({ name: 'Caisse Dépense', isExpense: true });
+                                                                            else if (item.entityId) {
+                                                                                const entity = entities.find(e => e.id === item.entityId);
+                                                                                if (entity) handleViewEntityHistory(entity);
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <span className={`font-medium ${item.isBalance ? 'underline decoration-dotted decoration-rose-300' : ''}`}>{item.name}</span>
+                                                                    <span className="font-mono font-bold text-rose-700">{formatPrice(Math.abs(item.amount))}</span>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
 
-                                                const comptageMatinOps = operations.filter(op => {
-                                                    const desc = op.description?.toLowerCase() || '';
-                                                    return desc.includes('comptage matin');
-                                                }).map(op => ({ name: 'COMPTAGE MATIN', amount: Number(op.amount), isOp: true }));
+                                                {/* ECART Card */}
+                                                <div className={`p-4 rounded-xl border-2 text-center ${ecart === 0 ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
+                                                    <div className="text-xs font-bold uppercase tracking-widest opacity-70 mb-1">Écart Journalier</div>
+                                                    <div className="text-3xl font-black">{formatPrice(ecart)} <span className="text-sm">MAD</span></div>
+                                                </div>
+                                            </div>
 
-                                                const resteJ1Ops = operations.filter(op => {
-                                                    const desc = op.description?.toLowerCase() || '';
-                                                    return desc.includes('reste j-1');
-                                                }).map(op => ({ name: 'RESTE J-1', amount: Number(op.amount), isReste: true }));
-
-                                                const otherInOps = operations.filter(op => {
-                                                    const desc = op.description?.toLowerCase() || '';
-                                                    const isSpecial = desc.includes('recette a 8h') || desc.includes('recette à 8h') || desc.includes('comptage matin') || desc.includes('reste j-1');
-                                                    return op.type === 'IN' && op.category === 'OTHER' && !isSpecial;
-                                                }).map(op => ({ name: op.description || 'Autre Entrée', amount: Number(op.amount), isOp: true }));
-
-                                                const otherOutOps = operations.filter(op => {
-                                                    const desc = op.description?.toLowerCase() || '';
-                                                    const isSpecial = desc.includes('recette a 8h') || desc.includes('recette à 8h') || desc.includes('comptage matin') || desc.includes('reste j-1');
-                                                    return op.type === 'OUT' && op.category === 'OTHER' && !isSpecial;
-                                                }).map(op => ({ name: op.description || 'Autre Sortie', amount: Number(op.amount), isOp: true }));
-
-
-
-                                                const debitItems = [...resteJ1Ops, ...recette8hOps, ...otherInOps];
-
-                                                const positiveBalances = [];
-                                                if (expenseClosingBalance > 0) positiveBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
-                                                Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
-                                                    if (val > 0) positiveBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
-                                                });
-                                                debitItems.push(...positiveBalances);
-
-                                                const creditItems = [...comptageMatinOps, ...otherOutOps];
-
-                                                const negativeBalances = [];
-                                                if (expenseClosingBalance < 0) negativeBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
-                                                Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
-                                                    if (val < 0) negativeBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
-                                                });
-                                                creditItems.push(...negativeBalances);
-
-                                                const maxRows = Math.max(debitItems.length, creditItems.length, 1);
-                                                const totalDebit = debitItems.reduce((sum, item) => sum + (item.amount || 0), 0);
-                                                const totalCredit = creditItems.reduce((sum, item) => sum + Math.abs(item.amount || 0), 0);
-                                                const ecart = totalDebit - totalCredit;
-
-                                                return (
-                                                    <>
+                                            {/* DESKTOP VIEW (Table) */}
+                                            <div className="hidden md:block overflow-hidden border border-gray-200 rounded-2xl shadow-lg bg-white">
+                                                <table className="w-full border-collapse">
+                                                    <thead>
+                                                        <tr>
+                                                            <th colSpan="2" className="bg-gradient-to-r from-emerald-50 to-emerald-100/50 border-b-2 border-emerald-100 py-4 px-6 text-emerald-800 font-bold uppercase tracking-wider w-1/2">
+                                                                <div className="flex items-center justify-center gap-2">
+                                                                    <ArrowDownLeft size={20} />
+                                                                    ENTRÉE (DÉBIT)
+                                                                </div>
+                                                            </th>
+                                                            <th colSpan="2" className="bg-gradient-to-r from-rose-50 to-rose-100/50 border-b-2 border-rose-100 py-4 px-6 text-rose-800 font-bold uppercase tracking-wider w-1/2">
+                                                                <div className="flex items-center justify-center gap-2">
+                                                                    <ArrowUpRight size={20} />
+                                                                    SORTIE (CRÉDIT)
+                                                                </div>
+                                                            </th>
+                                                        </tr>
+                                                        <tr className="text-xs font-bold text-gray-500 bg-gray-50/80 border-b border-gray-200">
+                                                            <th className="py-3 px-4 text-left w-1/3 uppercase tracking-wide">Désignation</th>
+                                                            <th className="py-3 px-4 text-right w-1/6 border-r border-gray-200 uppercase tracking-wide">Montant</th>
+                                                            <th className="py-3 px-4 text-right w-1/6 uppercase tracking-wide">Montant</th>
+                                                            <th className="py-3 px-4 text-left w-1/3 uppercase tracking-wide">Désignation</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="text-sm divide-y divide-gray-100">
                                                         {Array.from({ length: maxRows }).map((_, i) => {
                                                             const debitItem = debitItems[i];
                                                             const creditItem = creditItems[i];
@@ -751,12 +830,12 @@ export default function DailyCashTracking() {
                                                             </td>
                                                             <td className="py-6 px-4 text-left font-bold text-gray-400 tracking-wider border-l border-gray-100">ÉCART</td>
                                                         </tr>
-                                                    </>
-                                                );
-                                            })()}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
 
                                 <div className="flex justify-end">
                                     <div className="bg-white rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 min-w-[320px] transform hover:scale-105 transition-all duration-300 relative overflow-hidden group">
