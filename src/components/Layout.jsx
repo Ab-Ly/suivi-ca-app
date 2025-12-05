@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet } from 'lucide-react';
 import { PullToRefresh } from './ui/PullToRefresh';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -53,6 +53,7 @@ export default function Layout() {
 
     const navItems = [
         { to: '/', icon: LayoutDashboard, label: 'Tableau de bord' },
+        { to: '/daily-cash', icon: Wallet, label: 'Suivi Caisse' },
         { to: '/statistics', icon: BarChart2, label: 'Statistiques' },
         { to: '/sales', icon: ShoppingCart, label: 'Ventes' },
         { to: '/stock', icon: Package, label: 'Stock' },
@@ -110,7 +111,7 @@ export default function Layout() {
                 document.removeEventListener(event, resetTimer);
             });
         };
-    }, [navigate]);
+    }, [navigate, handleLogout]);
 
     return (
         <div className="min-h-screen bg-bg-main text-text-main flex flex-col md:flex-row font-sans">
@@ -161,25 +162,41 @@ export default function Layout() {
             )}
 
             {/* Desktop Sidebar */}
-            <aside className="hidden md:flex flex-col w-72 h-screen sticky top-0 p-6 bg-sidebar-bg shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10">
-                <div className="mb-10 px-2 flex flex-col gap-4">
-                    <div className="flex items-center justify-center">
-                        <img src="/logo.png" alt="Petrom Logo" className="h-24 w-auto object-contain" />
+            <aside className="hidden md:flex flex-col w-72 h-screen sticky top-0 p-4 bg-sidebar-bg shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10 overflow-y-auto">
+                <div className="mb-6 px-1 flex flex-col gap-4">
+                    <div className="flex items-center justify-center py-1">
+                        <img src="/logo.png" alt="Petrom Logo" className="h-16 w-auto object-contain drop-shadow-sm" />
                     </div>
-                    <div className="flex flex-col gap-1">
-                        <div className="text-xs font-semibold text-text-muted uppercase tracking-wider">Station</div>
-                        <div className="text-sm font-bold text-text-main leading-tight">ISTIRAHA PEPEINIERE</div>
 
-                        <div className="text-xs font-semibold text-text-muted uppercase tracking-wider mt-2">Gérant</div>
-                        <div className="text-sm font-bold text-text-main leading-tight">ABDELALI LYOUSSEFI</div>
+                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/50 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1">
+                        <div className="flex flex-col gap-3">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <div className="w-1 h-3 bg-indigo-500 rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Station</div>
+                                </div>
+                                <div className="text-sm font-bold text-gray-900 pl-3">ISTIRAHA PEPEINIERE</div>
+                            </div>
+                            <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <div className="w-1 h-3 bg-purple-500 rounded-full shadow-[0_0_10px_rgba(168,85,247,0.5)]"></div>
+                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Gérant</div>
+                                </div>
+                                <div className="text-sm font-bold text-gray-900 pl-3">ABDELALI LYOUSSEFI</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <button
                     onClick={() => setIsSalesModalOpen(true)}
-                    className="mb-8 w-full flex items-center justify-center gap-2 bg-gradient-dark text-white py-3.5 rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 font-medium shadow-md group"
+                    className="mb-8 w-full flex items-center justify-center gap-3 bg-indigo-600 text-white py-4 rounded-2xl hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200 hover:-translate-y-0.5 transition-all duration-300 font-bold shadow-md group relative overflow-hidden"
                 >
-                    <PlusCircle size={20} className="group-hover:rotate-90 transition-transform duration-300" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <div className="p-1 bg-white/20 rounded-full group-hover:rotate-90 transition-transform duration-300">
+                        <PlusCircle size={18} />
+                    </div>
                     <span>Nouvelle Vente</span>
                 </button>
 
@@ -193,21 +210,22 @@ export default function Layout() {
                     ))}
                 </nav>
 
-                <div className="mt-auto">
-                    <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium text-red-500 hover:bg-red-50 group mb-4"
-                    >
-                        <LogOut size={20} className="transition-transform duration-200 group-hover:scale-110" />
-                        <span>Déconnexion</span>
-                    </button>
-
-                    <div className="p-4 bg-bg-main rounded-xl">
-                        <div className="text-xs font-medium text-text-muted mb-2">Statut du système</div>
-                        <div className="flex items-center gap-2 text-sm font-medium text-green-600">
-                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                            En ligne
+                <div className="mt-auto space-y-4 pt-4">
+                    <div className="p-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="text-xs font-medium text-gray-400">Statut système</div>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-100 shadow-sm">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+                                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">En ligne</span>
+                            </div>
                         </div>
+                        <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-200 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-500 hover:text-white hover:shadow-lg hover:shadow-red-200 group"
+                        >
+                            <LogOut size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+                            <span>Déconnexion</span>
+                        </button>
                     </div>
                 </div>
             </aside>

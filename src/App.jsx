@@ -11,6 +11,8 @@ import Statistics from './components/Statistics';
 import Reports from './components/Reports';
 import Profile from './components/Profile';
 
+import DailyCashTracking from './components/DailyCashTracking';
+
 function App() {
   return (
     <BrowserRouter>
@@ -23,6 +25,7 @@ function App() {
           </ProtectedRoute>
         }>
           <Route index element={<Dashboard />} />
+          <Route path="daily-cash" element={<DailyCashTracking />} />
           <Route path="sales" element={<Sales />} />
           <Route path="statistics" element={<Statistics />} />
           <Route path="stock" element={<StockStatus />} />

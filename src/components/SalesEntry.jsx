@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from './ui/Modal';
-import { DateInput } from './ui/DateInput';
 import { Search, Plus, Trash2, Loader2, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -354,10 +353,11 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                             {selectedItems.length} article{selectedItems.length > 1 ? 's' : ''}
                         </div>
                         <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <DateInput
+                            <input
+                                type="date"
                                 value={saleDate}
                                 onChange={(e) => setSaleDate(e.target.value)}
-                                className="w-full sm:w-40"
+                                className="w-full sm:w-40 px-3 py-2 border border-notion-border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
                             />
                         </div>
                     </div>

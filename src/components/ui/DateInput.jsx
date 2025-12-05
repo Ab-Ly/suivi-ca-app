@@ -22,22 +22,6 @@ export const DateInput = ({ value, onChange, label, className = '', ...props }) 
         }
     };
 
-    // Custom Input Component to maintain the existing UI look
-    const CustomInput = forwardRef(({ value, onClick }, ref) => (
-        <div className="relative group cursor-pointer" onClick={onClick} ref={ref}>
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Calendar size={16} className="text-text-muted group-hover:text-primary transition-colors" />
-            </div>
-            <input
-                type="text"
-                readOnly
-                value={value}
-                className="block w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-border rounded-xl shadow-sm placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 text-text-main hover:border-gray-300 cursor-pointer"
-                {...props}
-            />
-        </div>
-    ));
-
     return (
         <div className={className}>
             {label && <label className="block text-xs font-medium text-text-muted mb-1.5">{label}</label>}
@@ -46,12 +30,31 @@ export const DateInput = ({ value, onChange, label, className = '', ...props }) 
                 onChange={handleDateChange}
                 dateFormat="dd/MM/yyyy"
                 locale="fr"
-                customInput={<CustomInput />}
+                customInput={<CustomInput {...props} />}
                 showPopperArrow={false}
                 calendarClassName="shadow-xl border-0 rounded-xl font-sans overflow-hidden"
                 dayClassName={() => "rounded-lg hover:bg-gray-100"}
                 popperClassName="!z-[9999]"
+                {...props}
             />
         </div>
     );
 };
+
+// Custom Input Component to maintain the existing UI look
+const CustomInput = forwardRef(({ value, onClick, className, ...props }, ref) => (
+    <div className="relative group cursor-pointer" onClick={onClick} ref={ref}>
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
+            <Calendar size={16} className="text-text-muted group-hover:text-primary transition-colors" />
+        </div>
+        <input
+            type="text"
+            readOnly
+            value={value}
+            className={`block w-full pl-10 pr-3 py-2.5 text-sm bg-white border border-border rounded-xl shadow-sm placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 text-text-main hover:border-gray-300 cursor-pointer ${className || ''}`}
+            {...props}
+        />
+    </div>
+));
+
+
