@@ -12,6 +12,7 @@ import Reports from './components/Reports';
 import Profile from './components/Profile';
 
 import DailyCashTracking from './components/DailyCashTracking';
+import FuelDeliveryTracking from './components/FuelDeliveryTracking';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="daily-cash" element={<DailyCashTracking />} />
           <Route path="sales" element={<Sales />} />
+          <Route path="deliveries" element={<FuelDeliveryTracking />} />
           <Route path="statistics" element={<Statistics />} />
           <Route path="stock" element={<StockStatus />} />
           <Route path="reports" element={<Reports />} />
