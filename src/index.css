@@ -17,7 +17,22 @@
   --image-gradient-orange: linear-gradient(135deg, #FCCF31 0%, #F55555 100%);
   --image-gradient-green: linear-gradient(135deg, #43E97B 0%, #38F9D7 100%);
   --image-gradient-blue: linear-gradient(135deg, #4FACFE 0%, #00F2FE 100%);
+  --image-gradient-pink: linear-gradient(135deg, #EC008C 0%, #FC6767 100%);
   --image-gradient-dark: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+}
+
+@keyframes wave-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-wave {
+  animation: wave-rotate 6s infinite linear;
 }
 
 @layer base {
@@ -41,6 +56,10 @@
 
   .bg-gradient-blue {
     background-image: var(--image-gradient-blue);
+  }
+
+  .bg-gradient-pink {
+    background-image: var(--image-gradient-pink);
   }
 
   .bg-gradient-dark {

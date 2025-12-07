@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader } from './ui/Card';
-import { FileDown, FileJson, FileSpreadsheet, FileText, Loader2, RefreshCw } from 'lucide-react';
+import { FileDown, FileJson, FileSpreadsheet, FileText, Loader2, RefreshCw, ChevronDown, BarChart3 } from 'lucide-react';
 import { DateInput } from './ui/DateInput';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -9,17 +9,25 @@ import { supabase } from '../lib/supabase';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { fetchComparisonStats } from '../utils/statisticsUtils';
+
+const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
 export default function Reports() {
     const [salesData, setSalesData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
 
-    // Filters
+    // Filters for General Sales Report (Data Preview & Simple Exports)
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [category, setCategory] = useState('');
+
+    // Filters for Comparison Report
+    const [cmpYear, setCmpYear] = useState(new Date().getFullYear());
+    const [cmpStartMonth, setCmpStartMonth] = useState(0); // Jan
+    const [cmpEndMonth, setCmpEndMonth] = useState(new Date().getMonth()); // Current Month
 
     useEffect(() => {
         fetchSalesData();
@@ -93,15 +101,12 @@ export default function Reports() {
         }
     };
 
-
-
     const saveAndShareFile = async (fileName, base64Data, mimeType) => {
         try {
             const savedFile = await Filesystem.writeFile({
                 path: fileName,
                 data: base64Data,
                 directory: Directory.Cache,
-                // encoding: Encoding.UTF8 // Don't specify encoding for binary data if passing base64 string directly
             });
 
             await Share.share({
@@ -116,6 +121,249 @@ export default function Reports() {
         }
     };
 
+    const exportComparisonReport = async () => {
+        setExporting(true);
+        try {
+            // Lazy load ExcelJS to avoid bundle impact if not used
+            const ExcelJS = (await import('exceljs')).default;
+            const result = await fetchComparisonStats('custom', cmpYear, 0, cmpStartMonth, cmpEndMonth);
+
+            // Helper functions for formatting (if needed for comparison text)
+            const formatNumber = (num) => new Intl.NumberFormat('fr-FR').format(num);
+            const formatPrice = (num) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'MAD' }).format(num);
+
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator = 'Suivi CA App';
+            workbook.created = new Date();
+
+            // --- STYLING CONSTANTS (Modern UI) ---
+            const modernFont = { name: 'Segoe UI', size: 11 };
+            const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }; // Gray-900
+            const headerFont = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+            const borderStyle = { style: 'thin', color: { argb: 'FFE5E7EB' } }; // Gray-200
+
+            const baseCellStyle = {
+                font: modernFont,
+                border: { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle },
+                alignment: { vertical: 'middle' }
+            };
+
+            const currencyFormat = '#,##0.00 "MAD"';
+            const numberFormat = '#,##0.00 "L"';
+
+            const applyHeaderStyle = (sheet) => {
+                sheet.getRow(1).height = 30;
+                sheet.getRow(1).eachCell((cell) => {
+                    cell.style = { ...baseCellStyle, font: headerFont, fill: headerFill, alignment: { horizontal: 'center', vertical: 'middle' } };
+                });
+            };
+
+            const applyZebraStriping = (sheet, row, index) => {
+                if (index % 2 === 0) {
+                    row.eachCell((cell) => {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } }; // Gray-50
+                    });
+                }
+            };
+
+            // --- SHEET 1: TABLEAU DE BORD (SUMMARY) ---
+            const summarySheet = workbook.addWorksheet('Tableau de Bord', { views: [{ showGridLines: false }] });
+
+            // Title
+            summarySheet.mergeCells('B2:E2');
+            const titleCell = summarySheet.getCell('B2');
+            titleCell.value = `Rapport d'Activité : ${MONTHS[cmpStartMonth]} - ${MONTHS[cmpEndMonth]} ${cmpYear}`;
+            titleCell.style = { font: { name: 'Segoe UI', size: 18, bold: true, color: { argb: 'FF1F2937' } }, alignment: { horizontal: 'center' } };
+
+            // KPI Cards Layout
+            const createCard = (startCell, label, valueN, valueN1, growth, color) => {
+                const r = summarySheet.getCell(startCell).row;
+                const c = summarySheet.getCell(startCell).col;
+
+                // Merge for Card Box
+                summarySheet.mergeCells(r, c, r + 4, c + 2);
+
+                // Set Background & Border
+                for (let i = 0; i < 5; i++) {
+                    for (let j = 0; j < 3; j++) {
+                        const cell = summarySheet.getCell(r + i, c + j);
+                        // We need to set style individually to avoid reference sharing issues
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } }; // White
+                        if (i === 0) cell.border = { top: { style: 'medium', color: { argb: color } }, left: { style: 'thin', color: { argb: 'FFE5E7EB' } }, right: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+                        else if (i === 4) cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } }, left: { style: 'thin', color: { argb: 'FFE5E7EB' } }, right: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+                        else cell.border = { left: { style: 'thin', color: { argb: 'FFE5E7EB' } }, right: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+                    }
+                }
+
+                // Label
+                const labelCell = summarySheet.getCell(r, c);
+                labelCell.value = label;
+                labelCell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF6B7280' }, bold: true };
+                labelCell.alignment = { horizontal: 'center', vertical: 'bottom' };
+
+                // Value N
+                const valCell = summarySheet.getCell(r + 1, c);
+                valCell.value = valueN;
+                valCell.numFmt = label.includes('Volume') ? '#,##0 "L"' : '#,##0 "MAD"';
+                valCell.font = { name: 'Segoe UI', size: 18, bold: true, color: { argb: 'FF111827' } };
+                valCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // Growth
+                const growthCell = summarySheet.getCell(r + 2, c);
+                growthCell.value = `${growth > 0 ? '+' : ''}${growth.toFixed(1)}%`;
+                growthCell.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: growth >= 0 ? 'FF16A34A' : 'FFDC2626' } };
+                growthCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // Comparison Text
+                const compCell = summarySheet.getCell(r + 3, c);
+                compCell.value = `vs ${label.includes('Volume') ? formatNumber(valueN1) + ' L' : formatPrice(valueN1)}`;
+                compCell.font = { name: 'Segoe UI', size: 9, italic: true, color: { argb: 'FF9CA3AF' } };
+                compCell.alignment = { horizontal: 'center', vertical: 'top' };
+            };
+
+            createCard('B4', "Chiffre d'Affaires", result.kpis.currentTotal, result.kpis.previousTotal, result.kpis.growth, 'FF4F46E5'); // Indigo
+            createCard('F4', "Volume Gasoil", result.fuelKpis.gasoil, result.fuelKpis.gasoilPrev, result.fuelKpis.gasoilGrowth, 'FFF97316'); // Orange
+            createCard('J4', "Volume SSP", result.fuelKpis.ssp, result.fuelKpis.sspPrev, result.fuelKpis.sspGrowth, 'FF22C55E'); // Green
+
+
+            // --- SHEET 2: DÉTAILS MENSUELS (DATA) ---
+            const monthSheet = workbook.addWorksheet('Détails Mensuels');
+            monthSheet.columns = [
+                { header: 'Période', key: 'name', width: 20 },
+                { header: `CA ${cmpYear}`, key: 'curr', width: 24 },
+                { header: `CA ${cmpYear - 1}`, key: 'prev', width: 24 },
+                { header: 'Évolution', key: 'evol', width: 16 },
+                { header: 'Écart', key: 'diff', width: 20 }
+            ];
+            applyHeaderStyle(monthSheet);
+
+            result.data.forEach((item, index) => {
+                const growth = item.previous > 0 ? ((item.current - item.previous) / item.previous) : 0;
+                const row = monthSheet.addRow({
+                    name: item.name,
+                    curr: item.current,
+                    prev: item.previous,
+                    evol: growth,
+                    diff: item.current - item.previous
+                });
+                row.height = 24;
+
+                // Apply Styles CELL BY CELL to avoid reference sharing
+                row.eachCell((cell, colNumber) => {
+                    cell.style = JSON.parse(JSON.stringify(baseCellStyle)); // Deep copy style
+
+                    if (colNumber === 2 || colNumber === 3 || colNumber === 5) cell.numFmt = currencyFormat;
+                    if (colNumber === 4) {
+                        cell.numFmt = '0.00%';
+                        cell.font = { ...modernFont, color: { argb: cell.value >= 0 ? 'FF16A34A' : 'FFDC2626' }, bold: true };
+                    }
+                });
+                applyZebraStriping(monthSheet, row, index);
+            });
+
+
+            // --- SHEET 3: CATÉGORIES (CHART READY) ---
+            const catSheet = workbook.addWorksheet('Par Catégorie');
+            catSheet.columns = [
+                { header: 'Catégorie', key: 'cat', width: 28 },
+                { header: `CA ${cmpYear}`, key: 'curr', width: 24 },
+                { header: `CA ${cmpYear - 1}`, key: 'prev', width: 24 },
+                { header: 'Croissance', key: 'growth', width: 16 }
+            ];
+            applyHeaderStyle(catSheet);
+
+            result.categoryDetails.forEach((item, index) => {
+                const row = catSheet.addRow({
+                    cat: item.name,
+                    curr: item.current,
+                    prev: item.previous,
+                    growth: item.growth / 100
+                });
+                row.height = 24;
+
+                row.eachCell((cell, colNumber) => {
+                    cell.style = JSON.parse(JSON.stringify(baseCellStyle));
+
+                    if (colNumber === 2 || colNumber === 3) cell.numFmt = currencyFormat;
+                    if (colNumber === 4) {
+                        cell.numFmt = '0.00%';
+                        cell.font = { ...modernFont, color: { argb: cell.value >= 0 ? 'FF16A34A' : 'FFDC2626' }, bold: true };
+                    }
+                });
+                applyZebraStriping(catSheet, row, index);
+            });
+
+            // --- SHEET 4: CARBURANT (DATA) ---
+            const fuelSheet = workbook.addWorksheet('Carburant');
+            fuelSheet.columns = [
+                { header: 'Période', key: 'name', width: 20 },
+                { header: `Gasoil ${cmpYear}`, key: 'g_curr', width: 22 },
+                { header: `Gasoil ${cmpYear - 1}`, key: 'g_prev', width: 22 },
+                { header: 'Evol. Gasoil', key: 'g_evol', width: 16 },
+                { header: `SSP ${cmpYear}`, key: 's_curr', width: 22 },
+                { header: `SSP ${cmpYear - 1}`, key: 's_prev', width: 22 },
+                { header: 'Evol. SSP', key: 's_evol', width: 16 },
+            ];
+            applyHeaderStyle(fuelSheet);
+
+            result.fuelData.forEach((item, index) => {
+                const gEvol = item.gasoilPrev > 0 ? ((item.gasoil - item.gasoilPrev) / item.gasoilPrev) : 0;
+                const sEvol = item.sspPrev > 0 ? ((item.ssp - item.sspPrev) / item.sspPrev) : 0;
+
+                const row = fuelSheet.addRow({
+                    name: item.name,
+                    g_curr: item.gasoil,
+                    g_prev: item.gasoilPrev,
+                    g_evol: gEvol,
+                    s_curr: item.ssp,
+                    s_prev: item.sspPrev,
+                    s_evol: sEvol
+                });
+                row.height = 24;
+
+                row.eachCell((cell, colNumber) => {
+                    cell.style = JSON.parse(JSON.stringify(baseCellStyle));
+
+                    if ([2, 3, 5, 6].includes(colNumber)) cell.numFmt = numberFormat;
+                    if ([4, 7].includes(colNumber)) {
+                        cell.numFmt = '0.00%';
+                        cell.font = { ...modernFont, color: { argb: cell.value >= 0 ? 'FF16A34A' : 'FFDC2626' }, bold: true };
+                    }
+                });
+                applyZebraStriping(fuelSheet, row, index);
+            });
+
+            // Generate Buffer
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `Rapport_Evolution_${cmpYear}_${MONTHS[cmpStartMonth]}-${MONTHS[cmpEndMonth]}.xlsx`;
+
+            // Base64 conversion for Capacitor
+            const base64Data = btoa(
+                new Uint8Array(buffer)
+                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
+            );
+
+            if (Capacitor.isNativePlatform()) {
+                await saveAndShareFile(fileName, base64Data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            } else {
+                // Web Download (Blob)
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }
+
+        } catch (error) {
+            console.error("Export Comparison failed", error);
+            alert("Erreur lors de l'export du rapport comparatif");
+        } finally {
+            setExporting(false);
+        }
+    };
+
     const exportToExcel = async () => {
         if (salesData.length === 0) {
             alert("Aucune donnée à exporter.");
@@ -123,7 +371,6 @@ export default function Reports() {
         }
         setExporting(true);
         try {
-            // Format data for Excel headers
             const excelData = salesData.map(item => ({
                 "Date": item.date,
                 "Article": item.article,
@@ -207,7 +454,6 @@ export default function Reports() {
             const jsonString = JSON.stringify(salesData, null, 2);
 
             if (Capacitor.isNativePlatform()) {
-                // Encode to Base64 manually for text content
                 const base64Json = btoa(unescape(encodeURIComponent(jsonString)));
                 await saveAndShareFile("rapport_ventes.json", base64Json, 'application/json');
             } else {
@@ -244,7 +490,7 @@ export default function Reports() {
                         onClick={resetFilters}
                         className="text-sm text-primary hover:text-primary/80 underline font-medium"
                     >
-                        Réinitialiser
+                        Réinitialiser Filtres
                     </button>
                     <button
                         onClick={fetchSalesData}
@@ -255,6 +501,77 @@ export default function Reports() {
                     </button>
                 </div>
             </div>
+
+            {/* New Comparison Report Section */}
+            <Card className="border border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-white shadow-sm hover:shadow-md transition-all duration-300">
+                <div className="p-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="flex items-start gap-4">
+                            <div className="p-3 bg-indigo-100 text-indigo-600 rounded-xl">
+                                <BarChart3 size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">Rapport Comparatif d'Évolution</h3>
+                                <p className="text-sm text-gray-500 mt-1">Exportez l'analyse détaillée N vs N-1 du Chiffre d'Affaires et des Volumes.</p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3 w-full md:w-auto">
+                            {/* Year Selector */}
+                            <div className="relative w-full sm:w-32">
+                                <select
+                                    value={cmpYear}
+                                    onChange={(e) => setCmpYear(Number(e.target.value))}
+                                    className="w-full appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:border-indigo-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
+                                >
+                                    {[2024, 2025, 2026].map(y => (
+                                        <option key={y} value={y}>{y}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                            </div>
+
+                            {/* Range Selector */}
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                <div className="relative w-full sm:w-32">
+                                    <select
+                                        value={cmpStartMonth}
+                                        onChange={(e) => setCmpStartMonth(Number(e.target.value))}
+                                        className="w-full appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:border-indigo-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
+                                    >
+                                        {MONTHS.map((m, i) => (
+                                            <option key={i} value={i}>{m}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                                </div>
+                                <span className="text-gray-400">-</span>
+                                <div className="relative w-full sm:w-32">
+                                    <select
+                                        value={cmpEndMonth}
+                                        onChange={(e) => setCmpEndMonth(Number(e.target.value))}
+                                        className="w-full appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:border-indigo-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
+                                    >
+                                        {MONTHS.map((m, i) => (
+                                            <option key={i} value={i}>{m}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={exportComparisonReport}
+                                disabled={exporting}
+                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm shadow-indigo-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                            >
+                                {exporting ? <Loader2 size={18} className="animate-spin" /> : <FileDown size={18} />}
+                                <span className="font-medium">Exporter Comparatif</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Card>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div
@@ -267,7 +584,7 @@ export default function Reports() {
                         </div>
                         <div className="text-center">
                             <h3 className="font-bold text-lg text-text-main group-hover:text-green-700 transition-colors">Excel (.xlsx)</h3>
-                            <p className="text-sm text-text-muted">Format tableur standard</p>
+                            <p className="text-sm text-text-muted">Rapport Ventes (Liste)</p>
                         </div>
                     </div>
                 </div>
@@ -282,7 +599,7 @@ export default function Reports() {
                         </div>
                         <div className="text-center">
                             <h3 className="font-bold text-lg text-text-main group-hover:text-red-700 transition-colors">PDF (.pdf)</h3>
-                            <p className="text-sm text-text-muted">Document imprimable</p>
+                            <p className="text-sm text-text-muted">Rapport Ventes (Liste)</p>
                         </div>
                     </div>
                 </div>
@@ -297,7 +614,7 @@ export default function Reports() {
                         </div>
                         <div className="text-center">
                             <h3 className="font-bold text-lg text-text-main group-hover:text-yellow-700 transition-colors">JSON (.json)</h3>
-                            <p className="text-sm text-text-muted">Données brutes structurées</p>
+                            <p className="text-sm text-text-muted">Données brutes</p>
                         </div>
                     </div>
                 </div>
@@ -305,7 +622,7 @@ export default function Reports() {
 
             <Card className="border-none shadow-lg shadow-gray-100/50 rounded-2xl overflow-hidden">
                 <div className="p-6 border-b border-border">
-                    <h3 className="font-bold text-lg text-text-main mb-4">Aperçu des données</h3>
+                    <h3 className="font-bold text-lg text-text-main mb-4">Aperçu des données (Ventes)</h3>
 
                     {/* Filters Section */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-2">

@@ -36,8 +36,9 @@ const TankVisual = ({ tank, levelBefore, levelAfter }) => {
                     className={`absolute bottom-0 w-full transition-all duration-1000 ease-out bg-gradient-to-t ${tank.color}`}
                     style={{ height: `${percent}%` }}
                 >
-                    {/* Bubbles / Surface Effect */}
-                    <div className="w-full h-2 bg-white opacity-20 absolute top-0"></div>
+                    {/* Negative Wave (Minimisée) */}
+                    <div className="absolute -top-[290px] -left-[80px] w-[300px] h-[300px] bg-gray-100 rounded-[45%] animate-wave"></div>
+                    <div className="absolute -top-[292px] -left-[80px] w-[300px] h-[300px] bg-gray-100 rounded-[47%] animate-wave" style={{ animationDuration: '6s', opacity: 0.6 }}></div>
                 </div>
 
                 {/* Ghost Level (Before) Indicator */}
@@ -101,7 +102,39 @@ export default function FuelDeliveryTracking() {
 
     useEffect(() => {
         fetchReceptions();
+        const savedDraft = localStorage.getItem('fuel_delivery_draft');
+        if (savedDraft) {
+            try {
+                const parsed = JSON.parse(savedDraft);
+                // Map saved levels to items (assuming simple mapping or replacing items)
+                // We'll merge saved "levelBefore" into default or existing items
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setItems(parsed);
+                    showNotification("Brouillon restauré", "success");
+                }
+            } catch (e) {
+                console.error("Error loading draft", e);
+            }
+        }
     }, []);
+
+    const saveDraft = () => {
+        // Only save relevant fields to avoid clutter (mainly tankId and levelBefore)
+        // Actually, saving the whole 'items' array is easiest to restore the UI state completely
+        const cleanItems = items.map(i => ({
+            id: i.id,
+            tankId: i.tankId,
+            levelBefore: i.levelBefore,
+            levelAfter: '', // User usually wants to save Before state, After is entered during reception
+            // If user wants to save EVERYTHING (even half-filled After), we can remove the override
+        }));
+        // User request: "sauvgarder l'etat avant... remise a zero apres validation"
+        // So we focus on levelBefore persistence.
+        // Let's save exactly what is in 'items' but maybe clear 'levelAfter' if we want to be strict about "Etat Avant",
+        // but allowing full draft is more flexible. Let's save full items state for maximum utility.
+        localStorage.setItem('fuel_delivery_draft', JSON.stringify(items));
+        showNotification("État Avant sauvegardé (Brouillon)");
+    };
 
     const showNotification = (message, type = 'success') => {
         setNotification({ show: true, message, type });
@@ -290,6 +323,7 @@ export default function FuelDeliveryTracking() {
             showNotification("Réception enregistrée avec succès !");
             setFormData({ ...formData, invoiceNumber: '', blNumber: '', quantityBilled: '', observations: '' });
             setItems([{ id: Date.now(), tankId: 1, levelBefore: '', levelAfter: '' }]);
+            localStorage.removeItem('fuel_delivery_draft'); // Clear Draft
             fetchReceptions();
 
         } catch (error) {
@@ -376,9 +410,14 @@ export default function FuelDeliveryTracking() {
                                     <span className="w-2 h-2 rounded-full bg-orange-500"></span>
                                     Dispatching
                                 </h3>
-                                <button type="button" onClick={addItem} className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-                                    <Plus size={14} /> Ajouter Citerne
-                                </button>
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={addItem} className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                                        <Plus size={14} /> Ajouter Citerne
+                                    </button>
+                                    <button type="button" onClick={saveDraft} className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                                        <Save size={14} /> Brouillon
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="space-y-4">
@@ -576,7 +615,7 @@ export default function FuelDeliveryTracking() {
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Cell } from 'recharts';
 import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatPrice, formatNumber } from '../../utils/formatters';
+import { fetchComparisonStats } from '../../utils/statisticsUtils';
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
-const CATEGORIES = ['Shop', 'Café', 'Bosch Service', "Main d'oeuvre", 'Pneumatique', 'Lubrifiant Piste', 'Lubrifiant Bosch'];
+
 
 export default function ComparisonCharts() {
     const [year, setYear] = useState(new Date().getFullYear());
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
-    const [period, setPeriod] = useState('year'); // 'day', 'week', 'month', 'year'
+
+    // Custom Period State
+    const [customStartMonth, setCustomStartMonth] = useState(0); // 0 = Jan
+    const [customEndMonth, setCustomEndMonth] = useState(new Date().getMonth());
+
+    const [period, setPeriod] = useState('year'); // 'day', 'week', 'month', 'year', 'custom'
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState([]);
     const [kpis, setKpis] = useState({ currentTotal: 0, previousTotal: 0, growth: 0 });
@@ -23,430 +29,20 @@ export default function ComparisonCharts() {
 
     useEffect(() => {
         fetchComparisonData();
-    }, [year, period, selectedMonth]);
+    }, [year, period, selectedMonth, customStartMonth, customEndMonth]);
 
-    const getDateRange = () => {
-        const now = new Date();
-        // If user selects 'day', 'week', 'month', it's relative to TODAY (like Dashboard).
-        // If they select 'year', it uses the selected `year` state.
 
-        let start = new Date();
-        let end = new Date();
-        let prevStart = new Date();
-        let prevEnd = new Date();
-
-        if (period === 'day') {
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
-            prevStart = new Date(start); prevStart.setFullYear(start.getFullYear() - 1);
-            prevEnd = new Date(end); prevEnd.setFullYear(end.getFullYear() - 1);
-        } else if (period === 'week') {
-            const day = start.getDay() || 7; // 1 (Mon) to 7 (Sun)
-            if (day !== 1) start.setHours(-24 * (day - 1));
-            start.setHours(0, 0, 0, 0);
-            end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23, 59, 59, 999);
-
-            prevStart = new Date(start); prevStart.setFullYear(start.getFullYear() - 1);
-            prevEnd = new Date(end); prevEnd.setFullYear(end.getFullYear() - 1);
-        } else if (period === 'month') {
-            // Use selectedMonth and year
-            start = new Date(year, selectedMonth, 1);
-            end = new Date(year, selectedMonth + 1, 0, 23, 59, 59, 999);
-
-            prevStart = new Date(year - 1, selectedMonth, 1);
-            prevEnd = new Date(year - 1, selectedMonth + 1, 0, 23, 59, 59, 999);
-        } else {
-            // Year view
-            start = new Date(year, 0, 1);
-            end = new Date(year, 11, 31, 23, 59, 59);
-            prevStart = new Date(year - 1, 0, 1);
-            prevEnd = new Date(year - 1, 11, 31, 23, 59, 59);
-        }
-        return { start, end, prevStart, prevEnd };
-    };
 
     const fetchComparisonData = async () => {
         setLoading(true);
         try {
-            const { start, end, prevStart, prevEnd } = getDateRange();
+            const result = await fetchComparisonStats(period, year, selectedMonth, customStartMonth, customEndMonth);
 
-            // Parallelize all data fetching for better performance
-            const [
-                { data: currentSales, error: currentError },
-                { data: previousSales, error: prevSalesError },
-                { data: historyPrevData, error: historyErrorPrev },
-                { data: historyCurrData, error: historyErrorCurr },
-                { data: currentFuelData, error: fuelErrorCurrent },
-                { data: prevFuelData, error: fuelErrorPrevious }
-            ] = await Promise.all([
-                // 1. Current Sales
-                supabase
-                    .from('sales')
-                    .select('total_price, sale_date, sales_location, articles(name, category)')
-                    .gte('sale_date', start.toISOString())
-                    .lte('sale_date', end.toISOString()),
-
-                // 2. Previous Sales
-                supabase
-                    .from('sales')
-                    .select('total_price, sale_date, sales_location, articles(name, category)')
-                    .gte('sale_date', prevStart.toISOString())
-                    .lte('sale_date', prevEnd.toISOString()),
-
-                // 3. Historical Data Previous
-                supabase
-                    .from('historical_sales')
-                    .select('*')
-                    .eq('year', year - 1),
-
-                // 4. Historical Data Current
-                supabase
-                    .from('historical_sales')
-                    .select('*')
-                    .eq('year', year),
-
-                // 5. Fuel Current
-                supabase
-                    .from('fuel_sales')
-                    .select('*')
-                    .gte('sale_date', start.toISOString())
-                    .lte('sale_date', end.toISOString()),
-
-                // 6. Fuel Previous
-                supabase
-                    .from('fuel_sales')
-                    .select('*')
-                    .gte('sale_date', prevStart.toISOString())
-                    .lte('sale_date', prevEnd.toISOString())
-            ]);
-
-            // Error Handling (Log but don't crash)
-            if (currentError) console.error('Error fetching current sales:', currentError);
-            if (prevSalesError) console.error('Error fetching previous sales:', prevSalesError);
-            if (historyErrorPrev) console.warn('Error fetching historical previous year:', historyErrorPrev);
-            if (historyErrorCurr) console.warn('Error fetching historical current year:', historyErrorCurr);
-            if (fuelErrorCurrent) console.warn('Error fetching current fuel sales:', fuelErrorCurrent);
-            if (fuelErrorPrevious) console.warn('Error fetching previous fuel sales:', fuelErrorPrevious);
-
-            // Assign Data
-            let historyPrevious = historyPrevData || [];
-            let historyCurrent = historyCurrData || [];
-            let fuelSalesCurrent = currentFuelData || [];
-            let fuelSalesPrevious = prevFuelData || [];
-
-            // Process Data
-            let processedData = [];
-            let currentTotal = 0;
-            let previousTotal = 0;
-            let categoryStats = {};
-
-            // Initialize Data Structure based on Period
-            if (period === 'year') {
-                processedData = Array.from({ length: 12 }, (_, i) => ({
-                    name: MONTHS[i],
-                    current: 0,
-                    previous: 0,
-                    month: i + 1
-                }));
-            } else if (period === 'month') {
-                const daysInMonth = end.getDate();
-                processedData = Array.from({ length: daysInMonth }, (_, i) => ({
-                    name: (i + 1).toString(),
-                    current: 0,
-                    previous: 0,
-                    day: i + 1
-                }));
-            } else if (period === 'week') {
-                const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-                processedData = days.map(d => ({ name: d, current: 0, previous: 0 }));
-            } else if (period === 'day') {
-                processedData = Array.from({ length: 24 }, (_, i) => ({
-                    name: `${i}h`,
-                    current: 0,
-                    previous: 0,
-                    hour: i
-                }));
-            }
-
-            // Helper to add to processedData
-            const addToData = (dateStr, amount, isCurrent) => {
-                const date = new Date(dateStr);
-                let index = -1;
-
-                if (period === 'year') index = date.getMonth();
-                else if (period === 'month') index = date.getDate() - 1;
-                else if (period === 'week') {
-                    const day = date.getDay(); // 0 is Sun
-                    index = day === 0 ? 6 : day - 1; // Mon=0, Sun=6
-                }
-                else if (period === 'day') index = date.getHours();
-
-                if (index >= 0 && index < processedData.length) {
-                    if (isCurrent) processedData[index].current += amount;
-                    else processedData[index].previous += amount;
-                }
-            };
-
-            // Helper to map category
-            const getMappedCategory = (category, location, articleName = '') => {
-                if (articleName && articleName.toLowerCase().includes("main d'oeuvre")) return "Main d'oeuvre";
-
-                if (category.toLowerCase().includes('shop')) return 'Shop';
-                else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) return 'Café';
-                else if (category.toLowerCase().includes('bosch service')) return 'Bosch Service';
-                else if (category.toLowerCase().includes('main d\'oeuvre')) return "Main d'oeuvre"; // Fallback if category itself is main d'oeuvre
-                else if (category.toLowerCase().includes('pneumatique')) return 'Pneumatique';
-                else if (category.toLowerCase().includes('lubrifiant')) {
-                    if (location === 'bosch') return 'Lubrifiant Bosch';
-                    else return 'Lubrifiant Piste';
-                }
-                return 'Autre'; // Default if no match
-            };
-
-            // Initialize categoryStats for all CATEGORIES
-            CATEGORIES.forEach(cat => {
-                categoryStats[cat] = { name: cat, current: 0, previous: 0 };
-            });
-
-            // Aggregate Current Sales (Real)
-            currentSales?.forEach(sale => {
-                const amount = sale.total_price;
-                currentTotal += amount;
-                addToData(sale.sale_date, amount, true);
-
-                // Category Stats
-                const mappedCategory = getMappedCategory(sale.articles?.category || 'Autre', sale.sales_location, sale.articles?.name);
-                if (categoryStats[mappedCategory]) {
-                    categoryStats[mappedCategory].current += amount;
-                }
-            });
-
-            // Aggregate Previous Sales (Real)
-            previousSales?.forEach(sale => {
-                const amount = sale.total_price;
-                previousTotal += amount;
-                addToData(sale.sale_date, amount, false);
-
-                const mappedCategory = getMappedCategory(sale.articles?.category || 'Autre', sale.sales_location, sale.articles?.name);
-                if (categoryStats[mappedCategory]) {
-                    categoryStats[mappedCategory].previous += amount;
-                }
-            });
-
-            // Aggregate Historical Sales (Manual Entries) - Only for 'year' period
-            if (period === 'year') {
-                // Current Year Manual Entries
-                historyCurrent?.forEach(item => {
-                    if (item.month >= 1 && item.month <= 12 && !item.category.includes('Volume')) {
-                        processedData[item.month - 1].current += item.amount;
-                        currentTotal += item.amount;
-                        if (categoryStats[item.category]) {
-                            categoryStats[item.category].current += item.amount;
-                        }
-                    }
-                });
-
-                // Previous Year Manual Entries
-                historyPrevious?.forEach(item => {
-                    if (item.month >= 1 && item.month <= 12 && !item.category.includes('Volume')) {
-                        processedData[item.month - 1].previous += item.amount;
-                        previousTotal += item.amount;
-                        if (categoryStats[item.category]) {
-                            categoryStats[item.category].previous += item.amount;
-                        }
-                    }
-                });
-            }
-
-            setData(processedData);
-
-            // Calculate Growth
-            const growth = previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal) * 100 : 0;
-            // setKpis moved to end of function to include all calculations
-
-
-            // Fuel Sales Logic (Already fetched in parallel above)
-            // Removed redundant fetch block
-
-            // Process Fuel Data for Chart
-            let fuelProcessedData = [];
-            if (period === 'year') {
-                fuelProcessedData = MONTHS.map((label) => ({
-                    name: label,
-                    gasoil: 0,
-                    ssp: 0,
-                    gasoilPrev: 0,
-                    sspPrev: 0
-                }));
-            } else if (period === 'month') {
-                const daysInMonth = end.getDate();
-                fuelProcessedData = Array.from({ length: daysInMonth }, (_, i) => ({
-                    name: (i + 1).toString(),
-                    gasoil: 0,
-                    ssp: 0,
-                    gasoilPrev: 0,
-                    sspPrev: 0
-                }));
-            } else if (period === 'week') {
-                const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-                fuelProcessedData = days.map(d => ({ name: d, gasoil: 0, ssp: 0, gasoilPrev: 0, sspPrev: 0 }));
-            } else if (period === 'day') {
-                fuelProcessedData = Array.from({ length: 24 }, (_, i) => ({
-                    name: `${i}h`,
-                    gasoil: 0,
-                    ssp: 0,
-                    gasoilPrev: 0,
-                    sspPrev: 0
-                }));
-            }
-
-            const addToFuelData = (dateStr, qty, type, isCurrent) => {
-                const date = new Date(dateStr);
-                let index = -1;
-
-                if (period === 'year') index = date.getMonth();
-                else if (period === 'month') index = date.getDate() - 1;
-                else if (period === 'week') {
-                    const day = date.getDay();
-                    index = day === 0 ? 6 : day - 1;
-                }
-                else if (period === 'day') index = date.getHours();
-
-                if (index >= 0 && index < fuelProcessedData.length) {
-                    if (isCurrent) {
-                        if (type === 'Gasoil') fuelProcessedData[index].gasoil += qty;
-                        else if (type === 'SSP') fuelProcessedData[index].ssp += qty;
-                    } else {
-                        if (type === 'Gasoil') fuelProcessedData[index].gasoilPrev += qty;
-                        else if (type === 'SSP') fuelProcessedData[index].sspPrev += qty;
-                    }
-                }
-            };
-
-            let totalGasoil = 0, totalSSP = 0, totalGasoilPrev = 0, totalSSPPrev = 0;
-
-            fuelSalesCurrent.forEach(sale => {
-                const qty = Number(sale.quantity_liters);
-                addToFuelData(sale.sale_date, qty, sale.fuel_type, true);
-                if (sale.fuel_type === 'Gasoil') totalGasoil += qty;
-                else if (sale.fuel_type === 'SSP') totalSSP += qty;
-            });
-
-            fuelSalesPrevious.forEach(sale => {
-                const qty = Number(sale.quantity_liters);
-                addToFuelData(sale.sale_date, qty, sale.fuel_type, false);
-                if (sale.fuel_type === 'Gasoil') totalGasoilPrev += qty;
-                else if (sale.fuel_type === 'SSP') totalSSPPrev += qty;
-            });
-
-            // Aggregate Manual Fuel Entries for Current Year (if period is 'year' OR 'month')
-            if (period === 'year') {
-                historyCurrent?.forEach(item => {
-                    const amount = Number(item.amount) || 0;
-                    if (item.month >= 1 && item.month <= 12 && amount > 0) {
-                        const cat = (item.category || '').toLowerCase();
-                        // Ultra-Broad Match: logic assumes 'gasoil' anywhere in category implies Fuel Volume
-                        if (cat.includes('gasoil')) {
-                            fuelProcessedData[item.month - 1].gasoil += amount;
-                            totalGasoil += amount;
-                        }
-                        // Ultra-Broad Match: logic assumes 'ssp' or 'sans plomb' anywhere implies SSP Volume
-                        else if (cat.includes('ssp') || cat.includes('sans plomb')) {
-                            fuelProcessedData[item.month - 1].ssp += amount;
-                            totalSSP += amount;
-                        }
-                    }
-                });
-
-                // Aggregate Manual Fuel Entries for Previous Year (if period is 'year')
-                historyPrevious?.forEach(item => {
-                    const amount = Number(item.amount) || 0;
-                    if (item.month >= 1 && item.month <= 12 && amount > 0) {
-                        const cat = (item.category || '').toLowerCase();
-                        if (cat.includes('gasoil')) {
-                            fuelProcessedData[item.month - 1].gasoilPrev += amount;
-                            totalGasoilPrev += amount;
-                        }
-                        else if (cat.includes('ssp') || cat.includes('sans plomb')) {
-                            fuelProcessedData[item.month - 1].sspPrev += amount;
-                            totalSSPPrev += amount;
-                        }
-                    }
-                });
-            } else if (period === 'month') {
-                // 1. Calculate totals from REAL daily sales first
-                let realCurrentTotal = 0;
-                let realPreviousTotal = 0;
-
-                currentSales?.forEach(s => realCurrentTotal += s.total_price);
-                previousSales?.forEach(s => realPreviousTotal += s.total_price);
-
-                // 2. Determine if we need to use historical data
-                // Use historical if real sales are 0 (or very close to 0)
-                const useHistoricalCurrent = realCurrentTotal === 0;
-                const useHistoricalPrevious = realPreviousTotal === 0;
-
-                // Fuel check
-                const realGasoil = fuelSalesCurrent.reduce((acc, s) => acc + (s.fuel_type === 'Gasoil' ? Number(s.quantity_liters) : 0), 0);
-                const realSSP = fuelSalesCurrent.reduce((acc, s) => acc + (s.fuel_type === 'SSP' ? Number(s.quantity_liters) : 0), 0);
-                const useFuelHistoricalCurrent = realGasoil === 0 && realSSP === 0;
-
-                const realGasoilPrev = fuelSalesPrevious.reduce((acc, s) => acc + (s.fuel_type === 'Gasoil' ? Number(s.quantity_liters) : 0), 0);
-                const realSSPPrev = fuelSalesPrevious.reduce((acc, s) => acc + (s.fuel_type === 'SSP' ? Number(s.quantity_liters) : 0), 0);
-                const useFuelHistoricalPrevious = realGasoilPrev === 0 && realSSPPrev === 0;
-
-                // 3. Apply Historical Data if needed
-                if (useHistoricalCurrent) {
-                    const histCurrMonth = historyCurrent?.filter(h => h.month === selectedMonth + 1);
-                    histCurrMonth?.forEach(item => {
-                        if (!item.category.includes('Volume')) {
-                            currentTotal += item.amount;
-                            // Add to category stats for breakdown
-                            if (categoryStats[item.category]) categoryStats[item.category].current += item.amount;
-                            else categoryStats[item.category] = { name: item.category, current: item.amount, previous: 0 };
-                        }
-                        // Fuel
-                        if (item.category === 'Gasoil Volume' && useFuelHistoricalCurrent) totalGasoil += item.amount;
-                        if (item.category === 'SSP Volume' && useFuelHistoricalCurrent) totalSSP += item.amount;
-                    });
-                }
-
-                if (useHistoricalPrevious) {
-                    const histPrevMonth = historyPrevious?.filter(h => h.month === selectedMonth + 1);
-                    histPrevMonth?.forEach(item => {
-                        if (!item.category.includes('Volume')) {
-                            previousTotal += item.amount;
-                            if (categoryStats[item.category]) categoryStats[item.category].previous += item.amount;
-                            else if (!categoryStats[item.category]) categoryStats[item.category] = { name: item.category, current: 0, previous: item.amount };
-                            else categoryStats[item.category].previous += item.amount;
-                        }
-                        // Fuel
-                        if (item.category === 'Gasoil Volume' && useFuelHistoricalPrevious) totalGasoilPrev += item.amount;
-                        if (item.category === 'SSP Volume' && useFuelHistoricalPrevious) totalSSPPrev += item.amount;
-                    });
-                }
-            }
-
-            const gasoilGrowth = totalGasoilPrev > 0 ? ((totalGasoil - totalGasoilPrev) / totalGasoilPrev) * 100 : 0;
-            const sspGrowth = totalSSPPrev > 0 ? ((totalSSP - totalSSPPrev) / totalSSPPrev) * 100 : 0;
-
-            setFuelData(fuelProcessedData);
-
-            setFuelKpis({ gasoil: totalGasoil, ssp: totalSSP, gasoilPrev: totalGasoilPrev, sspPrev: totalSSPPrev, gasoilGrowth, sspGrowth });
-
-            // Recalculate growth with final totals
-            const finalGrowth = previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal) * 100 : 0;
-            setKpis({ currentTotal, previousTotal, growth: finalGrowth });
-
-            // Process Category Details (Moved to end to include historical data)
-            const details = CATEGORIES.map(cat => {
-                const curr = categoryStats[cat]?.current || 0;
-                const prev = categoryStats[cat]?.previous || 0;
-                const growth = prev > 0 ? ((curr - prev) / prev) * 100 : 0;
-                return { name: cat, current: curr, previous: prev, growth };
-            }).sort((a, b) => b.current - a.current);
-
-            setCategoryDetails(details);
+            setData(result.data);
+            setKpis(result.kpis);
+            setFuelData(result.fuelData);
+            setFuelKpis(result.fuelKpis);
+            setCategoryDetails(result.categoryDetails);
 
         } catch (error) {
             console.error('Error fetching comparison data:', error);
@@ -464,6 +60,9 @@ export default function ComparisonCharts() {
     if (period === 'year') {
         chartTitle = 'Comparatif Mensuel des Volumes';
         chartSubtitle = `Comparaison des volumes vendus par mois (${year} vs ${year - 1})`;
+    } else if (period === 'custom') {
+        chartTitle = `Comparatif Personnalisé (${MONTHS[customStartMonth]} - ${MONTHS[customEndMonth]})`;
+        chartSubtitle = `Comparaison ${year} vs ${year - 1} sur la période sélectionnée`;
     } else if (period === 'month') {
         if (isFuelFallback) {
             chartTitle = `Volume Global du Mois de ${MONTHS[selectedMonth]}`;
@@ -485,11 +84,11 @@ export default function ComparisonCharts() {
             {/* KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="text-sm text-gray-500 mb-1">Chiffre d'Affaire {period === 'year' ? year : 'Actuel'}</div>
+                    <div className="text-sm text-gray-500 mb-1">Chiffre d'Affaire {period === 'year' || period === 'custom' ? year : 'Actuel'}</div>
                     <div className="text-2xl font-bold text-gray-900">{formatPrice(kpis.currentTotal)}</div>
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="text-sm text-gray-500 mb-1">Chiffre d'Affaire {period === 'year' ? year - 1 : 'Précédent'}</div>
+                    <div className="text-sm text-gray-500 mb-1">Chiffre d'Affaire {period === 'year' || period === 'custom' ? year - 1 : 'Précédent'}</div>
                     <div className="text-2xl font-bold text-gray-900">{formatPrice(kpis.previousTotal)}</div>
                 </div>
                 <div className={`p-6 rounded-2xl shadow-sm border ${kpis.growth >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'} `}>
@@ -504,19 +103,49 @@ export default function ComparisonCharts() {
             {/* Header / Controls */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
-                    {['day', 'week', 'month', 'year'].map((p) => (
+                    {['day', 'week', 'month', 'year', 'custom'].map((p) => (
                         <button
                             key={p}
                             onClick={() => setPeriod(p)}
                             className={`px-4 py-1.5 text-sm rounded-lg capitalize transition-all font-medium ${period === p ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                                 } `}
                         >
-                            {p === 'day' ? 'Jour' : p === 'week' ? 'Semaine' : p === 'month' ? 'Mois' : 'Année'}
+                            {p === 'day' ? 'Jour' : p === 'week' ? 'Semaine' : p === 'month' ? 'Mois' : p === 'year' ? 'Année' : 'Personnalisé'}
                         </button>
                     ))}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 items-center">
+                    {period === 'custom' && (
+                        <>
+                            <div className="relative">
+                                <select
+                                    value={customStartMonth}
+                                    onChange={(e) => setCustomStartMonth(Number(e.target.value))}
+                                    className="appearance-none bg-white border border-gray-200 text-gray-700 py-2 pl-4 pr-8 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium shadow-sm text-sm"
+                                >
+                                    {MONTHS.map((m, i) => (
+                                        <option key={i} value={i} disabled={i > customEndMonth}>{m}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+                            </div>
+                            <span className="text-gray-400">-</span>
+                            <div className="relative">
+                                <select
+                                    value={customEndMonth}
+                                    onChange={(e) => setCustomEndMonth(Number(e.target.value))}
+                                    className="appearance-none bg-white border border-gray-200 text-gray-700 py-2 pl-4 pr-8 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium shadow-sm text-sm"
+                                >
+                                    {MONTHS.map((m, i) => (
+                                        <option key={i} value={i} disabled={i < customStartMonth}>{m}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+                            </div>
+                        </>
+                    )}
+
                     {period === 'month' && (
                         <div className="relative">
                             <select
@@ -532,7 +161,7 @@ export default function ComparisonCharts() {
                         </div>
                     )}
 
-                    {(period === 'year' || period === 'month') && (
+                    {(period === 'year' || period === 'month' || period === 'custom') && (
                         <div className="relative">
                             <select
                                 value={year}
@@ -616,7 +245,7 @@ export default function ComparisonCharts() {
                                         tickLine={false}
                                         tick={{ fill: '#64748b', fontSize: 12 }}
                                         dy={10}
-                                        interval={period === 'month' ? 2 : 0}
+                                        minTickGap={15}
                                     />
                                     <YAxis
                                         axisLine={false}

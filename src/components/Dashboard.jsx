@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Card } from './ui/Card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
-import { DollarSign, Coffee, Wrench, Droplet, ShoppingBag, Loader2 } from 'lucide-react';
+import { DollarSign, Coffee, Wrench, Droplet, ShoppingBag, Loader2, Fuel } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatPrice, formatNumber } from '../utils/formatters';
+import { getMappedCategory } from '../utils/statisticsUtils';
 
 const COLORS = ['#FCCF31', '#43E97B', '#4FACFE', '#667EEA', '#764BA2'];
 
@@ -12,6 +13,7 @@ export default function Dashboard() {
     const { refreshTrigger } = useOutletContext() || {};
     const [period, setPeriod] = useState('month');
     const [loading, setLoading] = useState(true);
+
     const [stats, setStats] = useState({
         total: 0,
         shop: 0,
@@ -23,6 +25,7 @@ export default function Dashboard() {
         fuel_gasoil: 0,
         fuel_ssp: 0
     });
+
     const [chartData, setChartData] = useState([]);
     const [lubData, setLubData] = useState([]);
     const [fuelChartData, setFuelChartData] = useState([]);
@@ -48,12 +51,12 @@ export default function Dashboard() {
             const { data: sales, error } = await supabase
                 .from('sales')
                 .select(`
-                    *,
-                    articles (
-                        name,
-                        category
-                    )
-                `)
+                        *,
+                        articles (
+                            name,
+                            category
+                        )
+                    `)
                 .gte('sale_date', startDate.toISOString())
                 .lte('sale_date', now.toISOString());
 
@@ -124,30 +127,24 @@ export default function Dashboard() {
                 total += amount;
 
                 // Category Stats
-                if (category.toLowerCase().includes('shop')) shop += amount;
-                else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) cafe += amount;
-                else if (category.toLowerCase().includes('bosch service')) bosch += amount;
-                else if (category.toLowerCase().includes('main d\'oeuvre')) bosch += amount;
-                else if (category.toLowerCase().includes('pneumatique')) pneumatique += amount;
-                else if (category.toLowerCase().includes('lubrifiant')) {
-                    if (location === 'bosch') {
-                        lub_bosch += amount;
-                    } else {
-                        lub_piste += amount; // Default to piste if null
-                    }
-                }
+                const mappedCategory = getMappedCategory(category, location, sale.articles?.name);
+
+                if (mappedCategory === 'Shop') shop += amount;
+                else if (mappedCategory === 'Café') cafe += amount;
+                else if (mappedCategory === 'Bosch Service' || mappedCategory === "Main d'oeuvre") bosch += amount;
+                else if (mappedCategory === 'Pneumatique') pneumatique += amount;
+                else if (mappedCategory === 'Lubrifiant Bosch') lub_bosch += amount;
+                else if (mappedCategory === 'Lubrifiant Piste') lub_piste += amount;
 
                 // Chart Data
                 initMapEntry(dateKey);
 
-                if (category.toLowerCase().includes('shop')) dailyMap[dateKey].shop += amount;
-                else if (category.toLowerCase().includes('café') || category.toLowerCase().includes('cafe')) dailyMap[dateKey].cafe += amount;
-                else if (category.toLowerCase().includes('bosch service') || category.toLowerCase().includes('main d\'oeuvre')) dailyMap[dateKey].bosch += amount;
-                else if (category.toLowerCase().includes('pneumatique')) dailyMap[dateKey].pneumatique += amount;
-                else if (category.toLowerCase().includes('lubrifiant')) {
-                    if (location === 'bosch') dailyMap[dateKey].lub_bosch += amount;
-                    else dailyMap[dateKey].lub_piste += amount;
-                }
+                if (mappedCategory === 'Shop') dailyMap[dateKey].shop += amount;
+                else if (mappedCategory === 'Café') dailyMap[dateKey].cafe += amount;
+                else if (mappedCategory === 'Bosch Service' || mappedCategory === "Main d'oeuvre") dailyMap[dateKey].bosch += amount;
+                else if (mappedCategory === 'Pneumatique') dailyMap[dateKey].pneumatique += amount;
+                else if (mappedCategory === 'Lubrifiant Bosch') dailyMap[dateKey].lub_bosch += amount;
+                else if (mappedCategory === 'Lubrifiant Piste') dailyMap[dateKey].lub_piste += amount;
             });
 
             // Process Fuel Sales
@@ -180,28 +177,37 @@ export default function Dashboard() {
                 const category = item.category;
                 const dateKey = MONTH_LABELS[item.month - 1];
 
-                total += amount;
+                // Only add to Total if NOT Fuel Volume
+                const catLower = (category || '').toLowerCase();
+                const isFuel = catLower.includes('gasoil') || catLower.includes('ssp') || catLower.includes('sans plomb');
+
+                if (!isFuel) {
+                    total += amount;
+                }
 
                 // Category Stats
-                if (category === 'Shop') shop += amount;
-                else if (category === 'Café') cafe += amount;
-                else if (category === 'Bosch Service') bosch += amount;
-                else if (category === "Main d'oeuvre") bosch += amount; // Group with Bosch
-                else if (category === 'Pneumatique') pneumatique += amount;
-                else if (category === 'Lubrifiant Piste') lub_piste += amount;
-                else if (category === 'Lubrifiant Bosch') lub_bosch += amount;
+                // For historical data, we assume categories are already somewhat standardized, but we run them through mapping to be safe/consistent
+                // Historical data usually doesn't have 'location' or 'articleName' in the same way, but let's check what we have.
+                // Looking at historical_sales table structure from previous context, it has 'category'.
+                const mappedCategory = getMappedCategory(category, '', '');
+
+                if (mappedCategory === 'Shop') shop += amount;
+                else if (mappedCategory === 'Café') cafe += amount;
+                else if (mappedCategory === 'Bosch Service' || mappedCategory === "Main d'oeuvre") bosch += amount;
+                else if (mappedCategory === 'Pneumatique') pneumatique += amount;
+                else if (mappedCategory === 'Lubrifiant Piste') lub_piste += amount;
+                else if (mappedCategory === 'Lubrifiant Bosch') lub_bosch += amount;
 
                 // Chart Data
                 if (period === 'year') {
                     initMapEntry(dateKey);
 
-                    if (category === 'Shop') dailyMap[dateKey].shop += amount;
-                    else if (category === 'Café') dailyMap[dateKey].cafe += amount;
-                    else if (category === 'Bosch Service') dailyMap[dateKey].bosch += amount;
-                    else if (category === "Main d'oeuvre") dailyMap[dateKey].bosch += amount;
-                    else if (category === 'Pneumatique') dailyMap[dateKey].pneumatique += amount;
-                    else if (category === 'Lubrifiant Piste') dailyMap[dateKey].lub_piste += amount;
-                    else if (category === 'Lubrifiant Bosch') dailyMap[dateKey].lub_bosch += amount;
+                    if (mappedCategory === 'Shop') dailyMap[dateKey].shop += amount;
+                    else if (mappedCategory === 'Café') dailyMap[dateKey].cafe += amount;
+                    else if (mappedCategory === 'Bosch Service' || mappedCategory === "Main d'oeuvre") dailyMap[dateKey].bosch += amount;
+                    else if (mappedCategory === 'Pneumatique') dailyMap[dateKey].pneumatique += amount;
+                    else if (mappedCategory === 'Lubrifiant Piste') dailyMap[dateKey].lub_piste += amount;
+                    else if (mappedCategory === 'Lubrifiant Bosch') dailyMap[dateKey].lub_bosch += amount;
                 }
 
                 // Fuel Historical Data
@@ -266,27 +272,30 @@ export default function Dashboard() {
     return (
         <div className="space-y-8">
             {/* Header Section */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-text-main">Tableau de bord</h2>
                     <p className="text-text-muted text-sm">Aperçu de vos performances</p>
                 </div>
-                <div className="flex bg-white p-1 rounded-xl shadow-sm border border-border">
-                    {['day', 'week', 'month', 'year'].map((p) => (
-                        <button
-                            key={p}
-                            onClick={() => setPeriod(p)}
-                            className={`px-4 py-1.5 text-sm rounded-lg capitalize transition-all font-medium ${period === p ? 'bg-gradient-dark text-white shadow-md' : 'text-text-muted hover:text-text-main hover:bg-gray-50'
-                                }`}
-                        >
-                            {p === 'day' ? 'Jour' : p === 'week' ? 'Semaine' : p === 'month' ? 'Mois' : 'Année'}
-                        </button>
-                    ))}
+                <div className="flex flex-col sm:flex-row gap-2 items-center">
+                    {/* Period Selector */}
+                    <div className="flex bg-white p-1 rounded-xl shadow-sm border border-border">
+                        {['day', 'week', 'month', 'year'].map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => setPeriod(p)}
+                                className={`px-4 py-1.5 text-sm rounded-lg capitalize transition-all font-medium ${period === p ? 'bg-gradient-dark text-white shadow-md' : 'text-text-muted hover:text-text-main hover:bg-gray-50'
+                                    }`}
+                            >
+                                {p === 'day' ? 'Jour' : p === 'week' ? 'Semaine' : p === 'month' ? 'Mois' : 'Année'}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
             {/* Gradient Stat Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="bg-gradient-purple rounded-2xl p-6 text-white shadow-lg shadow-purple-200 transform transition-transform hover:-translate-y-1">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
@@ -331,11 +340,23 @@ export default function Dashboard() {
                     <div className="text-green-100 text-sm">Ventes café</div>
                 </div>
 
+                {/* Lubricants Card (New) */}
+                <div className="bg-gradient-pink rounded-2xl p-6 text-white shadow-lg shadow-pink-200 transform transition-transform hover:-translate-y-1">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                            <Droplet size={24} />
+                        </div>
+                        <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-full">Lubrifiants</span>
+                    </div>
+                    <div className="text-3xl font-bold mb-1">{formatPrice(stats.lub_piste + stats.lub_bosch)}</div>
+                    <div className="text-pink-100 text-sm">Piste & Bosch</div>
+                </div>
+
                 {/* Fuel Volume Card */}
                 <div className="bg-gradient-to-br from-slate-700 to-slate-900 rounded-2xl p-6 text-white shadow-lg shadow-slate-200 transform transition-transform hover:-translate-y-1 relative group">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-                            <Droplet size={24} />
+                            <Fuel size={24} />
                         </div>
                         <button
                             onClick={(e) => { e.stopPropagation(); setFuelUnit(prev => prev === 'L' ? 'm3' : 'L'); }}

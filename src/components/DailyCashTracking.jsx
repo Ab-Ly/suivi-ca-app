@@ -21,9 +21,34 @@ export default function DailyCashTracking() {
 
     // State for Entity History Modal
     const [selectedEntityHistory, setSelectedEntityHistory] = useState(null);
+    const [historyOperations, setHistoryOperations] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
 
-    const handleViewEntityHistory = (entity) => {
+    const handleViewEntityHistory = async (entity) => {
         setSelectedEntityHistory(entity);
+        setLoadingHistory(true);
+        try {
+            let query = supabase
+                .from('daily_cash_operations')
+                .select('*')
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false });
+
+            if (entity.isExpense) {
+                query = query.eq('category', 'EXPENSE_FUND');
+            } else {
+                query = query.eq('entity_id', entity.id);
+            }
+
+            const { data, error } = await query;
+            if (error) throw error;
+            setHistoryOperations(data || []);
+        } catch (error) {
+            console.error('Error fetching entity history:', error);
+            alert("Erreur lors du chargement de l'historique");
+        } finally {
+            setLoadingHistory(false);
+        }
     };
 
     const [entityOpeningBalances, setEntityOpeningBalances] = useState({});
@@ -208,6 +233,44 @@ export default function DailyCashTracking() {
         }
     };
 
+    const handleDeleteEntity = async (e, entityId) => {
+        e.stopPropagation(); // Prevent opening history modal
+        if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette société ? Cette action est irréversible.')) return;
+
+        try {
+            // Check for existing operations
+            const { count, error: countError } = await supabase
+                .from('daily_cash_operations')
+                .select('*', { count: 'exact', head: true })
+                .eq('entity_id', entityId);
+
+            if (countError) throw countError;
+
+            if (count > 0) {
+                if (!window.confirm(`Cette société a ${count} opérations enregistrées. Voulez-vous TOUT supprimer (Société + Opérations) ?`)) return;
+
+                // Delete operations first
+                const { error: opsError } = await supabase
+                    .from('daily_cash_operations')
+                    .delete()
+                    .eq('entity_id', entityId);
+
+                if (opsError) throw opsError;
+            }
+
+            const { error } = await supabase
+                .from('daily_cash_entities')
+                .delete()
+                .eq('id', entityId);
+
+            if (error) throw error;
+            fetchData();
+        } catch (error) {
+            console.error('Error deleting entity:', error);
+            alert('Erreur lors de la suppression de la société');
+        }
+    };
+
     const handleResetData = async () => {
         if (!window.confirm('ATTENTION : Cette action va supprimer TOUTES les opérations et remettre tous les soldes à zéro. Êtes-vous sûr ?')) return;
         if (!window.confirm('Vraiment sûr ? Cette action est irréversible.')) return;
@@ -324,9 +387,18 @@ export default function DailyCashTracking() {
                                         return (
                                             <div key={entity.id} onClick={() => handleViewEntityHistory(entity)} className="group p-5 border border-gray-100 rounded-2xl hover:shadow-lg transition-all bg-gradient-to-br from-white to-gray-50 cursor-pointer relative overflow-hidden">
                                                 <div className="flex justify-between items-start mb-4">
-                                                    <div className="font-bold text-gray-800 text-lg">{entity.name}</div>
-                                                    <div className="p-2 bg-white rounded-lg shadow-sm group-hover:scale-110 transition-transform">
-                                                        <Building2 size={20} className="text-indigo-500" />
+                                                    <div className="font-bold text-gray-800 text-lg max-w-[70%] truncate" title={entity.name}>{entity.name}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={(e) => handleDeleteEntity(e, entity.id)}
+                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                            title="Supprimer la société"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                        <div className="p-2 bg-white rounded-lg shadow-sm group-hover:scale-110 transition-transform">
+                                                            <Building2 size={20} className="text-indigo-500" />
+                                                        </div>
                                                     </div>
                                                 </div>
 
@@ -1167,7 +1239,7 @@ export default function DailyCashTracking() {
                             <div>
                                 <h3 className="text-xl font-bold text-gray-900">{selectedEntityHistory.name}</h3>
                                 <p className="text-gray-500 text-sm mt-1">
-                                    Historique des opérations du {format(new Date(selectedDate), 'dd MMMM yyyy')}
+                                    Historique complet des opérations
                                 </p>
                             </div>
                             <button
@@ -1181,34 +1253,36 @@ export default function DailyCashTracking() {
                         {/* Content */}
                         <div className="overflow-y-auto p-6">
                             {(() => {
-                                let entityOps = [];
-                                let movement = { in: 0, out: 0 };
-
-                                if (selectedEntityHistory.isExpense) {
-                                    entityOps = operations.filter(op => op.category === 'EXPENSE_FUND');
-                                    // Calculate movement for Expense Fund
-                                    const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
-                                    const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-                                    movement = { in: inAmount, out: outAmount };
-                                } else {
-                                    entityOps = operations.filter(op => op.entity_id === selectedEntityHistory.id);
-                                    movement = getDailyEntityMovement(selectedEntityHistory.id);
+                                if (loadingHistory) {
+                                    return (
+                                        <div className="flex justify-center items-center py-20">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                                        </div>
+                                    )
                                 }
 
+                                const entityOps = historyOperations;
+                                let movement = { in: 0, out: 0 };
+
+                                // Recalculate global movement from ALL history
+                                const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+                                const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+                                movement = { in: inAmount, out: outAmount };
+
                                 return (<div className="space-y-6">
-                                    {/* Summary Cards */}
+                                    {/* Summary Cards (Global) */}
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="p-4 bg-green-50 rounded-xl border border-green-100">
-                                            <div className="text-sm text-green-800 font-medium mb-1">Total Entrées</div>
+                                            <div className="text-sm text-green-800 font-medium mb-1">Total Historique Entrées</div>
                                             <div className="text-xl font-bold text-green-900">+{formatPrice(movement.in)}</div>
                                         </div>
                                         <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                                            <div className="text-sm text-red-800 font-medium mb-1">Total Sorties</div>
+                                            <div className="text-sm text-red-800 font-medium mb-1">Total Historique Sorties</div>
                                             <div className="text-xl font-bold text-red-900">-{formatPrice(movement.out)}</div>
                                         </div>
-                                        <div className={`p-4 rounded-xl border ${movement.in - movement.out >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'}`}>
-                                            <div className={`text-sm font-medium mb-1 ${movement.in - movement.out >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>Solde du Jour</div>
-                                            <div className={`text-xl font-bold ${movement.in - movement.out >= 0 ? 'text-blue-900' : 'text-orange-900'}`}>
+                                        <div className={`p-4 rounded-xl border ${movement.in - movement.out >= 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
+                                            <div className={`text-sm font-medium mb-1 ${movement.in - movement.out >= 0 ? 'text-indigo-800' : 'text-orange-800'}`}>Solde Global</div>
+                                            <div className={`text-xl font-bold ${movement.in - movement.out >= 0 ? 'text-indigo-900' : 'text-orange-900'}`}>
                                                 {formatPrice(movement.in - movement.out)}
                                             </div>
                                         </div>
@@ -1218,7 +1292,7 @@ export default function DailyCashTracking() {
                                     <div>
                                         <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
                                             <Table size={18} className="text-gray-400" />
-                                            Détail des opérations
+                                            Historique complet ({entityOps.length})
                                         </h4>
 
                                         {entityOps.length === 0 ? (
@@ -1226,43 +1300,46 @@ export default function DailyCashTracking() {
                                                 <div className="p-3 bg-white rounded-full inline-block mb-3 shadow-sm">
                                                     <Calendar size={24} className="text-gray-400" />
                                                 </div>
-                                                <p className="text-gray-500">Aucune opération enregistrée pour cette société ce jour.</p>
+                                                <p className="text-gray-500">Aucune opération enregistrée.</p>
                                             </div>
                                         ) : (
                                             <div className="border rounded-xl overflow-hidden shadow-sm">
-                                                <table className="w-full text-left border-collapse">
-                                                    <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold">
-                                                        <tr>
-                                                            <th className="p-4 border-b">Heure</th>
-                                                            <th className="p-4 border-b">Description</th>
-                                                            <th className="p-4 border-b text-right">Montant</th>
-                                                            <th className="p-4 border-b text-center">Type</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-100">
-                                                        {entityOps.map(op => (
-                                                            <tr key={op.id} className="hover:bg-gray-50 transition-colors">
-                                                                <td className="p-4 text-gray-500 font-mono text-sm">
-                                                                    {format(new Date(op.created_at), 'HH:mm')}
-                                                                </td>
-                                                                <td className="p-4 font-medium text-gray-900">
-                                                                    {op.description}
-                                                                </td>
-                                                                <td className={`p-4 text-right font-bold font-mono ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
-                                                                    {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
-                                                                </td>
-                                                                <td className="p-4 text-center">
-                                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${op.type === 'IN'
-                                                                        ? 'bg-green-100 text-green-700'
-                                                                        : 'bg-red-100 text-red-700'
-                                                                        }`}>
-                                                                        {op.type === 'IN' ? 'Recette' : 'Dépense'}
-                                                                    </span>
-                                                                </td>
+                                                <div className="max-h-[400px] overflow-y-auto">
+                                                    <table className="w-full text-left border-collapse relative">
+                                                        <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold sticky top-0 z-10 shadow-sm">
+                                                            <tr>
+                                                                <th className="p-4 border-b bg-gray-50">Date</th>
+                                                                <th className="p-4 border-b bg-gray-50">Description</th>
+                                                                <th className="p-4 border-b text-right bg-gray-50">Montant</th>
+                                                                <th className="p-4 border-b text-center bg-gray-50">Type</th>
                                                             </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-100">
+                                                            {entityOps.map(op => (
+                                                                <tr key={op.id} className="hover:bg-gray-50 transition-colors">
+                                                                    <td className="p-4 text-gray-500 font-mono text-sm whitespace-nowrap">
+                                                                        <div className="font-bold text-gray-700">{format(new Date(op.date), 'dd/MM/yyyy')}</div>
+                                                                        <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
+                                                                    </td>
+                                                                    <td className="p-4 font-medium text-gray-900">
+                                                                        {op.description}
+                                                                    </td>
+                                                                    <td className={`p-4 text-right font-bold font-mono ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+                                                                        {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
+                                                                    </td>
+                                                                    <td className="p-4 text-center">
+                                                                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${op.type === 'IN'
+                                                                            ? 'bg-green-100 text-green-700'
+                                                                            : 'bg-red-100 text-red-700'
+                                                                            }`}>
+                                                                            {op.type === 'IN' ? 'Recette' : 'Dépense'}
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             </div>
                                         )}
                                     </div>

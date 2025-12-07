@@ -126,7 +126,7 @@ export default function Layout() {
                     {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
 
-                <h1 className="font-bold text-lg bg-gradient-purple bg-clip-text text-transparent">Suivi CH Affaire</h1>
+                <h1 className="font-bold text-lg bg-gradient-purple bg-clip-text text-transparent">ISTIRAHA PEPINIERE (I1050)</h1>
 
                 <div className="w-10"></div> {/* Spacer to center title */}
             </div>
@@ -229,7 +229,7 @@ export default function Layout() {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 p-4 md:p-8 overflow-auto" id="main-content">
+            <main className="flex-1 p-4 md:p-8 overflow-auto pb-24 md:pb-8" id="main-content">
                 <PullToRefresh onRefresh={handleRefresh} className="h-full">
                     <div className="max-w-7xl mx-auto min-h-[calc(100vh-4rem)]">
                         <Outlet context={{ refreshTrigger }} />

@@ -437,13 +437,13 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                                     <div className="grid grid-cols-2 gap-3">
                                         <button
                                             onClick={() => setFuelForm({ ...fuelForm, type: 'Gasoil' })}
-                                            className={`py-3 px-4 rounded-xl border-2 transition-all font-medium ${fuelForm.type === 'Gasoil' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 hover:border-gray-200 text-gray-600'}`}
+                                            className={`flex-1 py-3 px-4 rounded-xl border-2 transition-all font-medium whitespace-nowrap ${fuelForm.type === 'Gasoil' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 hover:border-gray-200 text-gray-600'}`}
                                         >
                                             Gasoil
                                         </button>
                                         <button
                                             onClick={() => setFuelForm({ ...fuelForm, type: 'SSP' })}
-                                            className={`py-3 px-4 rounded-xl border-2 transition-all font-medium ${fuelForm.type === 'SSP' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 hover:border-gray-200 text-gray-600'}`}
+                                            className={`flex-1 py-3 px-4 rounded-xl border-2 transition-all font-medium whitespace-nowrap ${fuelForm.type === 'SSP' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 hover:border-gray-200 text-gray-600'}`}
                                         >
                                             Sans Plomb
                                         </button>
@@ -453,24 +453,27 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                                 {/* Quantity & Unit */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">Quantité Vendue</label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="number"
-                                            value={fuelForm.quantity}
-                                            onChange={(e) => setFuelForm({ ...fuelForm, quantity: e.target.value })}
-                                            placeholder="0.00"
-                                            className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-medium"
-                                        />
-                                        <div className="flex bg-gray-100 p-1 rounded-xl">
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <div className="relative flex-1">
+                                            <input
+                                                type="number"
+                                                value={fuelForm.quantity}
+                                                onChange={(e) => setFuelForm({ ...fuelForm, quantity: e.target.value })}
+                                                placeholder="0.00"
+                                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-medium"
+                                            />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">Vol.</span>
+                                        </div>
+                                        <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
                                             <button
                                                 onClick={() => setFuelForm({ ...fuelForm, unit: 'L' })}
-                                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${fuelForm.unit === 'L' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+                                                className={`flex-1 sm:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${fuelForm.unit === 'L' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
                                             >
-                                                L
+                                                Litres
                                             </button>
                                             <button
                                                 onClick={() => setFuelForm({ ...fuelForm, unit: 'm3' })}
-                                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${fuelForm.unit === 'm3' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+                                                className={`flex-1 sm:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${fuelForm.unit === 'm3' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
                                             >
                                                 m³
                                             </button>
