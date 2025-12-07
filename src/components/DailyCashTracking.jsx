@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatPrice, formatNumber } from '../utils/formatters';
+import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 
 export default function DailyCashTracking() {
     const [activeTab, setActiveTab] = useState('entities'); // entities, expense, operations, reconciliation
@@ -56,6 +57,9 @@ export default function DailyCashTracking() {
     const [expenseOpeningBalance, setExpenseOpeningBalance] = useState(0);
     const [expenseClosingBalance, setExpenseClosingBalance] = useState(0);
     const [previousBalance, setPreviousBalance] = useState(0);
+
+    // Delete Confirmation State
+    const [deleteConfig, setDeleteConfig] = useState({ isOpen: false, type: null, id: null }); // type: 'OPERATION', 'ENTITY', 'RESET'
 
     const fetchData = React.useCallback(async () => {
         setLoading(true);
@@ -155,9 +159,12 @@ export default function DailyCashTracking() {
 
 
 
-    const handleDeleteOperation = async (id) => {
-        if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette opération ?')) return;
+    const handleDeleteOperation = (id) => {
+        setDeleteConfig({ isOpen: true, type: 'OPERATION', id });
+    };
 
+    const confirmDeleteOperation = async () => {
+        const id = deleteConfig.id;
         try {
             const { error } = await supabase
                 .from('daily_cash_operations')
@@ -233,10 +240,13 @@ export default function DailyCashTracking() {
         }
     };
 
-    const handleDeleteEntity = async (e, entityId) => {
-        e.stopPropagation(); // Prevent opening history modal
-        if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette société ? Cette action est irréversible.')) return;
+    const handleDeleteEntity = (e, entityId) => {
+        e.stopPropagation();
+        setDeleteConfig({ isOpen: true, type: 'ENTITY', id: entityId });
+    };
 
+    const confirmDeleteEntity = async () => {
+        const entityId = deleteConfig.id;
         try {
             // Check for existing operations
             const { count, error: countError } = await supabase
@@ -271,15 +281,16 @@ export default function DailyCashTracking() {
         }
     };
 
-    const handleResetData = async () => {
-        if (!window.confirm('ATTENTION : Cette action va supprimer TOUTES les opérations et remettre tous les soldes à zéro. Êtes-vous sûr ?')) return;
-        if (!window.confirm('Vraiment sûr ? Cette action est irréversible.')) return;
+    const handleResetData = () => {
+        setDeleteConfig({ isOpen: true, type: 'RESET' });
+    };
 
+    const confirmResetData = async () => {
         try {
             const { error } = await supabase
                 .from('daily_cash_operations')
                 .delete()
-                .not('id', 'is', null); // Delete all rows (UUID safe)
+                .not('id', 'is', null);
 
             if (error) throw error;
 
@@ -289,6 +300,26 @@ export default function DailyCashTracking() {
             console.error('Error resetting data:', error);
             alert(`Erreur lors de la réinitialisation: ${error.message || 'Erreur inconnue'}`);
         }
+    };
+
+    const handleConfirmAction = () => {
+        if (deleteConfig.type === 'OPERATION') return confirmDeleteOperation();
+        if (deleteConfig.type === 'ENTITY') return confirmDeleteEntity();
+        if (deleteConfig.type === 'RESET') return confirmResetData();
+    };
+
+    const getModalTitle = () => {
+        if (deleteConfig.type === 'OPERATION') return "Supprimer l'opération ?";
+        if (deleteConfig.type === 'ENTITY') return "Supprimer la société ?";
+        if (deleteConfig.type === 'RESET') return "Réinitialisation Totale ?";
+        return "Confirmation";
+    };
+
+    const getModalMessage = () => {
+        if (deleteConfig.type === 'OPERATION') return "Cette action est irréversible.";
+        if (deleteConfig.type === 'ENTITY') return "Vous allez supprimer cette société. Si elle contient des opérations, une confirmation supplémentaire sera demandée.";
+        if (deleteConfig.type === 'RESET') return "ATTENTION : Vous allez supprimer TOUT l'historique des opérations. Cette action est irréversible.";
+        return "Êtes-vous sûr ?";
     };
 
     const dailyTotalDebit = operations
@@ -339,6 +370,14 @@ export default function DailyCashTracking() {
                     </button>
                 </div>
             </div>
+
+            <PasswordConfirmationModal
+                isOpen={deleteConfig.isOpen}
+                onClose={() => setDeleteConfig({ isOpen: false, type: null, id: null })}
+                onConfirm={handleConfirmAction}
+                title={getModalTitle()}
+                message={getModalMessage()}
+            />
 
             {/* Tabs */}
             <div className="flex gap-2 border-b overflow-x-auto pb-1">
@@ -774,7 +813,7 @@ export default function DailyCashTracking() {
                                                 {/* ECART Card */}
                                                 <div className={`p-4 rounded-xl border-2 text-center ${ecart === 0 ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
                                                     <div className="text-xs font-bold uppercase tracking-widest opacity-70 mb-1">Écart Journalier</div>
-                                                    <div className="text-3xl font-black">{formatPrice(ecart)} <span className="text-sm">MAD</span></div>
+                                                    <div className="text-3xl font-black">{formatPrice(ecart)}</div>
                                                 </div>
                                             </div>
 
@@ -897,7 +936,6 @@ export default function DailyCashTracking() {
                                                                     <span className="font-mono font-black text-2xl tracking-tight">
                                                                         {formatPrice(ecart)}
                                                                     </span>
-                                                                    <span className="ml-2 text-xs font-bold uppercase opacity-70">MAD</span>
                                                                 </div>
                                                             </td>
                                                             <td className="py-6 px-4 text-left font-bold text-gray-400 tracking-wider border-l border-gray-100">ÉCART</td>
@@ -926,7 +964,6 @@ export default function DailyCashTracking() {
                                                 <div className="text-4xl font-black tracking-tight text-gray-900">
                                                     {formatPrice(dailyTotalCredit - dailyTotalDebit)}
                                                 </div>
-                                                <span className="text-lg font-bold text-gray-400">MAD</span>
                                             </div>
 
                                             <div className="mt-4 flex items-center gap-2">

@@ -5,6 +5,7 @@ import { DateInput } from './ui/DateInput';
 import { Loader2, Calendar, Package, DollarSign, Droplet, Trash2, Plus } from 'lucide-react';
 import { formatPrice, formatNumber } from '../utils/formatters';
 import BulkFuelEntryModal from './BulkFuelEntryModal';
+import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 
 export default function Sales() {
     const [activeTab, setActiveTab] = useState('sales'); // 'sales' | 'fuel'
@@ -12,6 +13,9 @@ export default function Sales() {
     const [fuelSales, setFuelSales] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showBulkEntryModal, setShowBulkEntryModal] = useState(false);
+
+    // Delete Confirmation State
+    const [deleteConfig, setDeleteConfig] = useState({ isOpen: false, id: null });
 
     // Filters
     const [startDate, setStartDate] = useState('');
@@ -97,8 +101,13 @@ export default function Sales() {
         }
     };
 
-    const handleDeleteFuelSale = async (id) => {
-        if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette vente carburant ?')) return;
+    const handleDeleteFuelSale = (id) => {
+        setDeleteConfig({ isOpen: true, id });
+    };
+
+    const confirmDeleteFuelSale = async () => {
+        const id = deleteConfig.id;
+        if (!id) return;
 
         try {
             const { error } = await supabase
@@ -111,6 +120,8 @@ export default function Sales() {
         } catch (error) {
             console.error('Error deleting fuel sale:', error);
             alert('Erreur lors de la suppression');
+        } finally {
+            setDeleteConfig({ isOpen: false, id: null });
         }
     };
 
@@ -321,6 +332,14 @@ export default function Sales() {
                 isOpen={showBulkEntryModal}
                 onClose={() => setShowBulkEntryModal(false)}
                 onSuccess={fetchFuelSales}
+            />
+
+            <PasswordConfirmationModal
+                isOpen={deleteConfig.isOpen}
+                onClose={() => setDeleteConfig({ isOpen: false, id: null })}
+                onConfirm={confirmDeleteFuelSale}
+                title="Supprimer la vente carburant ?"
+                message="Êtes-vous sûr de vouloir supprimer cette vente ? Cette action est irréversible."
             />
         </div>
     );

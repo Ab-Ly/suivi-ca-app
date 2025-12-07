@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader } from './ui/Card';
-import { FileDown, FileJson, FileSpreadsheet, FileText, Loader2, RefreshCw, ChevronDown, BarChart3 } from 'lucide-react';
+import { FileDown, FileJson, FileSpreadsheet, FileText, Loader2, RefreshCw, ChevronDown, BarChart3, FilterX } from 'lucide-react';
 import { DateInput } from './ui/DateInput';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -488,9 +488,10 @@ export default function Reports() {
                 <div className="flex items-center gap-3">
                     <button
                         onClick={resetFilters}
-                        className="text-sm text-primary hover:text-primary/80 underline font-medium"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white border border-border rounded-xl shadow-sm hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-200 group"
                     >
-                        Réinitialiser Filtres
+                        <FilterX size={18} className="group-hover:scale-110 transition-transform duration-200" />
+                        <span className="font-medium">Réinitialiser Filtres</span>
                     </button>
                     <button
                         onClick={fetchSalesData}

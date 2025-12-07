@@ -35,6 +35,23 @@
   animation: wave-rotate 6s infinite linear;
 }
 
+@keyframes wave-move {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-wave-move {
+  animation: wave-move 3s linear infinite;
+}
+
+.animate-wave-move-slow {
+  animation: wave-move 6s linear infinite;
+}
+
 @layer base {
   body {
     @apply bg-bg-main text-text-main antialiased font-sans;

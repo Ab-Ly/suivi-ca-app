@@ -5,6 +5,7 @@ import ArticleManager from './ArticleManager';
 import { supabase } from '../lib/supabase';
 import { Modal } from './ui/Modal';
 import { DateInput } from './ui/DateInput';
+import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 
 export default function StockStatus() {
     const [activeTab, setActiveTab] = useState('status'); // 'status' or 'movements'
@@ -28,6 +29,9 @@ export default function StockStatus() {
     const [movementType, setMovementType] = useState('in'); // 'in' or 'out'
     const [movementQty, setMovementQty] = useState(1);
     const [processing, setProcessing] = useState(false);
+
+    // Delete Confirmation State (for Deduplication)
+    const [deleteConfig, setDeleteConfig] = useState({ isOpen: false });
 
     useEffect(() => {
         if (activeTab === 'status') {
@@ -185,50 +189,7 @@ export default function StockStatus() {
                             <span className="hidden sm:inline font-medium">Nouveau Article</span>
                         </button>
                         <button
-                            onClick={async () => {
-                                if (!confirm('Voulez-vous vraiment fusionner les articles en double ? Cette action est irréversible.')) return;
-                                setLoading(true);
-                                try {
-                                    const { data: allArticles } = await supabase.from('articles').select('*');
-                                    const groups = {};
-
-                                    // Group by name
-                                    allArticles.forEach(a => {
-                                        const name = a.name.trim();
-                                        if (!groups[name]) groups[name] = [];
-                                        groups[name].push(a);
-                                    });
-
-                                    let deletedCount = 0;
-
-                                    for (const name in groups) {
-                                        const group = groups[name];
-                                        if (group.length > 1) {
-                                            // Keep the first one (master)
-                                            const master = group[0];
-                                            const duplicates = group.slice(1);
-
-                                            for (const dup of duplicates) {
-                                                // Update sales
-                                                await supabase.from('sales').update({ article_id: master.id }).eq('article_id', dup.id);
-                                                // Update movements
-                                                await supabase.from('stock_movements').update({ article_id: master.id }).eq('article_id', dup.id);
-                                                // Delete duplicate
-                                                await supabase.from('articles').delete().eq('id', dup.id);
-                                                deletedCount++;
-                                            }
-                                        }
-                                    }
-
-                                    alert(`${deletedCount} doublons ont été fusionnés et supprimés.`);
-                                    fetchStock();
-                                } catch (error) {
-                                    console.error('Error deduplicating:', error);
-                                    alert('Erreur lors de la fusion des doublons');
-                                } finally {
-                                    setLoading(false);
-                                }
-                            }}
+                            onClick={() => setDeleteConfig({ isOpen: true })}
                             className="flex items-center gap-2 bg-orange-50 text-orange-600 px-3 py-2.5 rounded-xl hover:bg-orange-100 transition-colors border border-orange-200"
                             title="Fusionner les doublons"
                         >
@@ -236,6 +197,56 @@ export default function StockStatus() {
                             <span className="hidden sm:inline font-medium">Nettoyer</span>
                         </button>
                     </div>
+
+                    <PasswordConfirmationModal
+                        isOpen={deleteConfig.isOpen}
+                        onClose={() => setDeleteConfig({ isOpen: false })}
+                        onConfirm={async () => {
+                            setLoading(true);
+                            try {
+                                const { data: allArticles } = await supabase.from('articles').select('*');
+                                const groups = {};
+
+                                // Group by name
+                                allArticles.forEach(a => {
+                                    const name = a.name.trim();
+                                    if (!groups[name]) groups[name] = [];
+                                    groups[name].push(a);
+                                });
+
+                                let deletedCount = 0;
+
+                                for (const name in groups) {
+                                    const group = groups[name];
+                                    if (group.length > 1) {
+                                        // Keep the first one (master)
+                                        const master = group[0];
+                                        const duplicates = group.slice(1);
+
+                                        for (const dup of duplicates) {
+                                            // Update sales
+                                            await supabase.from('sales').update({ article_id: master.id }).eq('article_id', dup.id);
+                                            // Update movements
+                                            await supabase.from('stock_movements').update({ article_id: master.id }).eq('article_id', dup.id);
+                                            // Delete duplicate
+                                            await supabase.from('articles').delete().eq('id', dup.id);
+                                            deletedCount++;
+                                        }
+                                    }
+                                }
+
+                                alert(`${deletedCount} doublons ont été fusionnés et supprimés.`);
+                                fetchStock();
+                            } catch (error) {
+                                console.error('Error deduplicating:', error);
+                                alert('Erreur lors de la fusion des doublons');
+                            } finally {
+                                setLoading(false);
+                            }
+                        }}
+                        title="Fusionner et Supprimer les doublons ?"
+                        message="Cette action va fusionner tous les articles avec le même nom et supprimer les doublons. Cette action est irréversible."
+                    />
 
                     <ArticleManager isOpen={isArticleManagerOpen} onClose={() => { setIsArticleManagerOpen(false); fetchStock(); }} />
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Droplet, Save, History, AlertCircle, CheckCircle, Truck, FileDown, Plus, Trash2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { formatNumber } from '../utils/formatters';
+import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -32,13 +33,33 @@ const TankVisual = ({ tank, levelBefore, levelAfter }) => {
                 </div>
 
                 {/* The Liquid */}
+                {/* The Liquid */}
                 <div
                     className={`absolute bottom-0 w-full transition-all duration-1000 ease-out bg-gradient-to-t ${tank.color}`}
-                    style={{ height: `${percent}%` }}
+                    style={{ height: `${percent}%`, minHeight: '10px' }}
                 >
-                    {/* Negative Wave (Minimisée) */}
-                    <div className="absolute -top-[290px] -left-[80px] w-[300px] h-[300px] bg-gray-100 rounded-[45%] animate-wave"></div>
-                    <div className="absolute -top-[292px] -left-[80px] w-[300px] h-[300px] bg-gray-100 rounded-[47%] animate-wave" style={{ animationDuration: '6s', opacity: 0.6 }}></div>
+                    {/* SVG Wave Effect - Sitting on top */}
+                    {/* translate-y-1 ensures overlap preventing sub-pixel gaps */}
+                    <div className="absolute bottom-[95%] left-0 w-[200%] h-6 flex translate-y-[1px] pointer-events-none">
+                        {/* Wave 1 (Front - Fast) */}
+                        <svg className={`w-1/2 h-full animate-wave-move ${tank.text}`} viewBox="0 0 1000 100" preserveAspectRatio="none">
+                            <path d="M0,50 C150,100 350,0 500,50 C650,100 850,0 1000,50 V100 H0 Z" fill="currentColor" />
+                        </svg>
+                        <svg className={`w-1/2 h-full animate-wave-move ${tank.text}`} viewBox="0 0 1000 100" preserveAspectRatio="none">
+                            <path d="M0,50 C150,100 350,0 500,50 C650,100 850,0 1000,50 V100 H0 Z" fill="currentColor" />
+                        </svg>
+                    </div>
+
+                    <div className="absolute bottom-[95%] left-0 w-[200%] h-6 flex translate-y-[1px] opacity-50 z-[-1] pointer-events-none">
+                        {/* Wave 2 (Back - Slow) */}
+                        <svg className={`w-1/2 h-full animate-wave-move-slow ${tank.text}`} viewBox="0 0 1000 100" preserveAspectRatio="none">
+                            {/* Reversed phase for variety: M0,50 C150,0 350,100 ... */}
+                            <path d="M0,50 C150,0 350,100 500,50 C650,0 850,100 1000,50 V100 H0 Z" fill="currentColor" />
+                        </svg>
+                        <svg className={`w-1/2 h-full animate-wave-move-slow ${tank.text}`} viewBox="0 0 1000 100" preserveAspectRatio="none">
+                            <path d="M0,50 C150,0 350,100 500,50 C650,0 850,100 1000,50 V100 H0 Z" fill="currentColor" />
+                        </svg>
+                    </div>
                 </div>
 
                 {/* Ghost Level (Before) Indicator */}
@@ -72,6 +93,9 @@ export default function FuelDeliveryTracking() {
     const [submitting, setSubmitting] = useState(false);
     const [expandedRows, setExpandedRows] = useState(new Set());
     const [notification, setNotification] = useState({ show: false, message: '', type: 'success' }); // 'success' | 'error'
+
+    // Delete Confirmation State
+    const [deleteConfig, setDeleteConfig] = useState({ isOpen: false, id: null });
 
     const [formData, setFormData] = useState({
         date: new Date().toISOString().split('T')[0],
@@ -176,8 +200,13 @@ export default function FuelDeliveryTracking() {
         }
     };
 
-    const deleteReception = async (id) => {
-        if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette réception ? Cette action est irréversible.")) return;
+    const deleteReception = (id) => {
+        setDeleteConfig({ isOpen: true, id });
+    };
+
+    const confirmDeleteReception = async () => {
+        const id = deleteConfig.id;
+        if (!id) return;
 
         try {
             const { error } = await supabase.from('fuel_receptions').delete().eq('id', id);
@@ -188,6 +217,8 @@ export default function FuelDeliveryTracking() {
         } catch (error) {
             console.error("Error deleting:", error);
             showNotification("Erreur lors de la suppression", "error");
+        } finally {
+            setDeleteConfig({ isOpen: false, id: null });
         }
     };
 
@@ -347,6 +378,14 @@ export default function FuelDeliveryTracking() {
                     </div>
                 </div>
             )}
+
+            <PasswordConfirmationModal
+                isOpen={deleteConfig.isOpen}
+                onClose={() => setDeleteConfig({ isOpen: false, id: null })}
+                onConfirm={confirmDeleteReception}
+                title="Supprimer la Réception ?"
+                message="Cette action est irréversible. Toutes les données associées à cette réception seront définitivement effacées."
+            />
 
             {/* Page Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 px-2">
