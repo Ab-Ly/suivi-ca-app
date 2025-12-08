@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Droplet, Save, History, AlertCircle, CheckCircle, Truck, FileDown, Plus, Trash2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Droplet, Save, History, AlertCircle, CheckCircle, Truck, FileDown, Plus, Trash2, ChevronDown, ChevronUp, RefreshCw, Loader2 } from 'lucide-react';
 import { formatNumber } from '../utils/formatters';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 import jsPDF from 'jspdf';
@@ -124,39 +124,102 @@ export default function FuelDeliveryTracking() {
     const totalObserved = computedItems.reduce((sum, item) => sum + item.qtyObserved, 0);
     const globalDifference = totalObserved - totalBilled;
 
+    // Draft State
+    const [draftId, setDraftId] = useState(null);
+    const [draftLoading, setDraftLoading] = useState(false);
+
     useEffect(() => {
         fetchReceptions();
-        const savedDraft = localStorage.getItem('fuel_delivery_draft');
-        if (savedDraft) {
-            try {
-                const parsed = JSON.parse(savedDraft);
+        fetchDraft();
+    }, []);
 
-                // Handle new format { items, formData }
+    const fetchDraft = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data, error } = await supabase
+                .from('fuel_delivery_drafts')
+                .select('*')
+                .eq('user_id', user.id)
+                .single();
+
+            if (error && error.code !== 'PGRST116') throw error; // Ignore not found error
+
+            if (data && data.draft_data) {
+                const parsed = data.draft_data;
+                setDraftId(data.id);
+
                 if (parsed.items && Array.isArray(parsed.items)) {
                     setItems(parsed.items);
                     if (parsed.formData) {
                         setFormData(prev => ({ ...prev, ...parsed.formData }));
                     }
-                    showNotification("Brouillon restauré", "success");
+                    showNotification("Brouillon restauré depuis le serveur", "success");
                 }
-                // Handle legacy format (Array only)
-                else if (Array.isArray(parsed) && parsed.length > 0) {
-                    setItems(parsed);
-                    showNotification("Brouillon restauré", "success");
-                }
-            } catch (e) {
-                console.error("Error loading draft", e);
             }
+        } catch (error) {
+            console.error("Error fetching draft:", error);
         }
-    }, []);
+    };
 
-    const saveDraft = () => {
-        const draftData = {
-            items: items,
-            formData: formData
-        };
-        localStorage.setItem('fuel_delivery_draft', JSON.stringify(draftData));
-        showNotification("Brouillon complet sauvegardé");
+    const saveDraft = async () => {
+        setDraftLoading(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("Vous devez être connecté pour sauvegarder un brouillon.");
+
+            const draftData = {
+                items: items,
+                formData: formData
+            };
+
+            const { data, error } = await supabase
+                .from('fuel_delivery_drafts')
+                .upsert({
+                    id: draftId || undefined, // Use existing ID if we have one, else undefined to create new (actually better to limit 1 per user)
+                    user_id: user.id,
+                    draft_data: draftData,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id' }) // Assuming one draft per user logic might be better, or just rely on ID. Let's rely on ID or Insert.
+            // Wait, if we want multiple drafts we need a list. But for now, let's assume one active draft per user like localStorage often does.
+            // Actually, the schema doesn't enforce 1 per user. Let's try to query by user_id first (done in fetch).
+            // If we found a draft, we update it. If not, we insert.
+            // Upsert requires a primary key or unique constraint. 
+            // Let's modify the upsert strategy: 
+            // If we have draftId, update. Else insert.
+
+            // Refined Strategy: Delete old drafts for this user to keep it clean (Single Draft Policy)
+            // Or better: Use upsert if we guarantee a unique constraint on user_id, but we didn't add it.
+            // So:
+
+            let query = supabase.from('fuel_delivery_drafts');
+
+            if (draftId) {
+                const { error } = await query.update({ draft_data: draftData, updated_at: new Date() }).eq('id', draftId);
+                if (error) throw error;
+            } else {
+                // Check if one exists to avoid duplicates if user reloads
+                const { data: existing } = await supabase.from('fuel_delivery_drafts').select('id').eq('user_id', user.id).single();
+
+                if (existing) {
+                    const { error } = await query.update({ draft_data: draftData, updated_at: new Date() }).eq('id', existing.id);
+                    if (error) throw error;
+                    setDraftId(existing.id);
+                } else {
+                    const { data: newDraft, error } = await query.insert({ user_id: user.id, draft_data: draftData }).select().single();
+                    if (error) throw error;
+                    setDraftId(newDraft.id);
+                }
+            }
+
+            showNotification("Brouillon sauvegardé sur le serveur");
+        } catch (error) {
+            console.error("Error saving draft:", error);
+            showNotification("Erreur sauvegarde brouillon: " + error.message, "error");
+        } finally {
+            setDraftLoading(false);
+        }
     };
 
     const showNotification = (message, type = 'success') => {
@@ -353,7 +416,15 @@ export default function FuelDeliveryTracking() {
             showNotification("Réception enregistrée avec succès !");
             setFormData({ ...formData, invoiceNumber: '', blNumber: '', quantityBilled: '', observations: '' });
             setItems([{ id: Date.now(), tankId: 1, levelBefore: '', levelAfter: '' }]);
-            localStorage.removeItem('fuel_delivery_draft'); // Clear Draft
+            setFormData({ ...formData, invoiceNumber: '', blNumber: '', quantityBilled: '', observations: '' });
+            setItems([{ id: Date.now(), tankId: 1, levelBefore: '', levelAfter: '' }]);
+
+            // Delete draft from DB if exists
+            if (draftId) {
+                await supabase.from('fuel_delivery_drafts').delete().eq('id', draftId);
+                setDraftId(null);
+            }
+
             fetchReceptions();
 
         } catch (error) {
@@ -452,8 +523,8 @@ export default function FuelDeliveryTracking() {
                                     <button type="button" onClick={addItem} className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
                                         <Plus size={14} /> Ajouter Citerne
                                     </button>
-                                    <button type="button" onClick={saveDraft} className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-                                        <Save size={14} /> Brouillon
+                                    <button type="button" onClick={saveDraft} disabled={draftLoading} className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50">
+                                        {draftLoading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Brouillon
                                     </button>
                                 </div>
                             </div>

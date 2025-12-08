@@ -293,21 +293,21 @@ export default function ComparisonCharts() {
                 <div className="p-6">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
-                            <thead className="text-gray-500 font-medium border-b border-gray-100">
+                            <thead className="text-gray-500 font-medium border-b border-gray-100 text-xs sm:text-sm">
                                 <tr>
                                     <th className="py-3 pr-2 sm:pr-4">Catégorie</th>
-                                    <th className="py-3 px-2 sm:px-4 text-right">CA {year - 1}</th>
-                                    <th className="py-3 px-2 sm:px-4 text-right">CA {year}</th>
-                                    <th className="py-3 pl-2 sm:pl-4 text-right">Évolution</th>
+                                    <th className="py-3 px-1 sm:px-4 text-right whitespace-nowrap">CA {year - 1}</th>
+                                    <th className="py-3 px-1 sm:px-4 text-right whitespace-nowrap">CA {year}</th>
+                                    <th className="py-3 pl-1 sm:pl-4 text-right">Évolution</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {categoryDetails.map((cat) => (
-                                    <tr key={cat.name} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="py-4 pr-2 sm:pr-4 font-medium text-gray-900">{cat.name}</td>
-                                        <td className="py-4 px-2 sm:px-4 text-right text-gray-600 font-mono text-xs sm:text-sm">{formatPrice(cat.previous)}</td>
-                                        <td className="py-4 px-2 sm:px-4 text-right text-gray-900 font-medium font-mono text-xs sm:text-sm">{formatPrice(cat.current)}</td>
-                                        <td className="py-4 pl-2 sm:pl-4 text-right">
+                                    <tr key={cat.name} className="hover:bg-gray-50/50 transition-colors text-xs sm:text-sm">
+                                        <td className="py-4 pr-2 sm:pr-4 font-medium text-gray-900 break-words max-w-[100px] sm:max-w-none">{cat.name}</td>
+                                        <td className="py-4 px-1 sm:px-4 text-right text-gray-600 font-mono whitespace-nowrap">{formatPrice(cat.previous)}</td>
+                                        <td className="py-4 px-1 sm:px-4 text-right text-gray-900 font-medium font-mono whitespace-nowrap">{formatPrice(cat.current)}</td>
+                                        <td className="py-4 pl-1 sm:pl-4 text-right">
                                             <div className={`flex items-center justify-end gap-1.5 ${cat.growth >= 0 ? 'text-green-600 bg-green-50 px-2 py-1 rounded-lg w-fit ml-auto' : 'text-red-600 bg-red-50 px-2 py-1 rounded-lg w-fit ml-auto'} `}>
                                                 {cat.growth >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                                                 <span className="font-bold text-xs">{Math.abs(cat.growth).toFixed(1)}%</span>

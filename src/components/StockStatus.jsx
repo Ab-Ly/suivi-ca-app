@@ -314,7 +314,7 @@ export default function StockStatus() {
                                             <tr key={item.id} className="border-b border-notion-border last:border-0 hover:bg-notion-sidebar/50 transition-colors">
                                                 <td className="py-3 px-4 font-medium">{item.name}</td>
                                                 <td className="py-3 px-4">
-                                                    <span className="px-2 py-1 bg-notion-sidebar rounded text-xs text-notion-gray border border-notion-border">
+                                                    <span className="px-2 py-1 bg-notion-sidebar rounded text-xs text-notion-gray border border-notion-border whitespace-nowrap">
                                                         {item.category || '-'}
                                                     </span>
                                                 </td>

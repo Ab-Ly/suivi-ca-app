@@ -790,7 +790,7 @@ export default function DailyCashTracking() {
                                                         <h4 className="font-bold text-rose-800 flex items-center gap-2">
                                                             <ArrowUpRight size={18} /> SORTIE (CRÉDIT)
                                                         </h4>
-                                                        <span className="font-mono font-bold text-rose-700">{formatPrice(totalCredit)}</span>
+                                                        <span className="font-mono font-bold text-rose-700 whitespace-nowrap">{formatPrice(totalCredit)}</span>
                                                     </div>
                                                     <div className="divide-y divide-rose-100/50">
                                                         {creditItems.length === 0 ? (
@@ -1038,8 +1038,8 @@ export default function DailyCashTracking() {
             {/* Add Transaction Modal */}
             {
                 showAddModal && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
-                        <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl transform transition-all scale-100">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setShowAddModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-xl font-bold text-gray-900">Nouvelle Opération</h3>
                                 <button
@@ -1223,8 +1223,8 @@ export default function DailyCashTracking() {
 
             {/* Add Entity Modal */}
             {isAddEntityModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
-                    <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl transform transition-all scale-100">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setIsAddEntityModalOpen(false)}>
+                    <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-8">
                             <div>
                                 <h3 className="text-2xl font-bold text-gray-900">Nouvelle Société</h3>
@@ -1275,10 +1275,10 @@ export default function DailyCashTracking() {
             )}
             {/* Entity History Modal */}
             {selectedEntityHistory && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[80vh]">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setSelectedEntityHistory(null)}>
+                    <div className="bg-white rounded-2xl w-full max-w-2xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
                         {/* Header */}
-                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                             <div>
                                 <h3 className="text-xl font-bold text-gray-900">{selectedEntityHistory.name}</h3>
                                 <p className="text-gray-500 text-sm mt-1">
@@ -1294,7 +1294,7 @@ export default function DailyCashTracking() {
                         </div>
 
                         {/* Content */}
-                        <div className="overflow-y-auto p-6">
+                        <div className="overflow-y-auto p-4 md:p-6">
                             {(() => {
                                 if (loadingHistory) {
                                     return (
@@ -1312,9 +1312,9 @@ export default function DailyCashTracking() {
                                 const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
                                 movement = { in: inAmount, out: outAmount };
 
-                                return (<div className="space-y-6">
+                                return (<div className="space-y-4">
                                     {/* Summary Cards (Global) */}
-                                    <div className="grid grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                         <div className="p-4 bg-green-50 rounded-xl border border-green-100">
                                             <div className="text-sm text-green-800 font-medium mb-1">Total Historique Entrées</div>
                                             <div className="text-xl font-bold text-green-900">+{formatPrice(movement.in)}</div>
@@ -1351,26 +1351,26 @@ export default function DailyCashTracking() {
                                                     <table className="w-full text-left border-collapse relative">
                                                         <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold sticky top-0 z-10 shadow-sm">
                                                             <tr>
-                                                                <th className="p-4 border-b bg-gray-50">Date</th>
-                                                                <th className="p-4 border-b bg-gray-50">Description</th>
-                                                                <th className="p-4 border-b text-right bg-gray-50">Montant</th>
-                                                                <th className="p-4 border-b text-center bg-gray-50">Type</th>
+                                                                <th className="p-3 border-b bg-gray-50">Date</th>
+                                                                <th className="p-3 border-b bg-gray-50">Description</th>
+                                                                <th className="p-3 border-b text-right bg-gray-50">Montant</th>
+                                                                <th className="p-3 border-b text-center bg-gray-50">Type</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100">
                                                             {entityOps.map(op => (
                                                                 <tr key={op.id} className="hover:bg-gray-50 transition-colors">
-                                                                    <td className="p-4 text-gray-500 font-mono text-sm whitespace-nowrap">
+                                                                    <td className="p-3 text-gray-500 font-mono text-sm whitespace-nowrap">
                                                                         <div className="font-bold text-gray-700">{format(new Date(op.date), 'dd/MM/yyyy')}</div>
                                                                         <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
                                                                     </td>
-                                                                    <td className="p-4 font-medium text-gray-900">
+                                                                    <td className="p-3 font-medium text-gray-900">
                                                                         {op.description}
                                                                     </td>
-                                                                    <td className={`p-4 text-right font-bold font-mono ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+                                                                    <td className={`p-3 text-right font-bold font-mono whitespace-nowrap ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
                                                                         {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
                                                                     </td>
-                                                                    <td className="p-4 text-center">
+                                                                    <td className="p-3 text-center">
                                                                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${op.type === 'IN'
                                                                             ? 'bg-green-100 text-green-700'
                                                                             : 'bg-red-100 text-red-700'

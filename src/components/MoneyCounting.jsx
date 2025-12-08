@@ -468,7 +468,9 @@ export default function MoneyCounting() {
                         <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-2">Ecart</div>
                         <div className={`text-xl font-bold font-mono tracking-tight flex items-center gap-2 ${total - (parseFloat(manualExpectedAmount) || 0) === 0
                             ? 'text-emerald-600'
-                            : 'text-red-600'
+                            : total - (parseFloat(manualExpectedAmount) || 0) > 0
+                                ? 'text-blue-600'
+                                : 'text-red-600'
                             }`}>
                             {total - (parseFloat(manualExpectedAmount) || 0) > 0 ? '+' : ''}
                             {formatPrice(total - (parseFloat(manualExpectedAmount) || 0))}

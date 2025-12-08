@@ -464,9 +464,9 @@ export default function Dashboard() {
                         <h3 className="font-bold text-lg text-text-main">Évolution Volume Carburant</h3>
                         <p className="text-sm text-text-muted">Gasoil vs Sans Plomb (Litres)</p>
                     </div>
-                    <div className="h-80 p-6">
+                    <div className="h-80 p-2 sm:p-6">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={fuelChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                            <AreaChart data={fuelChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="colorGasoil" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#F6AD55" stopOpacity={0.8} />
