@@ -1,6 +1,6 @@
 export const formatPrice = (amount) => {
     if (amount === undefined || amount === null) return '0 MAD';
-    return amount.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ') + ' MAD';
+    return amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, ' ') + ' MAD';
 };
 
 export const formatNumber = (number, decimals = 0) => {

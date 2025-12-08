@@ -130,9 +130,17 @@ export default function FuelDeliveryTracking() {
         if (savedDraft) {
             try {
                 const parsed = JSON.parse(savedDraft);
-                // Map saved levels to items (assuming simple mapping or replacing items)
-                // We'll merge saved "levelBefore" into default or existing items
-                if (Array.isArray(parsed) && parsed.length > 0) {
+
+                // Handle new format { items, formData }
+                if (parsed.items && Array.isArray(parsed.items)) {
+                    setItems(parsed.items);
+                    if (parsed.formData) {
+                        setFormData(prev => ({ ...prev, ...parsed.formData }));
+                    }
+                    showNotification("Brouillon restauré", "success");
+                }
+                // Handle legacy format (Array only)
+                else if (Array.isArray(parsed) && parsed.length > 0) {
                     setItems(parsed);
                     showNotification("Brouillon restauré", "success");
                 }
@@ -143,21 +151,12 @@ export default function FuelDeliveryTracking() {
     }, []);
 
     const saveDraft = () => {
-        // Only save relevant fields to avoid clutter (mainly tankId and levelBefore)
-        // Actually, saving the whole 'items' array is easiest to restore the UI state completely
-        const cleanItems = items.map(i => ({
-            id: i.id,
-            tankId: i.tankId,
-            levelBefore: i.levelBefore,
-            levelAfter: '', // User usually wants to save Before state, After is entered during reception
-            // If user wants to save EVERYTHING (even half-filled After), we can remove the override
-        }));
-        // User request: "sauvgarder l'etat avant... remise a zero apres validation"
-        // So we focus on levelBefore persistence.
-        // Let's save exactly what is in 'items' but maybe clear 'levelAfter' if we want to be strict about "Etat Avant",
-        // but allowing full draft is more flexible. Let's save full items state for maximum utility.
-        localStorage.setItem('fuel_delivery_draft', JSON.stringify(items));
-        showNotification("État Avant sauvegardé (Brouillon)");
+        const draftData = {
+            items: items,
+            formData: formData
+        };
+        localStorage.setItem('fuel_delivery_draft', JSON.stringify(draftData));
+        showNotification("Brouillon complet sauvegardé");
     };
 
     const showNotification = (message, type = 'success') => {

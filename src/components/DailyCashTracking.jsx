@@ -4,6 +4,7 @@ import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, 
 import { format } from 'date-fns';
 import { formatPrice, formatNumber } from '../utils/formatters';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
+import MoneyCounting from './MoneyCounting';
 
 export default function DailyCashTracking() {
     const [activeTab, setActiveTab] = useState('entities'); // entities, expense, operations, reconciliation
@@ -385,6 +386,7 @@ export default function DailyCashTracking() {
                     { id: 'entities', label: 'Suivi Entités', icon: Building2 },
                     { id: 'expense', label: 'Caisse Dépense', icon: Wallet },
                     { id: 'operations', label: 'Opérations Journalières', icon: Calendar },
+                    { id: 'counting', label: 'Comptage', icon: Table },
                     { id: 'spreadsheet', label: 'CashFlow', icon: Table },
                 ].map(tab => (
                     <button
@@ -670,6 +672,10 @@ export default function DailyCashTracking() {
                                     </table>
                                 </div>
                             </div>
+                        )}
+
+                        {activeTab === 'counting' && (
+                            <MoneyCounting expectedAmount={expenseClosingBalance} />
                         )}
 
                         {activeTab === 'spreadsheet' && (
