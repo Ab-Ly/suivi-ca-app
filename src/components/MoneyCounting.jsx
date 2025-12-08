@@ -222,45 +222,99 @@ export default function MoneyCounting() {
 
     // Draft State
     const [draftStatus, setDraftStatus] = useState('');
+    const [draftId, setDraftId] = useState(null);
 
     // Date for filtering history
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-    // Cleanup draft on mount or draft load
-    useEffect(() => {
-        const savedDraft = localStorage.getItem('moneyCounting_draft');
-        if (savedDraft) {
-            try {
-                const { counts: savedCounts, expectedAmount: savedExpected } = JSON.parse(savedDraft);
-                // Only restore if date matches today? Or always restore? 
-                // Let's restore regardless but maybe warn. User usually wants to continue where they left off.
-                // For safety, let's restore if the user hasn't typed anything yet or just overwrite.
-                setCounts(savedCounts);
-                if (savedExpected !== undefined) {
-                    setManualExpectedAmount(savedExpected);
-                }
-                setDraftStatus('Brouillon restauré');
+    // Fetch Draft on Mount
+    const fetchDraft = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data, error } = await supabase
+                .from('money_counting_drafts')
+                .select('*')
+                .eq('user_id', user.id)
+                .single();
+
+            if (error && error.code !== 'PGRST116') throw error;
+
+            if (data && data.draft_data) {
+                const { counts: savedCounts, expectedAmount: savedExpected } = data.draft_data;
+                setDraftId(data.id);
+                if (savedCounts) setCounts(savedCounts);
+                if (savedExpected !== undefined) setManualExpectedAmount(savedExpected);
+
+                setDraftStatus('Brouillon restauré (Serveur)');
                 setTimeout(() => setDraftStatus(''), 3000);
-            } catch (e) {
-                console.error("Failed to parse draft", e);
             }
+        } catch (error) {
+            console.error("Error fetching draft:", error);
         }
+    };
+
+    useEffect(() => {
+        fetchDraft();
     }, []);
 
-    // Save draft on change
+    // Helper: Save Draft to DB
+    const saveDraftToDb = async (manual = false) => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                if (manual) alert("Connectez-vous pour sauvegarder un brouillon.");
+                return;
+            }
+
+            const draftData = {
+                counts,
+                expectedAmount: manualExpectedAmount,
+                date: new Date().toISOString()
+            };
+
+            const query = supabase.from('money_counting_drafts');
+            let error;
+            let newId = draftId;
+
+            if (draftId) {
+                const res = await query.update({ draft_data: draftData, updated_at: new Date() }).eq('id', draftId);
+                error = res.error;
+            } else {
+                // Check existence
+                const { data: existing } = await supabase.from('money_counting_drafts').select('id').eq('user_id', user.id).single();
+                if (existing) {
+                    const res = await query.update({ draft_data: draftData, updated_at: new Date() }).eq('id', existing.id);
+                    error = res.error;
+                    newId = existing.id;
+                } else {
+                    const res = await query.insert({ user_id: user.id, draft_data: draftData }).select().single();
+                    error = res.error;
+                    if (res.data) newId = res.data.id;
+                }
+            }
+
+            if (error) throw error;
+            if (newId) setDraftId(newId);
+
+            setDraftStatus(manual ? 'Brouillon sauvegardé !' : 'Enregistré...');
+            setTimeout(() => setDraftStatus(''), 2000);
+
+        } catch (err) {
+            console.error("Draft Save Error:", err);
+            setDraftStatus('Erreur sauvegarde');
+        }
+    };
+
+    // Auto-save draft on change (Debounced)
     useEffect(() => {
         const timeoutId = setTimeout(() => {
             const hasData = Object.values(counts).some(v => v !== '') || manualExpectedAmount !== '';
             if (hasData) {
-                localStorage.setItem('moneyCounting_draft', JSON.stringify({
-                    counts,
-                    expectedAmount: manualExpectedAmount,
-                    date: new Date().toISOString()
-                }));
-                setDraftStatus('Brouillon enregistré');
-                setTimeout(() => setDraftStatus(''), 2000);
+                saveDraftToDb(false);
             }
-        }, 1000); // Debounce save
+        }, 2000); // 2s debounce for less server hits
 
         return () => clearTimeout(timeoutId);
     }, [counts, manualExpectedAmount]);
@@ -323,7 +377,9 @@ export default function MoneyCounting() {
             });
             setManualExpectedAmount('');
             // Clear draft
-            localStorage.removeItem('moneyCounting_draft');
+            if (draftId) {
+                supabase.from('money_counting_drafts').delete().eq('id', draftId).then(() => setDraftId(null));
+            }
         }
     };
 
@@ -359,7 +415,10 @@ export default function MoneyCounting() {
             if (error) throw error;
 
             // Clear draft
-            localStorage.removeItem('moneyCounting_draft');
+            if (draftId) {
+                await supabase.from('money_counting_drafts').delete().eq('id', draftId);
+                setDraftId(null);
+            }
 
             // Refresh history
             fetchHistory();
@@ -385,13 +444,7 @@ export default function MoneyCounting() {
     };
 
     const handleSaveDraft = () => {
-        localStorage.setItem('moneyCounting_draft', JSON.stringify({
-            counts,
-            expectedAmount: manualExpectedAmount,
-            date: new Date().toISOString()
-        }));
-        setDraftStatus('Brouillon sauvegardé manuellement');
-        setTimeout(() => setDraftStatus(''), 3000);
+        saveDraftToDb(true);
     };
 
     return (
