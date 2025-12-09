@@ -317,6 +317,82 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                 });
             }
         }
+        if (period === 'week') {
+            const realGasoilPrev = fuelSalesPrevious.reduce((acc, s) => acc + (s.fuel_type === 'Gasoil' ? Number(s.quantity_liters) : 0), 0);
+            const realSSPPrev = fuelSalesPrevious.reduce((acc, s) => acc + (s.fuel_type === 'SSP' ? Number(s.quantity_liters) : 0), 0);
+
+            if (realGasoilPrev === 0 && realSSPPrev === 0) {
+                // FALLBACK: Use Historical Monthly Average for Week View
+                totalGasoilPrev = 0;
+                totalSSPPrev = 0;
+
+                for (let i = 0; i < 7; i++) {
+                    const dDate = new Date(prevStart);
+                    dDate.setDate(prevStart.getDate() + i);
+                    const monthInfo = dDate.getMonth() + 1;
+                    const daysInMonth = new Date(year - 1, monthInfo, 0).getDate();
+
+                    const histMonth = historyPrevious?.filter(h => h.month === monthInfo);
+                    let gasoilAvg = 0;
+                    let sspAvg = 0;
+
+                    histMonth?.forEach(item => {
+                        const amount = item.amount || 0;
+                        const daily = daysInMonth > 0 ? amount / daysInMonth : 0;
+                        if (item.category === 'Gasoil Volume') gasoilAvg += daily;
+                        if (item.category === 'SSP Volume') sspAvg += daily;
+                    });
+
+                    if (fuelProcessedData[i]) {
+                        fuelProcessedData[i].gasoilPrev = gasoilAvg;
+                        fuelProcessedData[i].sspPrev = sspAvg;
+                        totalGasoilPrev += gasoilAvg;
+                        totalSSPPrev += sspAvg;
+                    }
+                }
+            }
+
+            // ADJUST KPI FOR FAIR COMPARISON (Current Week)
+            const today = new Date();
+            const currentWeekStart = new Date(today);
+            const day = currentWeekStart.getDay() || 7;
+            if (day !== 1) currentWeekStart.setHours(-24 * (day - 1));
+            currentWeekStart.setHours(0, 0, 0, 0);
+
+            const isCurrentWeek = start.getTime() === currentWeekStart.getTime();
+
+            if (isCurrentWeek) {
+                const dayIndex = (today.getDay() + 6) % 7; // 0 (Mon) to 6 (Sun)
+                // Re-calculate Total to ONLY include up to today
+                totalGasoilPrev = fuelProcessedData.slice(0, dayIndex + 1).reduce((acc, d) => acc + d.gasoilPrev, 0);
+                totalSSPPrev = fuelProcessedData.slice(0, dayIndex + 1).reduce((acc, d) => acc + d.sspPrev, 0);
+            }
+        }
+
+        if (period === 'month') {
+            // SPECIAL LOGIC: N-1 Daily Comparison should use the Monthly Average per Day
+            // User Request: (total volume mois n-1 / le nombre des jours dans le mois)
+            const daysInMonth = fuelProcessedData.length;
+            const avgGasoilPrev = daysInMonth > 0 ? totalGasoilPrev / daysInMonth : 0;
+            const avgSSPPrev = daysInMonth > 0 ? totalSSPPrev / daysInMonth : 0;
+
+            fuelProcessedData.forEach(d => {
+                d.gasoilPrev = avgGasoilPrev;
+                d.sspPrev = avgSSPPrev;
+            });
+
+            // ADJUST KPI TOTALS FOR FAIR COMPARISON (Current Month)
+            // If we are viewing the current month, we should only compare N-1 against the elapsed days of N
+            const today = new Date();
+            const isCurrentMonth = today.getFullYear() === year && today.getMonth() === selectedMonth;
+
+            if (isCurrentMonth) {
+                const daysElapsed = today.getDate();
+                // Update the "Previous Total" to be the Target for the elapsed days (Avg * DaysElapsed)
+                totalGasoilPrev = avgGasoilPrev * daysElapsed;
+                totalSSPPrev = avgSSPPrev * daysElapsed;
+            }
+        }
 
         const growth = previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal) * 100 : 0;
         const gasoilGrowth = totalGasoilPrev > 0 ? ((totalGasoil - totalGasoilPrev) / totalGasoilPrev) * 100 : 0;

@@ -5,8 +5,29 @@ import { Save, History, Calculator, AlertCircle, CheckCircle2, FileEdit, RotateC
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+// Internal Toast Component
+const Toast = ({ message, type = 'success', onClose }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div className={`
+            fixed top-4 left-1/2 -translate-x-1/2 z-50 
+            flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border 
+            animate-in slide-in-from-top-2 fade-in duration-300
+            ${type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-red-100 text-red-700'}
+        `}>
+            {type === 'success' ? <CheckCircle2 size={20} className="text-green-500" /> : <AlertCircle size={20} className="text-red-500" />}
+            <span className="font-medium text-sm">{message}</span>
+        </div>
+    );
+};
+
 // Extracted component with Visual Cues
-const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange }) => {
+// Extracted component with Visual Cues - COMPACT ROW DESIGN
+const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange, onBlur }) => {
     let subtotal = 0;
     if (isCents) {
         subtotal = parseFloat(count) || 0;
@@ -14,126 +35,92 @@ const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange 
         subtotal = (Number(count) || 0) * Number(value);
     }
 
-    // Color Mapping for Moroccan Currency
+    // Color Mapping - Simplified for accent lines/bg
     const getStyles = (val, isCoin, isCents) => {
-        if (isCents) return { color: 'bg-orange-600', text: 'text-orange-700', border: 'border-orange-200', bg: 'bg-orange-50' };
+        if (isCents) return { border: 'border-orange-200', bg: 'bg-orange-50', accent: 'bg-orange-500', text: 'text-orange-700' };
         if (!isCoin) {
-            // Bills
             switch (String(val)) {
-                case '200': return { color: 'bg-blue-600', text: 'text-blue-700', border: 'border-blue-200', bg: 'bg-blue-50' };
-                case '100': return { color: 'bg-amber-700', text: 'text-amber-800', border: 'border-amber-200', bg: 'bg-amber-50' };
-                case '50': return { color: 'bg-emerald-600', text: 'text-emerald-700', border: 'border-emerald-200', bg: 'bg-emerald-50' };
-                case '20': return { color: 'bg-purple-600', text: 'text-purple-700', border: 'border-purple-200', bg: 'bg-purple-50' };
-                default: return { color: 'bg-gray-600', text: 'text-gray-700', border: 'border-gray-200', bg: 'bg-gray-50' };
+                case '200': return { border: 'border-blue-200', bg: 'bg-blue-50', accent: 'bg-blue-600', text: 'text-blue-700' };
+                case '100': return { border: 'border-amber-200', bg: 'bg-amber-50', accent: 'bg-amber-600', text: 'text-amber-800' };
+                case '50': return { border: 'border-emerald-200', bg: 'bg-emerald-50', accent: 'bg-emerald-600', text: 'text-emerald-700' };
+                case '20': return { border: 'border-purple-200', bg: 'bg-purple-50', accent: 'bg-purple-600', text: 'text-purple-700' };
+                default: return { border: 'border-gray-200', bg: 'bg-gray-50', accent: 'bg-gray-500', text: 'text-gray-700' };
             }
         } else {
             // Coins
             switch (String(val)) {
-                case '10': return { color: 'bg-yellow-500', text: 'text-yellow-700', border: 'border-yellow-200', bg: 'bg-yellow-50' };
-                // 5, 2, 1, 0.5 are predominantly silver/gray
-                case '5':
-                case '2':
-                case '1':
-                case '0.5':
-                    return { color: 'bg-gray-400', text: 'text-gray-600', border: 'border-gray-200', bg: 'bg-gray-50' };
-                default: return { color: 'bg-yellow-600', text: 'text-yellow-800', border: 'border-yellow-200', bg: 'bg-yellow-50' };
+                case '10': return { border: 'border-yellow-200', bg: 'bg-yellow-50', accent: 'bg-yellow-500', text: 'text-yellow-700' };
+                default: return { border: 'border-gray-200', bg: 'bg-gray-50', accent: 'bg-gray-400', text: 'text-gray-700' };
             }
         }
     };
 
     const styles = getStyles(value, isCoin, isCents);
-
-    // Image path
     const imagePath = isCents
         ? '/currency/cents.png'
         : `/currency/${value}dh.${isCoin ? 'png' : 'jpg'}`;
 
     return (
         <div className={`
-            relative overflow-hidden rounded-2xl transition-all duration-300
-            border hover:shadow-md
-            ${isCoin ? styles.bg : 'bg-white'} 
-            ${styles.border} ${isCents ? 'ring-4 ring-orange-100' : 'hover:border-opacity-100 border-opacity-60'}
-            group
+            flex items-center gap-3 p-2 rounded-xl border border-transparent 
+            hover:border-gray-200 hover:bg-white hover:shadow-sm transition-all duration-200
+            ${isCoin ? 'bg-gray-50/50' : 'bg-white'} 
+            group relative overflow-hidden
         `}>
+            {/* Visual Cue - Left Accent Bar */}
+            <div className={`absolute left-0 top-0 bottom-0 w-1 ${styles.accent} opacity-0 group-hover:opacity-100 transition-opacity`} />
 
-            {/* Visual Section */}
-            <div className={`
-                relative w-full flex items-center justify-center overflow-hidden
-                ${isCoin || isCents ? 'h-24' : 'h-28'}
-                ${!isCoin && !isCents && styles.bg}
-            `}>
-                {/* Fallback pattern/color if image fails or loading */}
-                <div className={`absolute inset-0 opacity-10 ${styles.color}`}></div>
+            {/* Image Container - Fixed Width */}
+            <div className="w-16 h-12 flex-shrink-0 flex items-center justify-center bg-white rounded-lg border border-gray-100 shadow-sm relative overflow-hidden">
+                <img
+                    src={imagePath}
+                    alt={`${value} DH`}
+                    className={`max-h-full max-w-full object-contain ${isCoin || isCents ? 'mix-blend-multiply drop-shadow-sm p-1' : 'p-0.5'}`}
+                    onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.nextSibling.style.display = 'flex'; }}
+                />
+                {/* Fallback */}
+                <div className="hidden absolute inset-0 items-center justify-center font-bold text-gray-400 text-xs">
+                    {isCents ? '¢' : value}
+                </div>
+            </div>
 
-                {/* Real Image (Now for ALL types including cents) */}
-                <div className={`w-full h-full flex items-center justify-center p-2 transition-transform duration-500 group-hover:scale-105`}>
-                    <img
-                        src={imagePath}
-                        alt={isCents ? "Centimes" : `${value} DH`}
+            {/* Input Area - Expands */}
+            <div className="flex-1 flex flex-col justify-center">
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-8">
+                        {isCents ? 'VAL' : 'QTÉ'}
+                    </span>
+                    <input
+                        type={isCents ? "number" : "text"}
+                        inputMode={isCents ? "decimal" : "numeric"}
+                        value={count}
+                        onChange={(e) => onCountChange(value, e.target.value)}
+                        onBlur={onBlur}
+                        placeholder="0"
                         className={`
-                            max-h-full max-w-full 
-                            ${(isCoin || isCents) ? 'object-contain drop-shadow-md mix-blend-multiply' : 'object-contain shadow-sm rounded-sm'}
+                            w-full bg-transparent text-xl font-bold text-gray-900 placeholder-gray-200 outline-none
+                            border-b border-gray-100 focus:border-indigo-500 transition-colors py-0.5
                         `}
-                        onError={(e) => {
-                            e.target.style.display = 'none'; // Hide broken image
-                            e.target.parentElement.nextSibling.style.display = 'flex'; // Show fallback
-                        }}
                     />
-                    {/* Fallback Icon Area (Originally hidden, shown if error) */}
-                    <div className="hidden absolute inset-0 items-center justify-center">
-                        <div className={`
-                            flex items-center justify-center font-bold text-xl text-white shadow-sm
-                            ${(isCoin || isCents) ? 'w-12 h-12 rounded-full border-2 border-white' : 'w-20 h-10 rounded-md'}
-                            ${styles.color}
-                        `}>
-                            {isCents ? '¢' : value}
-                        </div>
-                    </div>
                 </div>
             </div>
 
-            {/* Controls Section */}
-            <div className={`p-3 relative ${isCoin ? 'bg-transparent' : 'bg-white'}`}>
-                {/* Label Badge (Restored for ALL) */}
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full shadow-sm border border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex gap-1 whitespace-nowrap bg-white">
-                    {isCents ? 'Montant' : (isCoin ? 'Pièce' : 'Billet')}
-                    <span className={styles.text}>{isCents ? 'Vrac' : `${value} DH`}</span>
+            {/* Subtotal - Fixed Width */}
+            {!isCents && (
+                <div className={`
+                    w-24 flex items-center justify-end font-mono font-bold text-sm
+                    ${subtotal > 0 ? styles.text : 'text-gray-300'}
+                `}>
+                    {formatPrice(subtotal)}
                 </div>
+            )}
 
-                <div className="mt-2 flex items-end gap-2">
-                    <div className="relative flex-1">
-                        <input
-                            type={isCents ? "number" : "text"}
-                            inputMode={isCents ? "decimal" : "numeric"}
-                            step={isCents ? "0.01" : "1"}
-                            pattern={isCents ? undefined : "[0-9]*"}
-                            value={count}
-                            onChange={(e) => onCountChange(value, e.target.value)}
-                            placeholder="0"
-                            className={`
-                                w-full border-b-2 border-gray-200 rounded-t-lg py-1 px-2 text-2xl font-bold text-center outline-none transition-colors
-                                focus:bg-white focus:border-indigo-500 ${styles.text} placeholder-gray-200
-                                ${isCoin ? 'bg-white/60' : 'bg-gray-50/50'}
-                            `}
-                        />
-                        <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-300 pointer-events-none pr-1">
-                            {isCents ? 'DH' : 'QTÉ'}
-                        </span>
-                    </div>
-
-                    {/* Subtotal Restored for BBM & PPM (Bills & Coins) */}
-                    {!isCents && (
-                        <div className={`
-                            h-10 px-3 rounded-lg flex items-center justify-center font-mono font-bold text-sm border border-gray-100 min-w-[80px]
-                            ${subtotal > 0 ? 'text-gray-900 border-indigo-100 bg-indigo-50/30' : 'text-gray-300'}
-                            ${isCoin ? 'bg-white/60' : 'bg-gray-50'}
-                        `}>
-                            {formatPrice(subtotal)}
-                        </div>
-                    )}
+            {/* Cents Label instead of subtotal for clarity */}
+            {isCents && (
+                <div className="w-24 flex items-center justify-end text-xs font-medium text-gray-400">
+                    Calculé
                 </div>
-            </div>
+            )}
         </div>
     );
 };
@@ -223,6 +210,7 @@ export default function MoneyCounting() {
     // Draft State
     const [draftStatus, setDraftStatus] = useState('');
     const [draftId, setDraftId] = useState(null);
+    const [showToast, setShowToast] = useState(false); // Controls Toast visibility
 
     // Date for filtering history
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -233,13 +221,16 @@ export default function MoneyCounting() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
+            // Robust fetch: order by updated_at desc, limit 1 to avoid .single() crashes if duplicates exist
             const { data, error } = await supabase
                 .from('money_counting_drafts')
                 .select('*')
                 .eq('user_id', user.id)
-                .single();
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
 
-            if (error && error.code !== 'PGRST116') throw error;
+            if (error) throw error;
 
             if (data && data.draft_data) {
                 const { counts: savedCounts, expectedAmount: savedExpected } = data.draft_data;
@@ -247,8 +238,8 @@ export default function MoneyCounting() {
                 if (savedCounts) setCounts(savedCounts);
                 if (savedExpected !== undefined) setManualExpectedAmount(savedExpected);
 
-                setDraftStatus('Brouillon restauré (Serveur)');
-                setTimeout(() => setDraftStatus(''), 3000);
+                setDraftStatus('Brouillon restauré');
+                setShowToast(true); // Notify restoration
             }
         } catch (error) {
             console.error("Error fetching draft:", error);
@@ -279,11 +270,19 @@ export default function MoneyCounting() {
             let newId = draftId;
 
             if (draftId) {
+                // Update specific known draft
                 const res = await query.update({ draft_data: draftData, updated_at: new Date() }).eq('id', draftId);
                 error = res.error;
             } else {
-                // Check existence
-                const { data: existing } = await supabase.from('money_counting_drafts').select('id').eq('user_id', user.id).single();
+                // Check existence robustly before inserting
+                const { data: existing } = await supabase
+                    .from('money_counting_drafts')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .order('updated_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
                 if (existing) {
                     const res = await query.update({ draft_data: draftData, updated_at: new Date() }).eq('id', existing.id);
                     error = res.error;
@@ -298,8 +297,15 @@ export default function MoneyCounting() {
             if (error) throw error;
             if (newId) setDraftId(newId);
 
-            setDraftStatus(manual ? 'Brouillon sauvegardé !' : 'Enregistré...');
-            setTimeout(() => setDraftStatus(''), 2000);
+            if (manual) {
+                setDraftStatus('Brouillon sauvegardé !');
+                setShowToast(true);
+            } else {
+                setDraftStatus('Enregistrement...');
+                // Don't show toast for auto-saves unless requested (user asked for onBlur which is manual-like)
+                // Actually user said "quand j'ajoute une valeur et je quite [...] le brouillon sauvgarde automatiquement, et ajouter une notification ui"
+                // So onBlur should trigger toast.
+            }
 
         } catch (err) {
             console.error("Draft Save Error:", err);
@@ -307,7 +313,7 @@ export default function MoneyCounting() {
         }
     };
 
-    // Auto-save draft on change (Debounced)
+    // Auto-save draft on change (Debounced) - Silent background save
     useEffect(() => {
         const timeoutId = setTimeout(() => {
             const hasData = Object.values(counts).some(v => v !== '') || manualExpectedAmount !== '';
@@ -368,6 +374,11 @@ export default function MoneyCounting() {
         }
     };
 
+    // Trigger explicit save on blur
+    const handleBlur = () => {
+        saveDraftToDb(true); // 'true' enables the toast notification
+    };
+
     const handleReset = () => {
         if (window.confirm('Voulez-vous réinitialiser le comptage ?')) {
             setCounts({
@@ -423,21 +434,9 @@ export default function MoneyCounting() {
             // Refresh history
             fetchHistory();
             alert('Comptage sauvegardé !');
-
-            // Optional: Clear inputs after save? User request "sans quitter la place". 
-            // Usually valid to clear after explicit save, but maybe they want to tweak. 
-            // Let's keep data but maybe reset 'Vers-Esp' if logic dictates. 
-            // For now, keep as is.
         } catch (error) {
             console.error('Error saving count:', error);
             alert('Erreur lors de la sauvegarde: ' + (error.message || error.details || JSON.stringify(error)));
-            console.log('Payload:', {
-                date: selectedDate,
-                counts: counts,
-                total_calc: total,
-                expected_amount: expectedVal,
-                gap: total - expectedVal
-            });
         } finally {
             setSaving(false);
         }
@@ -449,6 +448,7 @@ export default function MoneyCounting() {
 
     return (
         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300 pb-20">
+            {showToast && <Toast message={draftStatus} onClose={() => setShowToast(false)} />}
 
             {/* Header / Date */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 sticky top-4 z-10 flex items-center justify-between">
@@ -463,11 +463,6 @@ export default function MoneyCounting() {
                         onChange={(e) => setSelectedDate(e.target.value)}
                         className="mt-1 text-sm text-gray-500 border-none bg-transparent p-0 focus:ring-0 cursor-pointer"
                     />
-                    {draftStatus && (
-                        <div className="text-xs text-orange-500 font-medium animate-pulse mt-1">
-                            {draftStatus}
-                        </div>
-                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -510,6 +505,7 @@ export default function MoneyCounting() {
                                         setManualExpectedAmount(rawValue);
                                     }
                                 }}
+                                onBlur={handleBlur} // Auto-save trigger
                                 className="w-full bg-transparent border-none p-0 text-xl font-bold text-orange-900 font-mono tracking-tight focus:ring-0 placeholder-orange-200"
                             />
                             <span className="text-xl font-bold text-orange-900 font-mono tracking-tight">MAD</span>
@@ -574,10 +570,10 @@ export default function MoneyCounting() {
                         <span className="text-green-700 font-mono text-base">{formatPrice(bbmTotal)}</span>
                     </h3>
                     <div className="flex flex-col gap-3">
-                        <DenominationCard value="200" counts={counts} count={counts['200']} onCountChange={handleCountChange} />
-                        <DenominationCard value="100" counts={counts} count={counts['100']} onCountChange={handleCountChange} />
-                        <DenominationCard value="50" counts={counts} count={counts['50']} onCountChange={handleCountChange} />
-                        <DenominationCard value="20" counts={counts} count={counts['20']} onCountChange={handleCountChange} />
+                        <DenominationCard value="200" counts={counts} count={counts['200']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                        <DenominationCard value="100" counts={counts} count={counts['100']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                        <DenominationCard value="50" counts={counts} count={counts['50']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                        <DenominationCard value="20" counts={counts} count={counts['20']} onCountChange={handleCountChange} onBlur={handleBlur} />
                     </div>
                 </div>
 
@@ -591,15 +587,15 @@ export default function MoneyCounting() {
                         <span className="text-orange-700 font-mono text-base">{formatPrice(pmTotal)}</span>
                     </h3>
                     <div className="flex flex-col gap-3">
-                        <DenominationCard value="10" isCoin count={counts['10']} onCountChange={handleCountChange} />
-                        <DenominationCard value="5" isCoin count={counts['5']} onCountChange={handleCountChange} />
-                        <DenominationCard value="2" isCoin count={counts['2']} onCountChange={handleCountChange} />
-                        <DenominationCard value="1" isCoin count={counts['1']} onCountChange={handleCountChange} />
-                        <DenominationCard value="0.5" label="0.50" isCoin count={counts['0.5']} onCountChange={handleCountChange} />
+                        <DenominationCard value="10" isCoin count={counts['10']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                        <DenominationCard value="5" isCoin count={counts['5']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                        <DenominationCard value="2" isCoin count={counts['2']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                        <DenominationCard value="1" isCoin count={counts['1']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                        <DenominationCard value="0.5" label="0.50" isCoin count={counts['0.5']} onCountChange={handleCountChange} onBlur={handleBlur} />
 
                         {/* Centimes / Vrac */}
                         <div className="col-span-full pt-2 border-t border-dashed">
-                            <DenominationCard value="cents" label="Centimes / Vrac" isCoin isCents count={counts['cents']} onCountChange={handleCountChange} />
+                            <DenominationCard value="cents" label="Centimes / Vrac" isCoin isCents count={counts['cents']} onCountChange={handleCountChange} onBlur={handleBlur} />
                         </div>
                     </div>
                 </div>

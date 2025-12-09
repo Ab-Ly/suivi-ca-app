@@ -101,28 +101,54 @@ export default function Dashboard() {
             const fuelMap = {};
 
             // Helper to initialize map entry
-            const initMapEntry = (dateKey) => {
+            const initMapEntry = (dateKey, sortKey) => {
                 if (!dailyMap[dateKey]) {
-                    dailyMap[dateKey] = { name: dateKey, shop: 0, cafe: 0, bosch: 0, pneumatique: 0, lub_piste: 0, lub_bosch: 0 };
+                    dailyMap[dateKey] = { name: dateKey, sortKey: sortKey, shop: 0, cafe: 0, bosch: 0, pneumatique: 0, lub_piste: 0, lub_bosch: 0 };
                 }
                 if (!fuelMap[dateKey]) {
-                    fuelMap[dateKey] = { name: dateKey, gasoil: 0, ssp: 0 };
+                    fuelMap[dateKey] = { name: dateKey, sortKey: sortKey, gasoil: 0, ssp: 0 };
                 }
+            };
+
+            // Helper to get consistent keys and sort values
+            const getDateKeys = (dateStr) => {
+                const d = new Date(dateStr);
+                let dateKey, sortKey;
+
+                if (period === 'year') {
+                    dateKey = d.toLocaleDateString('fr-FR', { month: 'short' });
+                    sortKey = d.getMonth(); // 0-11 for sorting
+                } else if (period === 'month' || period === 'week') {
+                    // Use actual date DD/MM for timeline
+                    dateKey = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+                    sortKey = d.getTime(); // timestamp for sorting
+                } else {
+                    // Day view (fallback or specific) - usually groups by Hour? 
+                    // Current code grouped by weekday for everything else. 
+                    // Let's stick to DD/MM even for 'day' to be safe, or if 'day' view is actually hour-based, we'd need that.
+                    // But usually dashboard is 'Day' period = "Yesterday" or "Today".
+                    // If period is 'day', usually we want hourly breakdown?
+                    // The fetch logic for 'day' fetches -1 day range.
+                    // Existing logic used `weekday: short` which was "lun."
+                    // Let's use HH:00 for 'day' view if we want hourly, or just DD/MM if it's a summary.
+                    // Given the request is about "values Lundi sont cumulés", implying a multi-day view.
+                    // For 'day' view (single day), `weekday` results in just ONE bar "lun.".
+                    // Let's assume standard behavior:
+                    // Only Year uses Month names.
+                    // All others use DD/MM.
+                    dateKey = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+                    sortKey = d.getTime();
+                }
+                return { dateKey, sortKey };
             };
 
             // Process Real Sales
             sales.forEach(sale => {
                 const amount = sale.total_price;
                 const category = sale.articles?.category || 'Autre';
+                const location = sale.sales_location;
 
-                let dateKey;
-                if (period === 'year') {
-                    dateKey = new Date(sale.sale_date).toLocaleDateString('fr-FR', { month: 'short' }); // Jan, Fév...
-                } else {
-                    dateKey = new Date(sale.sale_date).toLocaleDateString('fr-FR', { weekday: 'short' });
-                }
-
-                const location = sale.sales_location; // 'piste' or 'bosch'
+                const { dateKey, sortKey } = getDateKeys(sale.sale_date);
 
                 total += amount;
 
@@ -137,7 +163,7 @@ export default function Dashboard() {
                 else if (mappedCategory === 'Lubrifiant Piste') lub_piste += amount;
 
                 // Chart Data
-                initMapEntry(dateKey);
+                initMapEntry(dateKey, sortKey);
 
                 if (mappedCategory === 'Shop') dailyMap[dateKey].shop += amount;
                 else if (mappedCategory === 'Café') dailyMap[dateKey].cafe += amount;
@@ -150,14 +176,9 @@ export default function Dashboard() {
             // Process Fuel Sales
             fuelSales.forEach(sale => {
                 const qty = Number(sale.quantity_liters);
-                let dateKey;
-                if (period === 'year') {
-                    dateKey = new Date(sale.sale_date).toLocaleDateString('fr-FR', { month: 'short' });
-                } else {
-                    dateKey = new Date(sale.sale_date).toLocaleDateString('fr-FR', { weekday: 'short' });
-                }
+                const { dateKey, sortKey } = getDateKeys(sale.sale_date);
 
-                initMapEntry(dateKey);
+                initMapEntry(dateKey, sortKey);
 
                 if (sale.fuel_type === 'Gasoil') {
                     fuel_gasoil += qty;
@@ -170,37 +191,44 @@ export default function Dashboard() {
             });
 
             // Process Historical Data (Manual Entries)
-            const MONTH_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+            // Note: Historical data is strictly aggregated by Month/Year in the DB 'historical_sales' table usually (month columns).
+            // If period === 'year', we use it. If period === 'month', we might have granular data or not?
+            // Usually historical_sales has 'month' column (int 1-12).
+            // So historical data ONLY applies effectively to 'year' view where we group by month.
+            // If the user selects 'month' view, we can't really map 'historical_sales' (monthly aggregate) to specific daily ticks.
+            // So we only process historical data if period === 'year'.
 
-            historicalData.forEach(item => {
-                const amount = item.amount;
-                const category = item.category;
-                const dateKey = MONTH_LABELS[item.month - 1];
+            if (period === 'year') {
+                const MONTH_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
-                // Only add to Total if NOT Fuel Volume
-                const catLower = (category || '').toLowerCase();
-                const isFuel = catLower.includes('gasoil') || catLower.includes('ssp') || catLower.includes('sans plomb');
+                historicalData.forEach(item => {
+                    const amount = item.amount;
+                    const category = item.category;
 
-                if (!isFuel) {
-                    total += amount;
-                }
+                    // Historical data has 'month' (1-12)
+                    const monthIndex = item.month - 1;
+                    const dateKey = MONTH_LABELS[monthIndex];
+                    const sortKey = monthIndex; // Consistent with year view sort logic
 
-                // Category Stats
-                // For historical data, we assume categories are already somewhat standardized, but we run them through mapping to be safe/consistent
-                // Historical data usually doesn't have 'location' or 'articleName' in the same way, but let's check what we have.
-                // Looking at historical_sales table structure from previous context, it has 'category'.
-                const mappedCategory = getMappedCategory(category, '', '');
+                    // Only add to Total if NOT Fuel Volume
+                    const catLower = (category || '').toLowerCase();
+                    const isFuel = catLower.includes('gasoil') || catLower.includes('ssp') || catLower.includes('sans plomb');
 
-                if (mappedCategory === 'Shop') shop += amount;
-                else if (mappedCategory === 'Café') cafe += amount;
-                else if (mappedCategory === 'Bosch Service' || mappedCategory === "Main d'oeuvre") bosch += amount;
-                else if (mappedCategory === 'Pneumatique') pneumatique += amount;
-                else if (mappedCategory === 'Lubrifiant Piste') lub_piste += amount;
-                else if (mappedCategory === 'Lubrifiant Bosch') lub_bosch += amount;
+                    if (!isFuel) {
+                        total += amount;
+                    }
 
-                // Chart Data
-                if (period === 'year') {
-                    initMapEntry(dateKey);
+                    const mappedCategory = getMappedCategory(category, '', '');
+
+                    if (mappedCategory === 'Shop') shop += amount;
+                    else if (mappedCategory === 'Café') cafe += amount;
+                    else if (mappedCategory === 'Bosch Service' || mappedCategory === "Main d'oeuvre") bosch += amount;
+                    else if (mappedCategory === 'Pneumatique') pneumatique += amount;
+                    else if (mappedCategory === 'Lubrifiant Piste') lub_piste += amount;
+                    else if (mappedCategory === 'Lubrifiant Bosch') lub_bosch += amount;
+
+                    // Chart Data
+                    initMapEntry(dateKey, sortKey);
 
                     if (mappedCategory === 'Shop') dailyMap[dateKey].shop += amount;
                     else if (mappedCategory === 'Café') dailyMap[dateKey].cafe += amount;
@@ -208,38 +236,31 @@ export default function Dashboard() {
                     else if (mappedCategory === 'Pneumatique') dailyMap[dateKey].pneumatique += amount;
                     else if (mappedCategory === 'Lubrifiant Piste') dailyMap[dateKey].lub_piste += amount;
                     else if (mappedCategory === 'Lubrifiant Bosch') dailyMap[dateKey].lub_bosch += amount;
-                }
 
-                // Fuel Historical Data
-                const cat = (category || '').toLowerCase();
-                const numAmount = Number(amount) || 0;
-
-                // Robust check for Fuel
-                if (cat.includes('gasoil')) {
-                    fuel_gasoil += numAmount;
-                    if (period === 'year') {
-                        initMapEntry(dateKey);
+                    // Fuel Historical Data
+                    const numAmount = Number(amount) || 0;
+                    if (catLower.includes('gasoil')) {
+                        fuel_gasoil += numAmount;
+                        initMapEntry(dateKey, sortKey);
                         fuelMap[dateKey].gasoil += numAmount;
                     }
-                }
-                else if (cat.includes('ssp') || cat.includes('sans plomb')) {
-                    fuel_ssp += numAmount;
-                    if (period === 'year') {
-                        initMapEntry(dateKey);
+                    else if (catLower.includes('ssp') || catLower.includes('sans plomb')) {
+                        fuel_ssp += numAmount;
+                        initMapEntry(dateKey, sortKey);
                         fuelMap[dateKey].ssp += numAmount;
                     }
-                }
-            });
+                });
+            }
 
-            // Sort chart data for year view to ensure months are in order
+            // Sort chart data
             let chartDataArray = Object.values(dailyMap);
             let fuelChartArray = Object.values(fuelMap);
 
-            if (period === 'year') {
-                const sorter = (a, b) => MONTH_LABELS.indexOf(a.name) - MONTH_LABELS.indexOf(b.name);
-                chartDataArray.sort(sorter);
-                fuelChartArray.sort(sorter);
-            }
+            // Sort by the sortKey we created
+            const sorter = (a, b) => a.sortKey - b.sortKey;
+
+            chartDataArray.sort(sorter);
+            fuelChartArray.sort(sorter);
 
             setStats({ total, shop, cafe, bosch, pneumatique, lub_piste, lub_bosch, fuel_gasoil, fuel_ssp });
             setChartData(chartDataArray);

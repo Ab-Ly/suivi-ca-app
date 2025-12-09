@@ -961,27 +961,48 @@ export default function DailyCashTracking() {
                                         <div className="relative z-10">
                                             <div className="flex items-center gap-3 mb-4">
                                                 <div className="p-2.5 bg-gray-50 rounded-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-gray-100">
-                                                    <Wallet size={22} className="text-gray-700" />
+                                                    <Building2 size={22} className="text-gray-700" />
                                                 </div>
-                                                <span className="text-sm font-bold uppercase tracking-widest text-gray-500">Solde Journalier</span>
+                                                <span className="text-sm font-bold uppercase tracking-widest text-gray-500">Solde Sociétés</span>
                                             </div>
 
-                                            <div className="flex items-baseline gap-2">
-                                                <div className="text-4xl font-black tracking-tight text-gray-900">
-                                                    {formatPrice(dailyTotalCredit - dailyTotalDebit)}
-                                                </div>
-                                            </div>
+                                            {(() => {
+                                                const steBalances = Object.values(entityClosingBalances);
+                                                const totalStePositive = steBalances.filter(b => b > 0).reduce((a, b) => a + b, 0);
+                                                const totalSteNegative = steBalances.filter(b => b < 0).reduce((a, b) => a + b, 0);
+                                                const totalSteNet = totalStePositive + totalSteNegative;
 
-                                            <div className="mt-4 flex items-center gap-2">
-                                                <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${(dailyTotalCredit - dailyTotalDebit) >= 0
-                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                                    : 'bg-rose-50 text-rose-700 border-rose-100'
-                                                    }`}>
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${(dailyTotalCredit - dailyTotalDebit) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
-                                                        }`}></div>
-                                                    {(dailyTotalCredit - dailyTotalDebit) >= 0 ? 'Solde Positif' : 'Solde Négatif'}
-                                                </div>
-                                            </div>
+                                                return (
+                                                    <div>
+                                                        <div className="flex items-baseline gap-2">
+                                                            <div className="text-4xl font-black tracking-tight text-gray-900">
+                                                                {formatPrice(totalSteNet)}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-4 space-y-2">
+                                                            <div className="flex justify-between items-center text-sm">
+                                                                <span className="text-gray-500 font-medium flex items-center gap-1.5">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Solde Positif
+                                                                </span>
+                                                                <span className="font-bold text-emerald-600 font-mono">+{formatPrice(totalStePositive)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center text-sm">
+                                                                <span className="text-gray-500 font-medium flex items-center gap-1.5">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Solde Négatif
+                                                                </span>
+                                                                <span className="font-bold text-rose-600 font-mono">{formatPrice(totalSteNegative)}</span>
+                                                            </div>
+                                                            <div className="pt-2 mt-2 border-t border-gray-100 flex justify-between items-center text-sm">
+                                                                <span className="text-gray-400 font-bold uppercase text-xs">Écart Global</span>
+                                                                <span className={`font-black font-mono ${totalSteNet >= 0 ? 'text-indigo-600' : 'text-orange-600'}`}>
+                                                                    {totalSteNet > 0 ? '+' : ''}{formatPrice(totalSteNet)}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>

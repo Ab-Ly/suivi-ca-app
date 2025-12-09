@@ -646,10 +646,15 @@ export default function FuelDeliveryTracking() {
                                                         {new Date(reception.date).toLocaleDateString('fr-FR')}
                                                         <span className="hidden md:inline text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">BL: {reception.bl_number || '-'}</span>
                                                     </div>
-                                                    <div className="text-xs text-gray-500 mt-1 flex gap-2">
-                                                        <span>Fact: <strong>{formatNumber(reception.total_quantity_billed)}</strong></span>
-                                                        <span className="text-gray-300">|</span>
-                                                        <span>Reçu: <strong>{formatNumber(reception.total_quantity_observed)}</strong></span>
+                                                    <div className="mt-2 grid grid-cols-2 gap-4 border-t border-gray-50 pt-2 w-full max-w-[200px] md:max-w-none">
+                                                        <div>
+                                                            <span className="text-[10px] text-gray-400 uppercase block leading-none mb-0.5">Facturé</span>
+                                                            <span className="font-bold text-gray-600 text-sm block leading-tight">{formatNumber(reception.total_quantity_billed)}</span>
+                                                        </div>
+                                                        <div className="relative pl-3 border-l border-gray-100">
+                                                            <span className="text-[10px] text-gray-400 uppercase block leading-none mb-0.5">Reçu</span>
+                                                            <span className="font-bold text-gray-900 text-sm block leading-tight">{formatNumber(reception.total_quantity_observed)}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>

@@ -13,7 +13,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
     const [submitting, setSubmitting] = useState(false);
 
     // Article Form State
-    const [newItem, setNewItem] = useState({ article: null, quantity: 1, price: 0, sales_location: 'piste' });
+    const [newItem, setNewItem] = useState({ article: null, quantity: '1', price: '', sales_location: 'piste' });
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -72,7 +72,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
         setNewItem({
             ...newItem,
             article,
-            price: article.price,
+            price: article.price?.toString() || '',
             sales_location: 'piste'
         });
         setSearchTerm(article.name);
@@ -81,30 +81,33 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
 
     const handleAddItem = () => {
         if (!newItem.article) return;
-        if (newItem.quantity <= 0) return;
+        const qty = parseFloat(newItem.quantity);
+        const prc = parseFloat(newItem.price);
+
+        if (isNaN(qty) || qty <= 0) return;
 
         setSelectedItems(prev => {
-            const existing = prev.find(item => item.id === newItem.article.id && item.sales_location === newItem.sales_location && item.price === newItem.price);
+            const existing = prev.find(item => item.id === newItem.article.id && item.sales_location === newItem.sales_location && item.price === prc);
 
             if (existing) {
                 return prev.map(item =>
-                    (item.id === newItem.article.id && item.sales_location === newItem.sales_location && item.price === newItem.price)
-                        ? { ...item, quantity: item.quantity + newItem.quantity }
+                    (item.id === newItem.article.id && item.sales_location === newItem.sales_location && item.price === prc)
+                        ? { ...item, quantity: item.quantity + qty }
                         : item
                 );
             }
             return [...prev, {
                 id: newItem.article.id,
                 name: newItem.article.name,
-                price: newItem.price,
-                quantity: newItem.quantity,
+                price: prc || 0,
+                quantity: qty,
                 type: newItem.article.type,
                 category: newItem.article.category,
                 sales_location: newItem.sales_location
             }];
         });
 
-        setNewItem({ article: null, quantity: 1, price: 0, sales_location: 'piste' });
+        setNewItem({ article: null, quantity: '1', price: '', sales_location: 'piste' });
         setSearchTerm('');
     };
 
@@ -273,11 +276,19 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-medium text-notion-gray mb-1">Quantité</label>
                                     <input
-                                        type="number"
-                                        min="1"
+                                        type="text"
+                                        inputMode="decimal"
                                         className="w-full px-3 py-2 text-sm border border-notion-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                                         value={newItem.quantity}
-                                        onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 0 })}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(',', '.');
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                setNewItem({ ...newItem, quantity: val });
+                                            }
+                                        }}
+                                        onBlur={() => {
+                                            if (newItem.quantity === '' || isNaN(parseFloat(newItem.quantity))) setNewItem({ ...newItem, quantity: '1' });
+                                        }}
                                     />
                                 </div>
 
@@ -285,12 +296,20 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-medium text-notion-gray mb-1">Prix U.</label>
                                     <input
-                                        type="number"
-                                        min="0"
+                                        type="text"
+                                        inputMode="decimal"
                                         readOnly={!isService}
                                         className={`w-full px-3 py-2 text-sm border border-notion-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${!isService ? 'bg-gray-50 text-notion-gray' : 'bg-white'}`}
                                         value={newItem.price}
-                                        onChange={(e) => isService && setNewItem({ ...newItem, price: parseFloat(e.target.value) || 0 })}
+                                        onChange={(e) => {
+                                            if (isService) {
+                                                const val = e.target.value.replace(',', '.');
+                                                if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                    setNewItem({ ...newItem, price: val });
+                                                }
+                                            }
+                                        }}
+                                        placeholder="0"
                                     />
                                 </div>
 
@@ -456,9 +475,15 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                                     <div className="flex flex-col sm:flex-row gap-2">
                                         <div className="relative flex-1">
                                             <input
-                                                type="number"
+                                                type="text"
+                                                inputMode="decimal"
                                                 value={fuelForm.quantity}
-                                                onChange={(e) => setFuelForm({ ...fuelForm, quantity: e.target.value })}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(',', '.');
+                                                    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                        setFuelForm({ ...fuelForm, quantity: val });
+                                                    }
+                                                }}
                                                 placeholder="0.00"
                                                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-lg font-medium"
                                             />

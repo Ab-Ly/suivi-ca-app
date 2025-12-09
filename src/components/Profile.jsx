@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Loader2, Save, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Loader2, Save, Lock, User, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function Profile() {
     const [user, setUser] = useState(null);
@@ -53,6 +53,8 @@ export default function Profile() {
             <h2 className="text-2xl font-bold bg-gradient-purple bg-clip-text text-transparent">Mon Profil</h2>
 
             <div className="grid gap-6 max-w-2xl">
+
+
                 {/* User Info Card */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <div className="flex items-center gap-4 mb-4">
@@ -85,8 +87,8 @@ export default function Profile() {
 
                     {message && (
                         <div className={`mb-6 px-4 py-3 rounded-xl text-sm flex items-center gap-2 ${message.type === 'success'
-                                ? 'bg-green-50 border border-green-200 text-green-700'
-                                : 'bg-red-50 border border-red-200 text-red-600'
+                            ? 'bg-green-50 border border-green-200 text-green-700'
+                            : 'bg-red-50 border border-red-200 text-red-600'
                             }`}>
                             {message.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
                             {message.text}
