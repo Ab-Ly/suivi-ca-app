@@ -129,11 +129,16 @@ const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange,
 const HistoryItem = ({ item, onDelete }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Filter counts to only show those with values
-    const details = Object.entries(item.counts).filter(([key, value]) => {
-        if (key === 'cents') return parseFloat(value) > 0;
-        return parseInt(value) > 0;
-    });
+    // Filter counts to only show those with values and sort them
+    const sortOrder = ['200', '100', '50', '20', '10', '5', '2', '1', '0.5', 'cents'];
+    const details = Object.entries(item.counts)
+        .filter(([key, value]) => {
+            if (key === 'cents') return parseFloat(value) > 0;
+            return parseInt(value) > 0;
+        })
+        .sort(([keyA], [keyB]) => {
+            return sortOrder.indexOf(keyA) - sortOrder.indexOf(keyB);
+        });
 
     return (
         <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden transition-all">
@@ -159,18 +164,69 @@ const HistoryItem = ({ item, onDelete }) => {
             </div>
 
             {isExpanded && (
-                <div className="bg-gray-50 p-3 border-t border-gray-100 text-sm space-y-3">
-                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                        {details.map(([key, value]) => (
-                            <div key={key} className="flex justify-between items-center border-b border-gray-200 pb-1">
-                                <span>{key === 'cents' ? 'Centimes' : `${key} DH`}</span>
-                                <span className="font-mono font-bold">
-                                    {key === 'cents' ? formatPrice(parseFloat(value)) : `x ${value}`}
+                <div className="bg-gray-50 p-3 border-t border-gray-100 text-sm space-y-4">
+                    {/* Billets Section */}
+                    {details.filter(([key]) => ['200', '100', '50', '20'].includes(key)).length > 0 && (
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="font-bold text-gray-700 text-xs uppercase tracking-wider">Billets</span>
+                                <span className="font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded text-xs">
+                                    {formatPrice(details
+                                        .filter(([key]) => ['200', '100', '50', '20'].includes(key))
+                                        .reduce((acc, [key, val]) => acc + (Number(val) * Number(key)), 0)
+                                    )}
                                 </span>
                             </div>
-                        ))}
-                    </div>
-                    <div className="flex justify-end pt-2">
+                            <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 pl-2 border-l-2 border-gray-200">
+                                {details
+                                    .filter(([key]) => ['200', '100', '50', '20'].includes(key))
+                                    .map(([key, value]) => (
+                                        <div key={key} className="flex justify-between items-center bg-white p-1 rounded border border-gray-50">
+                                            <span className="font-medium text-gray-500 w-16">{key} DH</span>
+                                            <span className="font-mono font-bold text-gray-800">x {value}</span>
+                                            <span className="font-mono font-bold text-indigo-600">
+                                                {formatPrice(Number(value) * Number(key))}
+                                            </span>
+                                        </div>
+                                    ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Pièces Section */}
+                    {details.filter(([key]) => !['200', '100', '50', '20'].includes(key)).length > 0 && (
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="font-bold text-gray-700 text-xs uppercase tracking-wider">Pièces</span>
+                                <span className="font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded text-xs">
+                                    {formatPrice(details
+                                        .filter(([key]) => !['200', '100', '50', '20'].includes(key))
+                                        .reduce((acc, [key, val]) => {
+                                            if (key === 'cents') return acc + parseFloat(val);
+                                            return acc + (Number(val) * Number(key));
+                                        }, 0)
+                                    )}
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 text-xs text-gray-600 pl-2 border-l-2 border-gray-200">
+                                {details
+                                    .filter(([key]) => !['200', '100', '50', '20'].includes(key))
+                                    .map(([key, value]) => (
+                                        <div key={key} className="flex justify-between items-center bg-white p-1 rounded border border-gray-50">
+                                            <span className="font-medium text-gray-500 w-16">{key === 'cents' ? 'Cents' : `${key} DH`}</span>
+                                            <span className="font-mono font-bold text-gray-800">
+                                                {key === 'cents' ? 'VAL' : `x ${value}`}
+                                            </span>
+                                            <span className="font-mono font-bold text-indigo-600">
+                                                {key === 'cents' ? formatPrice(parseFloat(value)) : formatPrice(Number(value) * Number(key))}
+                                            </span>
+                                        </div>
+                                    ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex justify-end pt-2 border-t border-gray-200 mt-2">
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -315,15 +371,17 @@ export default function MoneyCounting() {
 
     // Auto-save draft on change (Debounced) - Silent background save
     useEffect(() => {
+        if (saving) return; // Don't auto-save if we are currently committing
+
         const timeoutId = setTimeout(() => {
-            const hasData = Object.values(counts).some(v => v !== '') || manualExpectedAmount !== '';
+            const hasData = Object.values(counts).some(v => v !== '' && v !== '0') || (manualExpectedAmount !== '' && manualExpectedAmount !== '0');
             if (hasData) {
                 saveDraftToDb(false);
             }
         }, 2000); // 2s debounce for less server hits
 
         return () => clearTimeout(timeoutId);
-    }, [counts, manualExpectedAmount]);
+    }, [counts, manualExpectedAmount, saving]);
 
     // Update total when counts change
     useEffect(() => {
@@ -425,15 +483,27 @@ export default function MoneyCounting() {
 
             if (error) throw error;
 
-            // Clear draft
-            if (draftId) {
-                await supabase.from('money_counting_drafts').delete().eq('id', draftId);
-                setDraftId(null);
+            // Clear ALL drafts for this user to prevent zombie drafts
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                await supabase.from('money_counting_drafts').delete().eq('user_id', user.id);
             }
+            setDraftId(null);
+
+            // Reset Form (Clear counts and expected amount)
+            setCounts({
+                200: '', 100: '', 50: '', 20: '',
+                10: '', 5: '', 2: '', 1: '', 0.5: '',
+                cents: ''
+            });
+            setManualExpectedAmount('');
 
             // Refresh history
             fetchHistory();
-            alert('Comptage sauvegardé !');
+
+            // Show success message
+            setDraftStatus('Comptage sauvegardé !');
+            setShowToast(true);
         } catch (error) {
             console.error('Error saving count:', error);
             alert('Erreur lors de la sauvegarde: ' + (error.message || error.details || JSON.stringify(error)));
