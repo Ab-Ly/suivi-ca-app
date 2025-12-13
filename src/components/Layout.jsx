@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, Calendar } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { PullToRefresh } from './ui/PullToRefresh';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -51,6 +51,24 @@ export default function Layout() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isSalesModalOpen, setIsSalesModalOpen] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    const navRef = React.useRef(null);
+    const [showScrollHint, setShowScrollHint] = useState(false);
+    const [showTopScrollHint, setShowTopScrollHint] = useState(false);
+
+    const checkScroll = () => {
+        if (navRef.current) {
+            const { scrollTop, scrollHeight, clientHeight } = navRef.current;
+            setShowScrollHint(scrollHeight > scrollTop + clientHeight + 10);
+            setShowTopScrollHint(scrollTop > 10);
+        }
+    };
+
+    useEffect(() => {
+        checkScroll();
+        window.addEventListener('resize', checkScroll);
+        return () => window.removeEventListener('resize', checkScroll);
+    }, []);
 
     const navItems = [
         { to: '/', icon: LayoutDashboard, label: 'Tableau de bord' },
@@ -165,7 +183,7 @@ export default function Layout() {
             )}
 
             {/* Desktop Sidebar */}
-            <aside className="hidden md:flex flex-col w-72 h-screen sticky top-0 p-4 bg-sidebar-bg shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10 overflow-y-auto">
+            <aside className="hidden md:flex flex-col w-72 h-screen sticky top-0 p-4 bg-sidebar-bg shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10 overflow-hidden">
                 <div className="mb-6 px-1 flex flex-col gap-4">
                     <div className="flex items-center justify-center py-1">
                         <img src="/logo.png" alt="Petrom Logo" className="h-16 w-auto object-contain drop-shadow-sm" />
@@ -192,10 +210,23 @@ export default function Layout() {
                     </div>
                 </div>
 
-                <nav className="flex flex-col gap-2 flex-1">
+                {/* Top Scroll Hint */}
+                {showTopScrollHint && (
+                    <div className="absolute top-52 left-0 right-0 flex justify-center pointer-events-none z-30 animate-in fade-in duration-300">
+                        <div className="bg-white/95 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-indigo-100 animate-bounce">
+                            <ChevronUp size={16} className="text-indigo-600" />
+                        </div>
+                    </div>
+                )}
+
+                <nav
+                    ref={navRef}
+                    onScroll={checkScroll}
+                    className="flex flex-col gap-2 flex-1 overflow-y-auto -mx-2 px-2 no-scrollbar"
+                >
                     <button
                         onClick={() => setIsSalesModalOpen(true)}
-                        className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 mb-2"
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 mb-2 shrink-0"
                     >
                         <PlusCircle size={20} className="transition-transform duration-200 group-hover:scale-110" />
                         <span>Nouvelle Vente</span>
@@ -209,8 +240,17 @@ export default function Layout() {
                     ))}
                 </nav>
 
-                <div className="mt-auto space-y-4 pt-4">
-                    <div className="p-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1">
+                {/* Visual Scroll Hint */}
+                {showScrollHint && (
+                    <div className="absolute bottom-28 left-0 right-0 flex justify-center pointer-events-none z-30 animate-in fade-in duration-300">
+                        <div className="bg-white/95 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-indigo-100 animate-bounce">
+                            <ChevronDown size={16} className="text-indigo-600" />
+                        </div>
+                    </div>
+                )}
+
+                <div className="mt-auto space-y-4 pt-4 shrink-0 z-20 shadow-[0_-12px_24px_rgba(0,0,0,0.03)] -mx-4 px-4 bg-gradient-to-t from-white via-white/80 to-transparent">
+                    <div className="p-4 bg-white/90 backdrop-blur-md rounded-2xl border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.08)] hover:shadow-[0_25px_50px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-1">
                         <div className="flex items-center justify-between mb-4">
                             <div className="text-xs font-medium text-gray-400">Statut système</div>
                             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-100 shadow-sm">

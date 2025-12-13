@@ -440,7 +440,7 @@ export default function FuelDeliveryTracking() {
 
             {/* Custom Notification Toast */}
             {notification.show && (
-                <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-in-right ${notification.type === 'error' ? 'bg-rose-500 text-white' : 'bg-gray-900 text-white'}`}>
+                <div className={`fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[100] px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in zoom-in duration-300 ${notification.type === 'error' ? 'bg-rose-500 text-white' : 'bg-gray-900 text-white'}`}>
                     {notification.type === 'error' ? <AlertCircle size={24} /> : <CheckCircle size={24} className="text-emerald-400" />}
                     <div>
                         <h4 className="font-bold text-sm">{notification.type === 'error' ? 'Erreur' : 'Succès'}</h4>

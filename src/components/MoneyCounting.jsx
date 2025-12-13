@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatPrice } from '../utils/formatters';
-import { Save, History, Calculator, AlertCircle, CheckCircle2, FileEdit, RotateCcw, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
-import { format } from 'date-fns';
+import { Save, History, Calculator, AlertCircle, CheckCircle2, FileEdit, RotateCcw, Trash2, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
+import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 // Internal Toast Component
@@ -14,9 +14,9 @@ const Toast = ({ message, type = 'success', onClose }) => {
 
     return (
         <div className={`
-            fixed top-4 left-1/2 -translate-x-1/2 z-50 
+            fixed top-6 left-1/2 -translate-x-1/2 z-[110] 
             flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border 
-            animate-in slide-in-from-top-2 fade-in duration-300
+            animate-in slide-in-from-top-4 fade-in duration-300
             ${type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-red-100 text-red-700'}
         `}>
             {type === 'success' ? <CheckCircle2 size={20} className="text-green-500" /> : <AlertCircle size={20} className="text-red-500" />}
@@ -25,7 +25,6 @@ const Toast = ({ message, type = 'success', onClose }) => {
     );
 };
 
-// Extracted component with Visual Cues
 // Extracted component with Visual Cues - COMPACT ROW DESIGN
 const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange, onBlur }) => {
     let subtotal = 0;
@@ -84,10 +83,22 @@ const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange,
                 </div>
             </div>
 
+            {/* Explicit Label */}
+            {!isCents && (
+                <div className="hidden sm:flex w-16 font-bold text-gray-400 text-sm justify-end pr-2 text-right">
+                    {value} <span className="text-[10px] ml-0.5 translate-y-[2px]">DH</span>
+                </div>
+            )}
+            {isCents && (
+                <div className="hidden sm:flex w-16 font-bold text-gray-400 text-xs justify-end pr-2 text-right uppercase">
+                    Vrac
+                </div>
+            )}
+
             {/* Input Area - Expands */}
             <div className="flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-8">
+                <div className="flex items-center gap-2 relative">
+                    <span className={`text-[10px] font-bold text-gray-400 uppercase tracking-wider w-8 transition-opacity ${count ? 'opacity-50' : 'opacity-100'}`}>
                         {isCents ? 'VAL' : 'QTÉ'}
                     </span>
                     <input
@@ -99,16 +110,17 @@ const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange,
                         placeholder="0"
                         className={`
                             w-full bg-transparent text-xl font-bold text-gray-900 placeholder-gray-200 outline-none
-                            border-b border-gray-100 focus:border-indigo-500 transition-colors py-0.5
+                            border-b border-gray-100 focus:border-indigo-500 transition-all py-0.5
+                            ${count ? 'text-center text-indigo-900 scale-110 origin-center' : 'text-left'}
                         `}
                     />
                 </div>
             </div>
 
-            {/* Subtotal - Fixed Width */}
+            {/* Subtotal - Fixed Width & Aligned */}
             {!isCents && (
                 <div className={`
-                    w-24 flex items-center justify-end font-mono font-bold text-sm
+                    w-36 flex items-center justify-end font-mono font-bold text-sm
                     ${subtotal > 0 ? styles.text : 'text-gray-300'}
                 `}>
                     {formatPrice(subtotal)}
@@ -117,7 +129,7 @@ const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange,
 
             {/* Cents Label instead of subtotal for clarity */}
             {isCents && (
-                <div className="w-24 flex items-center justify-end text-xs font-medium text-gray-400">
+                <div className="w-36 flex items-center justify-end text-xs font-medium text-gray-400">
                     Calculé
                 </div>
             )}
@@ -126,9 +138,8 @@ const DenominationCard = ({ value, label, isCoin, isCents, count, onCountChange,
 };
 
 // Extracted History Item Component for expanded details
-const HistoryItem = ({ item, onDelete }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-
+// NOW CONTROLLED COMPONENT
+const HistoryItem = ({ item, onDelete, isExpanded, onToggle }) => {
     // Filter counts to only show those with values and sort them
     const sortOrder = ['200', '100', '50', '20', '10', '5', '2', '1', '0.5', 'cents'];
     const details = Object.entries(item.counts)
@@ -144,10 +155,10 @@ const HistoryItem = ({ item, onDelete }) => {
         <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden transition-all">
             <div
                 className="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                onClick={() => setIsExpanded(!isExpanded)}
+                onClick={onToggle}
             >
                 <div className="flex items-center gap-3">
-                    <span className="font-mono font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                    <span className="font-mono font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded text-xs">
                         {format(new Date(item.created_at), 'HH:mm')}
                     </span>
                     <div>
@@ -156,7 +167,7 @@ const HistoryItem = ({ item, onDelete }) => {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                    <span className={`font-mono font-bold ${item.gap === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`font-mono font-bold text-sm ${item.gap === 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {item.gap > 0 ? '+' : ''}{formatPrice(item.gap)}
                     </span>
                     {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
@@ -164,12 +175,12 @@ const HistoryItem = ({ item, onDelete }) => {
             </div>
 
             {isExpanded && (
-                <div className="bg-gray-50 p-3 border-t border-gray-100 text-sm space-y-4">
+                <div className="bg-gray-50 p-3 border-t border-gray-100 text-sm space-y-4 animate-in slide-in-from-top-1 duration-200">
                     {/* Billets Section */}
                     {details.filter(([key]) => ['200', '100', '50', '20'].includes(key)).length > 0 && (
                         <div>
                             <div className="flex justify-between items-center mb-2">
-                                <span className="font-bold text-gray-700 text-xs uppercase tracking-wider">Billets</span>
+                                <span className="font-bold text-gray-700 text-xs uppercase tracking-wider">Billets (BBM)</span>
                                 <span className="font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded text-xs">
                                     {formatPrice(details
                                         .filter(([key]) => ['200', '100', '50', '20'].includes(key))
@@ -197,7 +208,7 @@ const HistoryItem = ({ item, onDelete }) => {
                     {details.filter(([key]) => !['200', '100', '50', '20'].includes(key)).length > 0 && (
                         <div>
                             <div className="flex justify-between items-center mb-2">
-                                <span className="font-bold text-gray-700 text-xs uppercase tracking-wider">Pièces</span>
+                                <span className="font-bold text-gray-700 text-xs uppercase tracking-wider">Pièces (PPM)</span>
                                 <span className="font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded text-xs">
                                     {formatPrice(details
                                         .filter(([key]) => !['200', '100', '50', '20'].includes(key))
@@ -262,6 +273,9 @@ export default function MoneyCounting() {
     const [history, setHistory] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [saving, setSaving] = useState(false);
+
+    // Accordion State
+    const [expandedId, setExpandedId] = useState(null);
 
     // Draft State
     const [draftStatus, setDraftStatus] = useState('');
@@ -400,14 +414,25 @@ export default function MoneyCounting() {
     const bbmTotal = ['200', '100', '50', '20'].reduce((acc, val) => acc + (Number(counts[val]) || 0) * Number(val), 0);
     const pmTotal = ['10', '5', '2', '1', '0.5'].reduce((acc, val) => acc + (Number(counts[val]) || 0) * Number(val), 0) + (parseFloat(counts['cents']) || 0);
 
-    // Fetch History
+    // Fetch History (Last 30 Days)
     const fetchHistory = React.useCallback(async () => {
         setLoadingHistory(true);
         try {
+            // Calculate date range: 30 days ago to Selected Date (or today if selected is recent)
+            // But usually history is just "Recent". Selected Date acts as "Focus" or "Max Date".
+            // Let's assume we want to show history UP TO the selected date (or just all recent history?)
+            // The prompt says "integre ici l'historique de un mois".
+            // Let's fetch from (selectedDate - 30 days) to (selectedDate).
+
+            const endDate = selectedDate;
+            const startDate = format(subDays(parseISO(selectedDate), 30), 'yyyy-MM-dd');
+
             const { data, error } = await supabase
                 .from('money_countings')
                 .select('*')
-                .eq('date', selectedDate)
+                .gte('date', startDate)
+                .lte('date', endDate)
+                .order('date', { ascending: false })
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -516,183 +541,220 @@ export default function MoneyCounting() {
         saveDraftToDb(true);
     };
 
+    const handleToggleExpand = (id) => {
+        setExpandedId(prev => prev === id ? null : id);
+    };
+
+    // Group history by Date
+    const groupedHistory = history.reduce((acc, item) => {
+        const dateKey = item.date;
+        if (!acc[dateKey]) acc[dateKey] = [];
+        acc[dateKey].push(item);
+        return acc;
+    }, {});
+
     return (
-        <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300 pb-20">
+        <>
             {showToast && <Toast message={draftStatus} onClose={() => setShowToast(false)} />}
+            <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-300 pb-20">
+                {/* Header / Date */}
 
-            {/* Header / Date */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 sticky top-4 z-10 flex items-center justify-between">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                        <Calculator className="text-indigo-600" />
-                        Comptage Monétaire
-                    </h2>
-                    <input
-                        type="date"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="mt-1 text-sm text-gray-500 border-none bg-transparent p-0 focus:ring-0 cursor-pointer"
-                    />
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleReset}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                        title="Réinitialiser"
-                    >
-                        <RotateCcw size={20} />
-                    </button>
-                </div>
-            </div>
-
-            {/* Summary Card (Moved to Top) */}
-            <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-lg border-2 border-indigo-100 p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Total Compté - Small */}
-                    <div className="flex flex-col">
-                        <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Total Comptage</div>
-                        <div className="text-xl font-bold text-indigo-900 font-mono tracking-tight">
-                            {formatPrice(total)}
-                        </div>
-                    </div>
-
-                    {/* Vers-Esp (Editable) */}
-                    <div className="flex flex-col">
-                        <div className="text-xs font-bold text-orange-500 uppercase tracking-wider mb-1 flex items-center gap-2">
-                            Vers-Esp
-                            <span className="bg-orange-100 text-[10px] px-1.5 rounded-full">Edit</span>
-                        </div>
-                        <div className="relative border-b-2 border-orange-200 focus-within:border-orange-500 transition-colors flex items-center gap-1">
+                {/* Header / Date */}
+                {/* Header / Date */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sticky top-4 z-10 flex items-center justify-between">
+                    <div className="space-y-1">
+                        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <Calculator className="text-indigo-600" size={22} />
+                            Comptage Monétaire
+                        </h2>
+                        <div className="flex items-center gap-2 relative pl-0.5 group cursor-pointer w-fit">
+                            <span className="text-sm font-medium text-gray-400 group-hover:text-gray-600 transition-colors">
+                                {format(new Date(selectedDate), 'dd/MM/yyyy')}
+                            </span>
+                            <Calendar size={14} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
                             <input
-                                type="text"
-                                inputMode="decimal"
-                                placeholder="0"
-                                value={manualExpectedAmount ? manualExpectedAmount.toString().split('.').map((part, i) => i === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, " ") : part).join('.') : ''}
-                                onChange={(e) => {
-                                    // Remove spaces and validate
-                                    const rawValue = e.target.value.replace(/\s/g, '');
-                                    if (rawValue === '' || /^\d*\.?\d*$/.test(rawValue)) {
-                                        setManualExpectedAmount(rawValue);
-                                    }
-                                }}
-                                onBlur={handleBlur} // Auto-save trigger
-                                className="w-full bg-transparent border-none p-0 text-xl font-bold text-orange-900 font-mono tracking-tight focus:ring-0 placeholder-orange-200"
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                             />
-                            <span className="text-xl font-bold text-orange-900 font-mono tracking-tight">MAD</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center">
+                        <button
+                            onClick={handleReset}
+                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all active:rotate-180 duration-500"
+                            title="Réinitialiser"
+                        >
+                            <RotateCcw size={18} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Summary Card (Moved to Top) */}
+                <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-lg border-2 border-indigo-100 p-6 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Total Compté - Small */}
+                        <div className="flex flex-col">
+                            <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Total Comptage</div>
+                            <div className="text-xl font-bold text-indigo-900 font-mono tracking-tight">
+                                {formatPrice(total)}
+                            </div>
+                        </div>
+
+                        {/* Vers-Esp (Editable) */}
+                        <div className="flex flex-col">
+                            <div className="text-xs font-bold text-orange-500 uppercase tracking-wider mb-1 flex items-center gap-2">
+                                Vers-Esp
+                                <span className="bg-orange-100 text-[10px] px-1.5 rounded-full">Edit</span>
+                            </div>
+                            <div className="relative border-b-2 border-orange-200 focus-within:border-orange-500 transition-colors flex items-center gap-1">
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0"
+                                    value={manualExpectedAmount ? manualExpectedAmount.toString().split('.').map((part, i) => i === 0 ? part.replace(/\B(?=(\d{3})+(?!\d))/g, " ") : part).join('.') : ''}
+                                    onChange={(e) => {
+                                        // Remove spaces and validate
+                                        const rawValue = e.target.value.replace(/\s/g, '');
+                                        if (rawValue === '' || /^\d*\.?\d*$/.test(rawValue)) {
+                                            setManualExpectedAmount(rawValue);
+                                        }
+                                    }}
+                                    onBlur={handleBlur} // Auto-save trigger
+                                    className="w-full bg-transparent border-none p-0 text-xl font-bold text-orange-900 font-mono tracking-tight focus:ring-0 placeholder-orange-200"
+                                />
+                                <span className="text-xl font-bold text-orange-900 font-mono tracking-tight">MAD</span>
+                            </div>
+                        </div>
+
+                        {/* Ecart */}
+                        <div className="flex flex-col">
+                            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-2">Ecart</div>
+                            <div className={`text-xl font-bold font-mono tracking-tight flex items-center gap-2 ${total - (parseFloat(manualExpectedAmount) || 0) === 0
+                                ? 'text-emerald-600'
+                                : total - (parseFloat(manualExpectedAmount) || 0) > 0
+                                    ? 'text-blue-600'
+                                    : 'text-red-600'
+                                }`}>
+                                {total - (parseFloat(manualExpectedAmount) || 0) > 0 ? '+' : ''}
+                                {formatPrice(total - (parseFloat(manualExpectedAmount) || 0))}
+                                {total - (parseFloat(manualExpectedAmount) || 0) !== 0 && <AlertCircle size={16} />}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Ecart */}
-                    <div className="flex flex-col">
-                        <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-2">Ecart</div>
-                        <div className={`text-xl font-bold font-mono tracking-tight flex items-center gap-2 ${total - (parseFloat(manualExpectedAmount) || 0) === 0
-                            ? 'text-emerald-600'
-                            : total - (parseFloat(manualExpectedAmount) || 0) > 0
-                                ? 'text-blue-600'
-                                : 'text-red-600'
-                            }`}>
-                            {total - (parseFloat(manualExpectedAmount) || 0) > 0 ? '+' : ''}
-                            {formatPrice(total - (parseFloat(manualExpectedAmount) || 0))}
-                            {total - (parseFloat(manualExpectedAmount) || 0) !== 0 && <AlertCircle size={16} />}
+                    <div className="pt-4 border-t border-gray-100 flex flex-col gap-3">
+                        <button
+                            onClick={handleSave}
+                            disabled={saving}
+                            className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white px-6 py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {saving ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <Save size={24} />}
+                            <span>Sauvegarder le Comptage</span>
+                        </button>
+
+                        <button
+                            onClick={handleSaveDraft}
+                            className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 px-4 py-3 rounded-xl font-bold border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all text-sm"
+                        >
+                            <FileEdit size={16} />
+                            <span>Sauvegarder Brouillon</span>
+                        </button>
+
+                        {total - (parseFloat(manualExpectedAmount) || 0) !== 0 && (
+                            <p className="text-center text-red-500 text-xs mt-1 font-medium flex items-center justify-center gap-1">
+                                <AlertCircle size={12} />
+                                Attention : Il y a un écart de caisse
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                {/* Input Grid - Side by Side Layout */}
+                <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-8 relative">
+                    {/* Vertical Separator (Desktop) */}
+                    <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-gray-200 -ml-px"></div>
+
+                    {/* BBM Section */}
+                    <div className="flex-1 space-y-4">
+                        <h3 className="text-lg font-bold text-gray-800 flex items-center justify-between border-b pb-2 sticky top-[80px] bg-[#f8fbfa] z-10 py-2 shadow-sm">
+                            <div className="flex items-center gap-2">
+                                <span className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm">B</span>
+                                Billets (BBM)
+                            </div>
+                            <span className="text-green-700 font-mono text-base">{formatPrice(bbmTotal)}</span>
+                        </h3>
+                        <div className="flex flex-col gap-3">
+                            <DenominationCard value="200" counts={counts} count={counts['200']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                            <DenominationCard value="100" counts={counts} count={counts['100']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                            <DenominationCard value="50" counts={counts} count={counts['50']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                            <DenominationCard value="20" counts={counts} count={counts['20']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                        </div>
+                    </div>
+
+                    {/* PM Section */}
+                    <div className="flex-1 space-y-4">
+                        <h3 className="text-lg font-bold text-gray-800 flex items-center justify-between border-b pb-2 sticky top-[80px] bg-[#f8fbfa] z-10 py-2 shadow-sm">
+                            <div className="flex items-center gap-2">
+                                <span className="w-8 h-8 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-sm">P</span>
+                                Pièces (PPM)
+                            </div>
+                            <span className="text-orange-700 font-mono text-base">{formatPrice(pmTotal)}</span>
+                        </h3>
+                        <div className="flex flex-col gap-3">
+                            <DenominationCard value="10" isCoin count={counts['10']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                            <DenominationCard value="5" isCoin count={counts['5']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                            <DenominationCard value="2" isCoin count={counts['2']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                            <DenominationCard value="1" isCoin count={counts['1']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                            <DenominationCard value="0.5" label="0.50" isCoin count={counts['0.5']} onCountChange={handleCountChange} onBlur={handleBlur} />
+
+                            {/* Centimes / Vrac */}
+                            <div className="col-span-full pt-2 border-t border-dashed">
+                                <DenominationCard value="cents" label="Centimes / Vrac" isCoin isCents count={counts['cents']} onCountChange={handleCountChange} onBlur={handleBlur} />
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="pt-4 border-t border-gray-100 flex flex-col gap-3">
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white px-6 py-4 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {saving ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <Save size={24} />}
-                        <span>Sauvegarder le Comptage</span>
-                    </button>
+                {/* History Section */}
+                <div className="pt-8 border-t max-w-xl mx-auto">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <History className="text-gray-400" />
+                        Historique (30 derniers jours)
+                    </h3>
 
-                    <button
-                        onClick={handleSaveDraft}
-                        className="w-full flex items-center justify-center gap-2 bg-white text-gray-600 px-4 py-3 rounded-xl font-bold border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all text-sm"
-                    >
-                        <FileEdit size={16} />
-                        <span>Sauvegarder Brouillon</span>
-                    </button>
-
-                    {total - (parseFloat(manualExpectedAmount) || 0) !== 0 && (
-                        <p className="text-center text-red-500 text-xs mt-1 font-medium flex items-center justify-center gap-1">
-                            <AlertCircle size={12} />
-                            Attention : Il y a un écart de caisse
-                        </p>
+                    {loadingHistory ? (
+                        <div className="text-center py-6 text-gray-400">Chargement...</div>
+                    ) : history.length === 0 ? (
+                        <div className="text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-400 text-sm">
+                            Aucun historique récent
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {Object.entries(groupedHistory).map(([dateStr, items]) => (
+                                <div key={dateStr} className="space-y-2">
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider pl-1">
+                                        {format(parseISO(dateStr), "EEEE d MMMM", { locale: fr })}
+                                    </h4>
+                                    <div className="space-y-3">
+                                        {items.map((item) => (
+                                            <HistoryItem
+                                                key={item.id}
+                                                item={item}
+                                                isExpanded={expandedId === item.id}
+                                                onToggle={() => handleToggleExpand(item.id)}
+                                                onDelete={handleDelete}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
+
             </div>
-
-            {/* Input Grid - Side by Side Layout */}
-            <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-8 relative">
-                {/* Vertical Separator (Desktop) */}
-                <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-gray-200 -ml-px"></div>
-
-                {/* BBM Section */}
-                <div className="flex-1 space-y-4">
-                    <h3 className="text-lg font-bold text-gray-800 flex items-center justify-between border-b pb-2 sticky top-[80px] bg-[#f8fbfa] z-10 py-2 shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <span className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm">B</span>
-                            Billets (BBM)
-                        </div>
-                        <span className="text-green-700 font-mono text-base">{formatPrice(bbmTotal)}</span>
-                    </h3>
-                    <div className="flex flex-col gap-3">
-                        <DenominationCard value="200" counts={counts} count={counts['200']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                        <DenominationCard value="100" counts={counts} count={counts['100']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                        <DenominationCard value="50" counts={counts} count={counts['50']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                        <DenominationCard value="20" counts={counts} count={counts['20']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                    </div>
-                </div>
-
-                {/* PM Section */}
-                <div className="flex-1 space-y-4">
-                    <h3 className="text-lg font-bold text-gray-800 flex items-center justify-between border-b pb-2 sticky top-[80px] bg-[#f8fbfa] z-10 py-2 shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <span className="w-8 h-8 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-sm">P</span>
-                            Pièces (PM)
-                        </div>
-                        <span className="text-orange-700 font-mono text-base">{formatPrice(pmTotal)}</span>
-                    </h3>
-                    <div className="flex flex-col gap-3">
-                        <DenominationCard value="10" isCoin count={counts['10']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                        <DenominationCard value="5" isCoin count={counts['5']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                        <DenominationCard value="2" isCoin count={counts['2']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                        <DenominationCard value="1" isCoin count={counts['1']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                        <DenominationCard value="0.5" label="0.50" isCoin count={counts['0.5']} onCountChange={handleCountChange} onBlur={handleBlur} />
-
-                        {/* Centimes / Vrac */}
-                        <div className="col-span-full pt-2 border-t border-dashed">
-                            <DenominationCard value="cents" label="Centimes / Vrac" isCoin isCents count={counts['cents']} onCountChange={handleCountChange} onBlur={handleBlur} />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* History Section */}
-            <div className="pt-8 border-t max-w-xl mx-auto">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <History className="text-gray-400" />
-                    Historique du jour
-                </h3>
-
-                {loadingHistory ? (
-                    <div className="text-center py-6 text-gray-400">Chargement...</div>
-                ) : history.length === 0 ? (
-                    <div className="text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-400 text-sm">
-                        Aucun historique pour aujourd'hui
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {history.map((item) => (
-                            <HistoryItem key={item.id} item={item} onDelete={handleDelete} />
-                        ))}
-                    </div>
-                )}
-            </div>
-
-        </div>
+        </>
     );
 }

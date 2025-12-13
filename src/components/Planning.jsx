@@ -436,7 +436,7 @@ export default function Planning() {
 
             {/* Toast Notification */}
             {toast && (
-                <div className={`fixed bottom-6 right-6 px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-slide-up z-50 ${toast.type === 'error' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-gray-900 text-white border-gray-800'
+                <div className={`fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-in fade-in zoom-in duration-300 z-[100] ${toast.type === 'error' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-gray-900 text-white border-gray-800'
                     }`}>
                     <div className={`w-2 h-2 rounded-full ${toast.type === 'error' ? 'bg-red-500' : 'bg-green-400'}`}></div>
                     <span className="font-medium">{toast.message}</span>

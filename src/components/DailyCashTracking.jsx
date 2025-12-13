@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { formatPrice, formatNumber } from '../utils/formatters';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 import MoneyCounting from './MoneyCounting';
@@ -62,6 +63,10 @@ export default function DailyCashTracking() {
     // Delete Confirmation State
     const [deleteConfig, setDeleteConfig] = useState({ isOpen: false, type: null, id: null }); // type: 'OPERATION', 'ENTITY', 'RESET'
 
+    const [monthlyOperations, setMonthlyOperations] = useState([]);
+    const [monthExpenseOpening, setMonthExpenseOpening] = useState(0);
+    const [monthExpenseClosing, setMonthExpenseClosing] = useState(0);
+
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
@@ -74,7 +79,12 @@ export default function DailyCashTracking() {
             if (entitiesError) throw entitiesError;
             setEntities(entitiesData || []);
 
-            // Fetch operations for the selected date (for the list view)
+            // Dates
+            const currentSelectedDate = new Date(selectedDate);
+            const startOfMonthStr = new Date(currentSelectedDate.getFullYear(), currentSelectedDate.getMonth(), 1).toISOString().split('T')[0];
+            const endOfMonthStr = new Date(currentSelectedDate.getFullYear(), currentSelectedDate.getMonth() + 1, 0).toISOString().split('T')[0];
+
+            // 1. Fetch DAILY operations (for other tabs)
             const { data: opsData, error: opsError } = await supabase
                 .from('daily_cash_operations')
                 .select('*, daily_cash_entities(name)')
@@ -84,24 +94,39 @@ export default function DailyCashTracking() {
             if (opsError) throw opsError;
             setOperations(opsData || []);
 
-            // Fetch ALL operations to calculate current balances
-            // In a production app with many records, this should be replaced by a database view or RPC
+            // 2. Fetch MONTHLY operations (for Expense Tab history)
+            const { data: monthOps, error: monthOpsError } = await supabase
+                .from('daily_cash_operations')
+                .select('*, daily_cash_entities(name)')
+                .gte('date', startOfMonthStr)
+                .lte('date', endOfMonthStr)
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false });
+
+            if (monthOpsError) throw monthOpsError;
+            setMonthlyOperations(monthOps || []);
+
+            // 3. Fetch ALL operations to calculate global balances (Optimized: could use RPC)
             const { data: allOps, error: allOpsError } = await supabase
                 .from('daily_cash_operations')
-                .select('type, amount, category, entity_id, date');
+                .select('type, amount, category, entity_id, date, description');
 
             if (allOpsError) throw allOpsError;
 
-            // Calculate balances
-            const newEntityOpeningBalances = {}; // Balance before selected date
-            const newEntityClosingBalances = {}; // Balance at end of selected date
+            // --- CALCULATIONS ---
 
+            // A. Daily Context Balances (Existing Logic)
+            const newEntityOpeningBalances = {};
+            const newEntityClosingBalances = {};
             let newExpenseOpeningBalance = 0;
             let newExpenseClosingBalance = 0;
+            let prevBal = 0; // For daily cashflow spreadsheet
 
-            let prevBal = 0;
+            // B. Monthly Context Balances (New Logic)
+            let mExpOpen = 0;
+            let mExpClose = 0;
 
-            // Initialize entity balances
+            // Initialize entities
             (entitiesData || []).forEach(e => {
                 newEntityOpeningBalances[e.id] = 0;
                 newEntityClosingBalances[e.id] = 0;
@@ -113,39 +138,45 @@ export default function DailyCashTracking() {
                 const val = isCredit ? amount : -amount;
                 const opDate = op.date;
 
-                // Entity Balances
+                // --- Daily Logic (Strictly related to selectedDate) ---
                 if (op.category === 'ENTITY_TRANSACTION' && op.entity_id) {
-                    // Opening Balance (Strictly before selected date)
-                    if (opDate < selectedDate) {
-                        newEntityOpeningBalances[op.entity_id] = (newEntityOpeningBalances[op.entity_id] || 0) + val;
-                    }
-
-                    // Closing Balance (Up to and including selected date)
-                    if (opDate <= selectedDate) {
-                        newEntityClosingBalances[op.entity_id] = (newEntityClosingBalances[op.entity_id] || 0) + val;
-                    }
+                    if (opDate < selectedDate) newEntityOpeningBalances[op.entity_id] = (newEntityOpeningBalances[op.entity_id] || 0) + val;
+                    if (opDate <= selectedDate) newEntityClosingBalances[op.entity_id] = (newEntityClosingBalances[op.entity_id] || 0) + val;
                 } else if (op.category === 'EXPENSE_FUND') {
-                    if (opDate < selectedDate) {
-                        newExpenseOpeningBalance += val;
-                    }
-                    if (opDate <= selectedDate) {
-                        newExpenseClosingBalance += val;
-                    }
+                    if (opDate < selectedDate) newExpenseOpeningBalance += val;
+                    if (opDate <= selectedDate) newExpenseClosingBalance += val;
                 }
 
-                // Previous Balance Calculation (Strictly < selectedDate) for Global Spreadsheet
-                if (opDate < selectedDate) {
-                    prevBal += val;
+                // Cashflow "Report J-1" logic
+                if (opDate < selectedDate) prevBal += val;
+
+                // --- Monthly Logic (Related to startOfMonth) ---
+                // We only care about Expense Fund for the monthly tab view currently
+                if (op.category === 'EXPENSE_FUND') {
+                    // Opening Balance: All time BEFORE start of current month
+                    if (opDate < startOfMonthStr) {
+                        mExpOpen += val;
+                    }
+                    // Closing Balance: All time UP TO end of current month (or current date if we want 'current' state? User said 'history for a month', implies full month view)
+                    // Let's settle on: Closing = Opening + Month Movements
+                    // Since we iterate allOps, checking <= endOfMonthStr is safer for historical checks
+                    if (opDate <= endOfMonthStr) { // OR <= selectedDate if we want "running month"? Usually "Monthly Statement" shows full month if available.
+                        mExpClose += val;
+                    }
                 }
             });
 
+            // If we want "Current Month State" (i.e. up to today if looking at current month?), usually accounting shows the whole month if selected.
+            // Let's stick to "Month View".
+
             setEntityOpeningBalances(newEntityOpeningBalances);
             setEntityClosingBalances(newEntityClosingBalances);
-
-            setExpenseOpeningBalance(newExpenseOpeningBalance);
-            setExpenseClosingBalance(newExpenseClosingBalance);
-
+            setExpenseOpeningBalance(newExpenseOpeningBalance); // Daily
+            setExpenseClosingBalance(newExpenseClosingBalance); // Daily
             setPreviousBalance(prevBal);
+
+            setMonthExpenseOpening(mExpOpen);
+            setMonthExpenseClosing(mExpClose);
 
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -381,24 +412,28 @@ export default function DailyCashTracking() {
             />
 
             {/* Tabs */}
-            <div className="flex gap-2 border-b overflow-x-auto pb-1">
+            {/* Tabs - Pill/Segmented Design with Multicolor */}
+            <div className="bg-gray-100/80 p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full">
                 {[
-                    { id: 'entities', label: 'Suivi Entités', icon: Building2 },
-                    { id: 'expense', label: 'Caisse Dépense', icon: Wallet },
-                    { id: 'operations', label: 'Opérations Journalières', icon: Calendar },
-                    { id: 'counting', label: 'Comptage', icon: Table },
-                    { id: 'spreadsheet', label: 'CashFlow', icon: Table },
+                    { id: 'entities', label: 'Suivi Entités', icon: Building2, activeColor: 'text-blue-600', iconColor: 'text-blue-500' },
+                    { id: 'expense', label: 'Caisse Dépense', icon: Wallet, activeColor: 'text-purple-600', iconColor: 'text-purple-500' },
+                    { id: 'operations', label: 'Opérations', icon: Calendar, activeColor: 'text-amber-600', iconColor: 'text-amber-500' },
+                    { id: 'counting', label: 'Comptage', icon: Table, activeColor: 'text-indigo-600', iconColor: 'text-indigo-500' },
+                    { id: 'spreadsheet', label: 'CashFlow', icon: Table, activeColor: 'text-emerald-600', iconColor: 'text-emerald-500' },
                 ].map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2 border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id
-                            ? 'border-indigo-600 text-indigo-600 font-medium'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                            }`}
+                        className={`
+                            relative flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-200 ease-out whitespace-nowrap flex-1 md:flex-none
+                            ${activeTab === tab.id
+                                ? `bg-white shadow-sm ring-1 ring-black/5 ${tab.activeColor} font-bold`
+                                : 'text-gray-500 hover:text-gray-700 hover:bg-white/50 font-medium'
+                            }
+                        `}
                     >
-                        <tab.icon size={18} />
-                        {tab.label}
+                        <tab.icon size={18} className={`transition-colors ${activeTab === tab.id ? tab.iconColor : 'text-gray-400'}`} />
+                        <span className="text-sm tracking-wide">{tab.label}</span>
                     </button>
                 ))}
             </div>
@@ -482,52 +517,52 @@ export default function DailyCashTracking() {
                                 <div className="flex items-center justify-between">
                                     <h3 className="font-bold text-2xl text-gray-800 flex items-center gap-2">
                                         <Wallet className="text-purple-600" />
-                                        Caisse Dépense
+                                        Caisse Dépense (Mensuel)
                                     </h3>
-                                    <div className="text-sm text-gray-500 font-medium bg-gray-100 px-3 py-1 rounded-full">
-                                        {format(new Date(selectedDate), 'dd MMMM yyyy')}
+                                    <div className="text-sm text-gray-500 font-medium bg-gray-100 px-3 py-1 rounded-full capitalize">
+                                        {format(new Date(selectedDate), 'MMMM yyyy', { locale: fr })}
                                     </div>
                                 </div>
 
                                 {/* Summary Cards - Modern Design */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    {/* Report J-1 */}
+                                    {/* Report M-1 */}
                                     <div className="relative overflow-hidden bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-all duration-300">
                                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                                             <ArrowDownLeft size={64} className="text-orange-500" />
                                         </div>
                                         <div className="relative z-10">
-                                            <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Report (J-1)</div>
-                                            <div className={`text-3xl font-bold ${expenseOpeningBalance < 0 ? 'text-red-500' : 'text-gray-900'}`}>
-                                                {formatPrice(expenseOpeningBalance)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                            <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Report (M-1)</div>
+                                            <div className={`text-3xl font-bold ${monthExpenseOpening < 0 ? 'text-red-500' : 'text-gray-900'}`}>
+                                                {formatPrice(monthExpenseOpening)} <span className="text-sm font-medium text-gray-400">MAD</span>
                                             </div>
                                         </div>
                                         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-orange-400 to-orange-100"></div>
                                     </div>
 
-                                    {/* Mouvement du Jour */}
+                                    {/* Dépenses du Mois */}
                                     <div className="relative overflow-hidden bg-white p-6 rounded-2xl shadow-sm border border-gray-100 group hover:shadow-md transition-all duration-300">
                                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                                             <Wallet size={64} className="text-purple-500" />
                                         </div>
                                         <div className="relative z-10">
-                                            <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Dépenses du Jour</div>
+                                            <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Dépenses du Mois</div>
                                             <div className="text-3xl font-bold text-gray-900">
-                                                {formatPrice(expenseClosingBalance - expenseOpeningBalance)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                                {formatPrice(monthExpenseClosing - monthExpenseOpening)} <span className="text-sm font-medium text-gray-400">MAD</span>
                                             </div>
                                         </div>
                                         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-purple-200"></div>
                                     </div>
 
-                                    {/* Solde Fin Journée */}
+                                    {/* Solde Fin Mois */}
                                     <div className="relative overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-2xl shadow-lg text-white group transform hover:-translate-y-1 transition-all duration-300">
                                         <div className="absolute top-0 right-0 p-4 opacity-10">
                                             <Building2 size={64} className="text-white" />
                                         </div>
                                         <div className="relative z-10">
-                                            <div className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">Solde Fin Journée</div>
-                                            <div className={`text-3xl font-bold ${expenseClosingBalance < 0 ? 'text-red-400' : 'text-white'}`}>
-                                                {formatPrice(expenseClosingBalance)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                            <div className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">Solde Fin de Mois</div>
+                                            <div className={`text-3xl font-bold ${monthExpenseClosing < 0 ? 'text-red-400' : 'text-white'}`}>
+                                                {formatPrice(monthExpenseClosing)} <span className="text-sm font-medium text-gray-400">MAD</span>
                                             </div>
                                         </div>
                                     </div>
@@ -536,38 +571,39 @@ export default function DailyCashTracking() {
                                 {/* Detailed Operations Table */}
                                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                                        <h4 className="font-bold text-gray-800 text-lg">Détail des Opérations</h4>
+                                        <h4 className="font-bold text-gray-800 text-lg">Détail des Opérations (Mensuel)</h4>
                                         <span className="text-xs font-medium px-2 py-1 bg-gray-200 text-gray-600 rounded-md">
-                                            {operations.filter(op => op.category === 'EXPENSE_FUND').length} opérations
+                                            {monthlyOperations.filter(op => op.category === 'EXPENSE_FUND').length} opérations
                                         </span>
                                     </div>
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left">
                                             <thead className="bg-gray-50 text-gray-500 font-semibold text-xs uppercase tracking-wider">
                                                 <tr>
-                                                    <th className="p-4">Heure</th>
+                                                    <th className="p-4">Date</th>
                                                     <th className="p-4">Description</th>
                                                     <th className="p-4 text-right">Montant</th>
                                                     <th className="p-4 text-center">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {operations.filter(op => op.category === 'EXPENSE_FUND').length === 0 ? (
+                                                {monthlyOperations.filter(op => op.category === 'EXPENSE_FUND').length === 0 ? (
                                                     <tr>
                                                         <td colSpan="4" className="p-12 text-center">
                                                             <div className="flex flex-col items-center justify-center text-gray-400">
                                                                 <Wallet size={48} className="mb-4 opacity-20" />
-                                                                <p className="font-medium">Aucune dépense enregistrée pour ce jour</p>
+                                                                <p className="font-medium">Aucune dépense enregistrée pour ce mois</p>
                                                             </div>
                                                         </td>
                                                     </tr>
                                                 ) : (
-                                                    operations
+                                                    monthlyOperations
                                                         .filter(op => op.category === 'EXPENSE_FUND')
                                                         .map(op => (
                                                             <tr key={op.id} className="hover:bg-gray-50 transition-colors group">
                                                                 <td className="p-4 text-gray-500 font-mono text-sm">
-                                                                    {format(new Date(op.created_at), 'HH:mm')}
+                                                                    <div className="font-bold text-gray-700">{format(new Date(op.date), 'dd/MM')}</div>
+                                                                    <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
                                                                 </td>
                                                                 <td className="p-4 font-medium text-gray-800">
                                                                     {op.description || 'Dépense diverse'}
@@ -588,12 +624,12 @@ export default function DailyCashTracking() {
                                                         ))
                                                 )}
                                             </tbody>
-                                            {operations.filter(op => op.category === 'EXPENSE_FUND').length > 0 && (
+                                            {monthlyOperations.filter(op => op.category === 'EXPENSE_FUND').length > 0 && (
                                                 <tfoot className="bg-gray-50 font-bold text-gray-800">
                                                     <tr>
-                                                        <td colSpan="2" className="p-4 text-right uppercase text-xs tracking-wider text-gray-500">Total Dépenses</td>
+                                                        <td colSpan="2" className="p-4 text-right uppercase text-xs tracking-wider text-gray-500">Total Dépenses Mois</td>
                                                         <td className="p-4 text-right text-red-600 font-mono text-lg">
-                                                            -{formatPrice(operations
+                                                            -{formatPrice(monthlyOperations
                                                                 .filter(op => op.category === 'EXPENSE_FUND')
                                                                 .reduce((sum, op) => sum + Number(op.amount), 0))}
                                                         </td>

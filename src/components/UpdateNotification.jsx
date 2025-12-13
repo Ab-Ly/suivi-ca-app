@@ -15,9 +15,29 @@ export default function UpdateNotification() {
         monthName: ''
     });
 
+    const timerRef = React.useRef(null);
+
     useEffect(() => {
         checkPerformance();
     }, []);
+
+    // Auto-close logic: Close after 5s if mouse is not over it
+    useEffect(() => {
+        if (isVisible) {
+            timerRef.current = setTimeout(() => setIsVisible(false), 5000);
+        }
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+        };
+    }, [isVisible]);
+
+    const handleMouseEnter = () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+    };
+
+    const handleMouseLeave = () => {
+        timerRef.current = setTimeout(() => setIsVisible(false), 5000);
+    };
 
     const checkPerformance = async () => {
         try {
@@ -75,9 +95,9 @@ export default function UpdateNotification() {
             const { kpis, fuelKpis } = monthlyStats;
 
             // Debug
-            console.log('--- MARKET FLASH DATA ---');
-            console.log('Daily:', dailyRevCurrent, dailyRevPrev);
-            console.log('Monthly:', kpis, fuelKpis);
+            // console.log('--- MARKET FLASH DATA ---');
+            // console.log('Daily:', dailyRevCurrent, dailyRevPrev);
+            // console.log('Monthly:', kpis, fuelKpis);
 
             setStats({
                 revenue: {
@@ -144,7 +164,11 @@ export default function UpdateNotification() {
     };
 
     return (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full animate-slide-up font-sans">
+        <div
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[100] max-w-sm w-full animate-in fade-in zoom-in duration-300 font-sans px-4 md:px-0 max-h-[90vh] overflow-y-auto no-scrollbar"
+        >
             <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden relative">
 
                 {/* Decorative Top Line */}
