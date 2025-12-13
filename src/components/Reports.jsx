@@ -670,19 +670,19 @@ export default function Reports() {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
                     {loading ? (
                         <div className="flex justify-center py-12">
                             <Loader2 className="animate-spin text-primary" size={32} />
                         </div>
                     ) : (
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-border text-text-muted text-xs uppercase tracking-wider bg-gray-50/50">
-                                    <th className="py-4 px-6 font-semibold">Date</th>
-                                    <th className="py-4 px-6 font-semibold">Article</th>
-                                    <th className="py-4 px-6 font-semibold text-right">Quantité</th>
-                                    <th className="py-4 px-6 font-semibold text-right">Total</th>
+                        <table className="w-full text-left border-collapse relative">
+                            <thead className="sticky top-0 z-10">
+                                <tr className="border-b border-border text-text-muted text-xs uppercase tracking-wider bg-gray-50 shadow-sm">
+                                    <th className="py-4 px-6 font-semibold bg-gray-50">Date</th>
+                                    <th className="py-4 px-6 font-semibold bg-gray-50">Article</th>
+                                    <th className="py-4 px-6 font-semibold text-right bg-gray-50">Quantité</th>
+                                    <th className="py-4 px-6 font-semibold text-right bg-gray-50">Total</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
@@ -691,7 +691,7 @@ export default function Reports() {
                                         <td colSpan="4" className="py-8 text-center text-text-muted">Aucune donnée disponible</td>
                                     </tr>
                                 ) : (
-                                    salesData.slice(0, 10).map((row, i) => (
+                                    salesData.map((row, i) => (
                                         <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                             <td className="py-4 px-6 text-text-main font-medium">{row.date}</td>
                                             <td className="py-4 px-6 text-text-main">{row.article}</td>

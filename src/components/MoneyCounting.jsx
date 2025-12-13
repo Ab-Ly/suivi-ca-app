@@ -5,6 +5,8 @@ import { Save, History, Calculator, AlertCircle, CheckCircle2, FileEdit, RotateC
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+import { createPortal } from 'react-dom';
+
 // Internal Toast Component
 const Toast = ({ message, type = 'success', onClose }) => {
     useEffect(() => {
@@ -12,16 +14,17 @@ const Toast = ({ message, type = 'success', onClose }) => {
         return () => clearTimeout(timer);
     }, [onClose]);
 
-    return (
+    return createPortal(
         <div className={`
-            fixed top-6 left-1/2 -translate-x-1/2 z-[110] 
-            flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border 
-            animate-in slide-in-from-top-4 fade-in duration-300
-            ${type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-red-100 text-red-700'}
+            fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] 
+            flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border border-white/20 backdrop-blur-md
+            animate-in slide-in-from-bottom-4 fade-in duration-300
+            ${type === 'success' ? 'bg-gray-900/90 text-white shadow-emerald-900/20' : 'bg-red-900/90 text-white shadow-red-900/20'}
         `}>
-            {type === 'success' ? <CheckCircle2 size={20} className="text-green-500" /> : <AlertCircle size={20} className="text-red-500" />}
-            <span className="font-medium text-sm">{message}</span>
-        </div>
+            {type === 'success' ? <CheckCircle2 size={24} className="text-emerald-400" /> : <AlertCircle size={24} className="text-red-400" />}
+            <span className="font-bold text-base tracking-wide">{message}</span>
+        </div>,
+        document.body
     );
 };
 
@@ -561,33 +564,45 @@ export default function MoneyCounting() {
 
                 {/* Header / Date */}
                 {/* Header / Date */}
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sticky top-4 z-10 flex items-center justify-between">
-                    <div className="space-y-1">
-                        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                            <Calculator className="text-indigo-600" size={22} />
-                            Comptage Monétaire
-                        </h2>
-                        <div className="flex items-center gap-2 relative pl-0.5 group cursor-pointer w-fit">
-                            <span className="text-sm font-medium text-gray-400 group-hover:text-gray-600 transition-colors">
-                                {format(new Date(selectedDate), 'dd/MM/yyyy')}
-                            </span>
-                            <Calendar size={14} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
-                            <input
-                                type="date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                            />
+                {/* Header / Date - PREMIUM REDESIGN */}
+                <div className="relative overflow-hidden rounded-3xl shadow-xl shadow-indigo-100/50 border border-white/40 sticky top-4 z-20 backdrop-blur-xl bg-white/80 transition-all duration-300 group hover:shadow-2xl hover:shadow-indigo-100/60 hover:-translate-y-0.5">
+                    {/* Decorative Background Gradients */}
+                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                    <div className="relative p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1.5 z-10">
+                            <h2 className="text-2xl font-black bg-gradient-to-r from-indigo-700 to-purple-600 bg-clip-text text-transparent flex items-center gap-3">
+                                <div className="p-2 bg-indigo-50 rounded-xl shadow-sm border border-indigo-100/50">
+                                    <Calculator className="text-indigo-600 drop-shadow-sm" size={20} />
+                                </div>
+                                Comptage Monétaire
+                            </h2>
+                            <div className="flex items-center gap-2 group/date cursor-pointer w-fit relative pl-1">
+                                <div className="absolute inset-0 bg-gray-100/50 rounded-lg -z-10 scale-90 opacity-0 group-hover/date:opacity-100 group-hover/date:scale-105 transition-all duration-300"></div>
+                                <Calendar size={14} className="text-indigo-400 group-hover/date:text-indigo-600 transition-colors" />
+                                <span className="text-sm font-semibold text-gray-500 group-hover/date:text-gray-700 transition-colors tracking-wide">
+                                    {format(new Date(selectedDate), 'dd MMMM yyyy', { locale: fr })}
+                                </span>
+                                <input
+                                    type="date"
+                                    value={selectedDate}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                />
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex items-center">
-                        <button
-                            onClick={handleReset}
-                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all active:rotate-180 duration-500"
-                            title="Réinitialiser"
-                        >
-                            <RotateCcw size={18} />
-                        </button>
+
+                        <div className="flex items-center gap-3 z-10">
+                            <button
+                                onClick={handleReset}
+                                className="group/btn flex items-center gap-2 px-4 py-2 bg-white/60 hover:bg-white text-gray-600 hover:text-red-600 rounded-xl border border-gray-200/60 hover:border-red-100 shadow-sm hover:shadow-md transition-all duration-300 font-medium text-sm backdrop-blur-sm"
+                                title="Réinitialiser"
+                            >
+                                <RotateCcw size={16} className="group-hover/btn:-rotate-180 transition-transform duration-500" />
+                                <span className="hidden md:inline">Réinitialiser</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 

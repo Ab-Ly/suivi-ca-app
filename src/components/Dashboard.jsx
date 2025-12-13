@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Card } from './ui/Card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
-import { DollarSign, Coffee, Wrench, Droplet, ShoppingBag, Loader2, Fuel } from 'lucide-react';
+import { DollarSign, Coffee, Wrench, Droplet, ShoppingBag, Loader2, Fuel, LayoutDashboard } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatPrice, formatNumber } from '../utils/formatters';
 import { getMappedCategory } from '../utils/statisticsUtils';
@@ -295,8 +295,13 @@ export default function Dashboard() {
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-text-main">Tableau de bord</h2>
-                    <p className="text-text-muted text-sm">Aperçu de vos performances</p>
+                    <h2 className="text-2xl font-bold text-text-main flex items-center gap-3">
+                        <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                            <LayoutDashboard size={24} />
+                        </div>
+                        Tableau de bord
+                    </h2>
+                    <p className="text-text-muted text-sm pl-[52px]">Aperçu de vos performances</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 items-center">
                     {/* Period Selector */}
@@ -407,27 +412,29 @@ export default function Dashboard() {
                         <h3 className="font-bold text-lg text-text-main">Évolution du Chiffre d'Affaire</h3>
                         <p className="text-sm text-text-muted">Répartition par service sur la période</p>
                     </div>
-                    <div className="h-80 p-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} />
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', fontSize: '12px', padding: '8px' }}
-                                    cursor={{ fill: '#F7FAFC' }}
-                                    formatter={(value) => formatPrice(value)}
-                                    itemStyle={{ padding: 0 }}
-                                />
-                                <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
-                                <Bar dataKey="shop" stackId="a" fill="#FCCF31" name="Shop" radius={[0, 0, 4, 4]} barSize={32} />
-                                <Bar dataKey="cafe" stackId="a" fill="#43E97B" name="Café" />
-                                <Bar dataKey="bosch" stackId="a" fill="#4FACFE" name="Bosch" />
-                                <Bar dataKey="pneumatique" stackId="a" fill="#00C9FF" name="Pneu" />
-                                <Bar dataKey="lub_piste" stackId="a" fill="#667EEA" name="Lub. Piste" />
-                                <Bar dataKey="lub_bosch" stackId="a" fill="#764BA2" name="Lub. Bosch" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
+                    <div className="h-80 p-6 overflow-x-auto custom-scrollbar">
+                        <div style={{ width: '100%', minWidth: Math.max(600, chartData.length * 60) }} className="h-full">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} dy={10} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', fontSize: '12px', padding: '8px' }}
+                                        cursor={{ fill: '#F7FAFC' }}
+                                        formatter={(value) => formatPrice(value)}
+                                        itemStyle={{ padding: 0 }}
+                                    />
+                                    <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px' }} />
+                                    <Bar dataKey="shop" stackId="a" fill="#FCCF31" name="Shop" radius={[0, 0, 4, 4]} barSize={32} />
+                                    <Bar dataKey="cafe" stackId="a" fill="#43E97B" name="Café" />
+                                    <Bar dataKey="bosch" stackId="a" fill="#4FACFE" name="Bosch" />
+                                    <Bar dataKey="pneumatique" stackId="a" fill="#00C9FF" name="Pneu" />
+                                    <Bar dataKey="lub_piste" stackId="a" fill="#667EEA" name="Lub. Piste" />
+                                    <Bar dataKey="lub_bosch" stackId="a" fill="#764BA2" name="Lub. Bosch" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
                     </div>
                 </Card>
 
@@ -485,32 +492,34 @@ export default function Dashboard() {
                         <h3 className="font-bold text-lg text-text-main">Évolution Volume Carburant</h3>
                         <p className="text-sm text-text-muted">Gasoil vs Sans Plomb (Litres)</p>
                     </div>
-                    <div className="h-80 p-2 sm:p-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={fuelChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id="colorGasoil" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#F6AD55" stopOpacity={0.8} />
-                                        <stop offset="95%" stopColor="#F6AD55" stopOpacity={0} />
-                                    </linearGradient>
-                                    <linearGradient id="colorSSP" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#48BB78" stopOpacity={0.8} />
-                                        <stop offset="95%" stopColor="#48BB78" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} />
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                    cursor={{ fill: '#F7FAFC' }}
-                                    formatter={(value) => formatNumber(value) + ' L'}
-                                />
-                                <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                                <Area type="monotone" dataKey="gasoil" stroke="#DD6B20" fillOpacity={1} fill="url(#colorGasoil)" name="Gasoil" strokeWidth={2} />
-                                <Area type="monotone" dataKey="ssp" stroke="#38A169" fillOpacity={1} fill="url(#colorSSP)" name="SSP" strokeWidth={2} />
-                            </AreaChart>
-                        </ResponsiveContainer>
+                    <div className="h-80 p-2 sm:p-6 overflow-x-auto custom-scrollbar">
+                        <div style={{ width: '100%', minWidth: Math.max(600, fuelChartData.length * 60) }} className="h-full">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                <AreaChart data={fuelChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorGasoil" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#F6AD55" stopOpacity={0.8} />
+                                            <stop offset="95%" stopColor="#F6AD55" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorSSP" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#48BB78" stopOpacity={0.8} />
+                                            <stop offset="95%" stopColor="#48BB78" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} dy={10} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#718096', fontSize: 12 }} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                        cursor={{ fill: '#F7FAFC' }}
+                                        formatter={(value) => formatNumber(value) + ' L'}
+                                    />
+                                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                                    <Area type="monotone" dataKey="gasoil" stroke="#DD6B20" fillOpacity={1} fill="url(#colorGasoil)" name="Gasoil" strokeWidth={2} />
+                                    <Area type="monotone" dataKey="ssp" stroke="#38A169" fillOpacity={1} fill="url(#colorSSP)" name="SSP" strokeWidth={2} />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
                     </div>
                 </Card>
             </div>
