@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, Calendar } from 'lucide-react';
 import { PullToRefresh } from './ui/PullToRefresh';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -59,6 +59,7 @@ export default function Layout() {
         { to: '/sales', icon: ShoppingCart, label: 'Ventes' },
         { to: '/deliveries', icon: Truck, label: 'Suivi Dépotage' },
         { to: '/stock', icon: Package, label: 'Stock' },
+        { to: '/planning', icon: Calendar, label: 'Planning' },
         { to: '/reports', icon: BarChart3, label: 'Rapports' },
         { to: '/profile', icon: User, label: 'Profil' },
     ];

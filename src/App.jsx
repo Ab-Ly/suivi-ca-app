@@ -14,6 +14,9 @@ import Profile from './components/Profile';
 import DailyCashTracking from './components/DailyCashTracking';
 import FuelDeliveryTracking from './components/FuelDeliveryTracking';
 
+
+import Planning from './components/Planning';
+
 function App() {
   return (
     <BrowserRouter>
@@ -31,7 +34,9 @@ function App() {
           <Route path="deliveries" element={<FuelDeliveryTracking />} />
           <Route path="statistics" element={<Statistics />} />
           <Route path="stock" element={<StockStatus />} />
+          <Route path="planning" element={<Planning />} />
           <Route path="reports" element={<Reports />} />
+
           <Route path="profile" element={<Profile />} />
         </Route>
 
