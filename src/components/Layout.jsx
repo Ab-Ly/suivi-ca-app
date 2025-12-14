@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, ChevronDown, ChevronUp } from 'lucide-react';
 import { PullToRefresh } from './ui/PullToRefresh';
+import { ToastProvider } from './ui/Toast';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import SalesEntry from './SalesEntry';
@@ -77,7 +78,7 @@ export default function Layout() {
         { to: '/sales', icon: ShoppingCart, label: 'Ventes' },
         { to: '/deliveries', icon: Truck, label: 'Suivi Dépotage' },
         { to: '/stock', icon: Package, label: 'Stock' },
-        { to: '/planning', icon: Calendar, label: 'Planning' },
+        { to: '/personnel', icon: User, label: 'Personnel' },
         { to: '/reports', icon: BarChart3, label: 'Rapports' },
         { to: '/profile', icon: User, label: 'Profil' },
     ];
@@ -135,155 +136,157 @@ export default function Layout() {
     }, [navigate, handleLogout]);
 
     return (
-        <div className="min-h-screen bg-bg-main text-text-main flex flex-col md:flex-row font-sans">
-            {/* Mobile Header */}
-            <div className="md:hidden flex items-center justify-between p-4 bg-white shadow-sm sticky top-0 z-30">
+        <ToastProvider>
+            <div className="min-h-screen bg-bg-main text-text-main flex flex-col md:flex-row font-sans">
+                {/* Mobile Header */}
+                <div className="md:hidden flex items-center justify-between p-4 bg-white shadow-sm sticky top-0 z-30">
+                    <button
+                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                        className="p-2 -ml-2 text-text-muted hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                        {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                    </button>
+
+                    <h1 className="font-bold text-lg bg-gradient-purple bg-clip-text text-transparent">ISTIRAHA PEPINIERE (I1050)</h1>
+
+                    <div className="w-10"></div> {/* Spacer to center title */}
+                </div>
+
+                {/* Mobile FAB for New Sale */}
                 <button
-                    onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                    className="p-2 -ml-2 text-text-muted hover:bg-gray-50 rounded-lg transition-colors"
+                    onClick={() => setIsSalesModalOpen(true)}
+                    className="md:hidden fixed bottom-6 right-6 z-40 p-4 bg-gradient-purple text-white rounded-full shadow-lg shadow-purple-200 active:scale-95 transition-transform hover:scale-105 flex items-center justify-center"
+                    aria-label="Nouvelle vente"
                 >
-                    {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                    <PlusCircle size={28} />
                 </button>
 
-                <h1 className="font-bold text-lg bg-gradient-purple bg-clip-text text-transparent">ISTIRAHA PEPINIERE (I1050)</h1>
+                {/* Mobile Menu Overlay */}
+                {isMobileMenuOpen && (
+                    <div className="md:hidden fixed inset-0 bg-white z-10 pt-20 px-4">
+                        <nav className="flex flex-col gap-2">
+                            {navItems.map((item) => (
+                                <NavItem
+                                    key={item.to}
+                                    {...item}
+                                    active={location.pathname === item.to}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                />
+                            ))}
+                            <div className="h-px bg-gray-100 my-2"></div>
+                            <NavItem
+                                isButton
+                                icon={LogOut}
+                                label="Déconnexion"
+                                onClick={handleLogout}
+                            />
+                        </nav>
+                    </div>
+                )}
 
-                <div className="w-10"></div> {/* Spacer to center title */}
-            </div>
+                {/* Desktop Sidebar */}
+                <aside className="hidden md:flex flex-col w-72 h-screen sticky top-0 p-4 bg-sidebar-bg shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10 overflow-hidden">
+                    <div className="mb-6 px-1 flex flex-col gap-4">
+                        <div className="flex items-center justify-center py-1">
+                            <img src="/logo.png" alt="Petrom Logo" className="h-16 w-auto object-contain drop-shadow-sm" />
+                        </div>
 
-            {/* Mobile FAB for New Sale */}
-            <button
-                onClick={() => setIsSalesModalOpen(true)}
-                className="md:hidden fixed bottom-6 right-6 z-40 p-4 bg-gradient-purple text-white rounded-full shadow-lg shadow-purple-200 active:scale-95 transition-transform hover:scale-105 flex items-center justify-center"
-                aria-label="Nouvelle vente"
-            >
-                <PlusCircle size={28} />
-            </button>
+                        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/50 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1">
+                            <div className="flex flex-col gap-3">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="w-1 h-3 bg-indigo-500 rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Station</div>
+                                    </div>
+                                    <div className="text-sm font-bold text-gray-900 pl-3">ISTIRAHA PEPEINIERE</div>
+                                </div>
+                                <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="w-1 h-3 bg-purple-500 rounded-full shadow-[0_0_10px_rgba(168,85,247,0.5)]"></div>
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Gérant</div>
+                                    </div>
+                                    <div className="text-sm font-bold text-gray-900 pl-3">ABDELALI LYOUSSEFI</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-            {/* Mobile Menu Overlay */}
-            {isMobileMenuOpen && (
-                <div className="md:hidden fixed inset-0 bg-white z-10 pt-20 px-4">
-                    <nav className="flex flex-col gap-2">
+                    {/* Top Scroll Hint */}
+                    {showTopScrollHint && (
+                        <div className="absolute top-52 left-0 right-0 flex justify-center pointer-events-none z-30 animate-in fade-in duration-300">
+                            <div className="bg-white/95 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-indigo-100 animate-bounce">
+                                <ChevronUp size={16} className="text-indigo-600" />
+                            </div>
+                        </div>
+                    )}
+
+                    <nav
+                        ref={navRef}
+                        onScroll={checkScroll}
+                        className="flex flex-col gap-2 flex-1 overflow-y-auto -mx-2 px-2 no-scrollbar"
+                    >
+                        <button
+                            onClick={() => setIsSalesModalOpen(true)}
+                            className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 mb-2 shrink-0"
+                        >
+                            <PlusCircle size={20} className="transition-transform duration-200 group-hover:scale-110" />
+                            <span>Nouvelle Vente</span>
+                        </button>
                         {navItems.map((item) => (
                             <NavItem
                                 key={item.to}
                                 {...item}
                                 active={location.pathname === item.to}
-                                onClick={() => setIsMobileMenuOpen(false)}
                             />
                         ))}
-                        <div className="h-px bg-gray-100 my-2"></div>
-                        <NavItem
-                            isButton
-                            icon={LogOut}
-                            label="Déconnexion"
-                            onClick={handleLogout}
-                        />
                     </nav>
-                </div>
-            )}
 
-            {/* Desktop Sidebar */}
-            <aside className="hidden md:flex flex-col w-72 h-screen sticky top-0 p-4 bg-sidebar-bg shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10 overflow-hidden">
-                <div className="mb-6 px-1 flex flex-col gap-4">
-                    <div className="flex items-center justify-center py-1">
-                        <img src="/logo.png" alt="Petrom Logo" className="h-16 w-auto object-contain drop-shadow-sm" />
-                    </div>
+                    {/* Visual Scroll Hint */}
+                    {showScrollHint && (
+                        <div className="absolute bottom-28 left-0 right-0 flex justify-center pointer-events-none z-30 animate-in fade-in duration-300">
+                            <div className="bg-white/95 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-indigo-100 animate-bounce">
+                                <ChevronDown size={16} className="text-indigo-600" />
+                            </div>
+                        </div>
+                    )}
 
-                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/50 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1">
-                        <div className="flex flex-col gap-3">
-                            <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                    <div className="w-1 h-3 bg-indigo-500 rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
-                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Station</div>
+                    <div className="mt-auto space-y-4 pt-4 shrink-0 z-20 shadow-[0_-12px_24px_rgba(0,0,0,0.03)] -mx-4 px-4 bg-gradient-to-t from-white via-white/80 to-transparent">
+                        <div className="p-4 bg-white/90 backdrop-blur-md rounded-2xl border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.08)] hover:shadow-[0_25px_50px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-1">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="text-xs font-medium text-gray-400">Statut système</div>
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-100 shadow-sm">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+                                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">En ligne</span>
                                 </div>
-                                <div className="text-sm font-bold text-gray-900 pl-3">ISTIRAHA PEPEINIERE</div>
                             </div>
-                            <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
-                            <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                    <div className="w-1 h-3 bg-purple-500 rounded-full shadow-[0_0_10px_rgba(168,85,247,0.5)]"></div>
-                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Gérant</div>
-                                </div>
-                                <div className="text-sm font-bold text-gray-900 pl-3">ABDELALI LYOUSSEFI</div>
-                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-200 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-500 hover:text-white hover:shadow-lg hover:shadow-red-200 group"
+                            >
+                                <LogOut size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+                                <span>Déconnexion</span>
+                            </button>
                         </div>
                     </div>
-                </div>
+                </aside>
 
-                {/* Top Scroll Hint */}
-                {showTopScrollHint && (
-                    <div className="absolute top-52 left-0 right-0 flex justify-center pointer-events-none z-30 animate-in fade-in duration-300">
-                        <div className="bg-white/95 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-indigo-100 animate-bounce">
-                            <ChevronUp size={16} className="text-indigo-600" />
+                {/* Main Content */}
+                <main className="flex-1 p-4 md:p-8 overflow-auto pb-24 md:pb-8" id="main-content">
+                    <PullToRefresh onRefresh={handleRefresh} className="h-full">
+                        <div className="max-w-7xl mx-auto min-h-[calc(100vh-4rem)]">
+                            <Outlet context={{ refreshTrigger }} />
                         </div>
-                    </div>
-                )}
+                    </PullToRefresh>
+                </main>
 
-                <nav
-                    ref={navRef}
-                    onScroll={checkScroll}
-                    className="flex flex-col gap-2 flex-1 overflow-y-auto -mx-2 px-2 no-scrollbar"
-                >
-                    <button
-                        onClick={() => setIsSalesModalOpen(true)}
-                        className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium group text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 mb-2 shrink-0"
-                    >
-                        <PlusCircle size={20} className="transition-transform duration-200 group-hover:scale-110" />
-                        <span>Nouvelle Vente</span>
-                    </button>
-                    {navItems.map((item) => (
-                        <NavItem
-                            key={item.to}
-                            {...item}
-                            active={location.pathname === item.to}
-                        />
-                    ))}
-                </nav>
-
-                {/* Visual Scroll Hint */}
-                {showScrollHint && (
-                    <div className="absolute bottom-28 left-0 right-0 flex justify-center pointer-events-none z-30 animate-in fade-in duration-300">
-                        <div className="bg-white/95 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-indigo-100 animate-bounce">
-                            <ChevronDown size={16} className="text-indigo-600" />
-                        </div>
-                    </div>
-                )}
-
-                <div className="mt-auto space-y-4 pt-4 shrink-0 z-20 shadow-[0_-12px_24px_rgba(0,0,0,0.03)] -mx-4 px-4 bg-gradient-to-t from-white via-white/80 to-transparent">
-                    <div className="p-4 bg-white/90 backdrop-blur-md rounded-2xl border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.08)] hover:shadow-[0_25px_50px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-1">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="text-xs font-medium text-gray-400">Statut système</div>
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 rounded-full border border-emerald-100 shadow-sm">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
-                                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">En ligne</span>
-                            </div>
-                        </div>
-                        <button
-                            onClick={handleLogout}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-200 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-500 hover:text-white hover:shadow-lg hover:shadow-red-200 group"
-                        >
-                            <LogOut size={16} className="group-hover:-translate-x-0.5 transition-transform" />
-                            <span>Déconnexion</span>
-                        </button>
-                    </div>
-                </div>
-            </aside>
-
-            {/* Main Content */}
-            <main className="flex-1 p-4 md:p-8 overflow-auto pb-24 md:pb-8" id="main-content">
-                <PullToRefresh onRefresh={handleRefresh} className="h-full">
-                    <div className="max-w-7xl mx-auto min-h-[calc(100vh-4rem)]">
-                        <Outlet context={{ refreshTrigger }} />
-                    </div>
-                </PullToRefresh>
-            </main>
-
-            <SalesEntry
-                isOpen={isSalesModalOpen}
-                onClose={() => setIsSalesModalOpen(false)}
-                onSuccess={handleSaleSuccess}
-            />
-            <UpdateNotification />
-        </div>
+                <SalesEntry
+                    isOpen={isSalesModalOpen}
+                    onClose={() => setIsSalesModalOpen(false)}
+                    onSuccess={handleSaleSuccess}
+                />
+                <UpdateNotification />
+            </div>
+        </ToastProvider >
     );
 }

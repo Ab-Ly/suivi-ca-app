@@ -58,6 +58,22 @@
   }
 }
 
+@layer components {
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm
+           focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 
+           outline-none transition-all duration-200 ease-in-out
+           placeholder:text-gray-400 font-medium text-gray-700 shadow-sm
+           hover:bg-white hover:border-gray-300;
+  }
+  
+  .btn-primary {
+    @apply px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 
+           transition-colors font-medium active:scale-95 shadow-sm shadow-indigo-200;
+  }
+}
+
+
 @layer utilities {
   .bg-gradient-purple {
     background-image: var(--image-gradient-purple);

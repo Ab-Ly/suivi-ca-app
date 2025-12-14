@@ -15,28 +15,51 @@ export default function UpdateNotification() {
         monthName: ''
     });
 
+    const [progress, setProgress] = useState(100);
+    const DURATION = 10000; // 10 seconds
     const timerRef = React.useRef(null);
 
     useEffect(() => {
         checkPerformance();
     }, []);
 
-    // Auto-close logic: Close after 5s if mouse is not over it
     useEffect(() => {
+        let interval;
         if (isVisible) {
-            timerRef.current = setTimeout(() => setIsVisible(false), 5000);
+            setProgress(100);
+            const step = 100 / (DURATION / 100); // Update every 100ms
+
+            interval = setInterval(() => {
+                setProgress(prev => {
+                    if (prev <= 0) {
+                        setIsVisible(false);
+                        return 0;
+                    }
+                    return prev - step;
+                });
+            }, 100);
+
+            timerRef.current = interval;
         }
-        return () => {
-            if (timerRef.current) clearTimeout(timerRef.current);
-        };
+        return () => clearInterval(interval);
     }, [isVisible]);
 
     const handleMouseEnter = () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
+        if (timerRef.current) clearInterval(timerRef.current);
+        setProgress(100);
     };
 
     const handleMouseLeave = () => {
-        timerRef.current = setTimeout(() => setIsVisible(false), 5000);
+        const step = 100 / (DURATION / 100);
+        timerRef.current = setInterval(() => {
+            setProgress(prev => {
+                if (prev <= 0) {
+                    setIsVisible(false);
+                    return 0;
+                }
+                return prev - step;
+            });
+        }, 100);
     };
 
     const checkPerformance = async () => {
@@ -93,11 +116,6 @@ export default function UpdateNotification() {
 
             // --- Monthly Metrics ---
             const { kpis, fuelKpis } = monthlyStats;
-
-            // Debug
-            // console.log('--- MARKET FLASH DATA ---');
-            // console.log('Daily:', dailyRevCurrent, dailyRevPrev);
-            // console.log('Monthly:', kpis, fuelKpis);
 
             setStats({
                 revenue: {
@@ -167,9 +185,12 @@ export default function UpdateNotification() {
         <div
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[100] max-w-sm w-full animate-in fade-in zoom-in duration-300 font-sans px-4 md:px-0 max-h-[90vh] overflow-y-auto no-scrollbar"
+            className="fixed bottom-6 right-6 z-[100] max-w-sm w-full animate-in slide-in-from-right duration-500 font-sans px-4 md:px-0"
         >
             <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden relative">
+
+                {/* Visual Progress Bar */}
+                <div className="absolute bottom-0 left-0 h-1 bg-indigo-500 transition-all duration-100 ease-linear z-10" style={{ width: `${progress}%` }}></div>
 
                 {/* Decorative Top Line */}
                 <div className="h-1.5 w-full bg-gradient-to-r from-emerald-500 via-indigo-500 to-rose-500"></div>
@@ -230,7 +251,7 @@ export default function UpdateNotification() {
 
                 {/* Footer / Daily Trend */}
                 {stats.dailyTrend && (
-                    <div className="bg-gray-50 px-4 py-2 border-t border-gray-100 flex justify-between items-center text-[10px] font-medium">
+                    <div className="bg-gray-50 px-4 py-2 border-t border-gray-100 flex justify-between items-center text-[10px] font-medium mb-1">
                         <span className="text-gray-500">
                             Perf. Journalière (Hier vs J-2)
                         </span>
@@ -246,4 +267,3 @@ export default function UpdateNotification() {
         </div>
     );
 }
-

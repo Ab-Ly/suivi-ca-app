@@ -444,7 +444,7 @@ export default function Dashboard() {
                         <p className="text-sm text-text-muted">Répartition Piste vs Bosch</p>
                     </div>
                     <div className="h-64 p-6 relative">
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <PieChart>
                                 <Pie
                                     data={lubData}

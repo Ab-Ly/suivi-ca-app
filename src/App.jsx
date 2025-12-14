@@ -15,7 +15,7 @@ import DailyCashTracking from './components/DailyCashTracking';
 import FuelDeliveryTracking from './components/FuelDeliveryTracking';
 
 
-import Planning from './components/Planning';
+import PersonnelTracking from './components/PersonnelTracking';
 
 function App() {
   return (
@@ -34,7 +34,7 @@ function App() {
           <Route path="deliveries" element={<FuelDeliveryTracking />} />
           <Route path="statistics" element={<Statistics />} />
           <Route path="stock" element={<StockStatus />} />
-          <Route path="planning" element={<Planning />} />
+          <Route path="personnel" element={<PersonnelTracking />} />
           <Route path="reports" element={<Reports />} />
 
           <Route path="profile" element={<Profile />} />
