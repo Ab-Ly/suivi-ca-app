@@ -172,56 +172,80 @@ export default function PersonnelTracking() {
                 {selectedEmp ? (
                     <>
                         {/* Header */}
-                        <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-                            <div className="flex justify-between items-start">
+                        <div className="p-6 md:p-8 flex flex-col h-full overflow-hidden">
+                            {/* Header */}
+                            <div className="flex justify-between items-start mb-6 shrink-0">
                                 <div className="flex items-center gap-4">
+                                    {/* Mobile Back Button */}
                                     <button
                                         onClick={() => setSelectedEmp(null)}
-                                        className="md:hidden p-2 -ml-2 text-gray-400 hover:text-gray-600"
+                                        className="md:hidden p-2 -ml-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
                                     >
-                                        <ArrowLeft size={24} />
+                                        <ArrowLeft size={20} />
                                     </button>
-                                    <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-2xl">
+
+                                    <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-2xl shrink-0">
                                         {selectedEmp.name.charAt(0)}
                                     </div>
                                     <div>
-                                        <h1 className="text-2xl font-bold text-gray-900">{selectedEmp.name}</h1>
-                                        <p className="text-gray-500 flex items-center gap-2">
-                                            {selectedEmp.role} • {selectedEmp.team}
+                                        <h2 className="text-2xl font-bold text-gray-900 leading-tight">
+                                            {selectedEmp.name}
+                                        </h2>
+                                        <p className="text-gray-500 font-medium">
+                                            {selectedEmp.assignment || selectedEmp.role || 'Aucun poste'} • {selectedEmp.team || 'Non assigné'}
                                         </p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => handleDeleteEmployee(selectedEmp.id)}
-                                    className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition"
+                                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Supprimer l'employé"
                                 >
                                     <Trash2 size={20} />
                                 </button>
                             </div>
 
-                            {/* Tabs */}
-                            <div className="flex gap-1 mt-8 border-b border-gray-200">
-                                <TabButton id="info" label="Informations & Contrat" icon={FileText} active={activeTab} onClick={setActiveTab} />
-                                <TabButton id="absences" label="Absences & Congés" icon={Calendar} active={activeTab} onClick={setActiveTab} />
-                                <TabButton id="medical" label="Suivi Médical (Assurance)" icon={Stethoscope} active={activeTab} onClick={setActiveTab} />
+                            {/* Tabs - Responsive Pill Design */}
+                            <div className="bg-gray-100/80 p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full mb-6 shrink-0">
+                                {[
+                                    { id: 'info', label: 'Informations', fullLabel: 'Informations & Contrat', icon: FileText, activeColor: 'text-blue-600', iconColor: 'text-blue-500' },
+                                    { id: 'absences', label: 'Absences', fullLabel: 'Absences & Congés', icon: Calendar, activeColor: 'text-amber-600', iconColor: 'text-amber-500' },
+                                    { id: 'medical', label: 'Médical', fullLabel: 'Suivi Médical', icon: Stethoscope, activeColor: 'text-emerald-600', iconColor: 'text-emerald-500' },
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`
+                                    relative flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-200 ease-out whitespace-nowrap flex-1
+                                    ${activeTab === tab.id
+                                                ? `bg-white shadow-sm ring-1 ring-black/5 ${tab.activeColor} font-bold`
+                                                : 'text-gray-500 hover:text-gray-700 hover:bg-white/50 font-medium'
+                                            }
+                                `}
+                                    >
+                                        <tab.icon size={18} className={`transition-colors ${activeTab === tab.id ? tab.iconColor : 'text-gray-400'}`} />
+                                        <span className="text-sm tracking-wide hidden sm:inline">{tab.fullLabel}</span>
+                                        <span className="text-sm tracking-wide sm:hidden">{tab.label}</span>
+                                    </button>
+                                ))}
                             </div>
-                        </div>
 
-                        {/* Tab Content */}
-                        <div className="flex-1 overflow-hidden bg-gray-50/30 relative">
-                            {activeTab === 'info' && (
-                                <InfoTab employee={selectedEmp} onUpdate={handleUpdateEmployee} />
-                            )}
-                            {activeTab === 'absences' && (
-                                <div className="h-full overflow-y-auto p-6 custom-scrollbar">
-                                    <AbsencesTab employee={selectedEmp} absences={absences} refresh={() => fetchEmployeeDetails(selectedEmp.id)} />
-                                </div>
-                            )}
-                            {activeTab === 'medical' && (
-                                <div className="h-full overflow-y-auto p-6 custom-scrollbar">
-                                    <MedicalTab employee={selectedEmp} events={medicalEvents} refresh={() => fetchEmployeeDetails(selectedEmp.id)} />
-                                </div>
-                            )}
+                            {/* Content Container */}
+                            <div className="flex-1 overflow-hidden bg-gray-50/30 relative rounded-2xl border border-gray-100/50">
+                                {activeTab === 'info' && (
+                                    <InfoTab employee={selectedEmp} onUpdate={handleUpdateEmployee} />
+                                )}
+                                {activeTab === 'absences' && (
+                                    <div className="h-full overflow-y-auto p-6 custom-scrollbar">
+                                        <AbsencesTab employee={selectedEmp} absences={absences} refresh={() => fetchEmployeeDetails(selectedEmp.id)} />
+                                    </div>
+                                )}
+                                {activeTab === 'medical' && (
+                                    <div className="h-full overflow-y-auto p-6 custom-scrollbar">
+                                        <MedicalTab employee={selectedEmp} events={medicalEvents} refresh={() => fetchEmployeeDetails(selectedEmp.id)} />
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </>
                 ) : (
