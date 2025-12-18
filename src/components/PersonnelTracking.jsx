@@ -15,6 +15,7 @@ export default function PersonnelTracking() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [showAddModal, setShowAddModal] = useState(false);
+    const [grouping, setGrouping] = useState('none'); // 'none' | 'interim_agency' | 'role'
     const { success, error: showError } = useToast();
 
     // Sub-data for selected employee
@@ -109,152 +110,217 @@ export default function PersonnelTracking() {
         e.role?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const getGroupedEmployees = () => {
+        if (grouping === 'none') return { 'Tous': filteredEmployees };
+
+        const groups = {};
+        filteredEmployees.forEach(emp => {
+            const key = grouping === 'interim_agency'
+                ? (emp.interim_agency || 'Aucune Agence')
+                : (emp.role || 'Sans Rôle');
+
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(emp);
+        });
+        return groups;
+    };
+
+    const groupedData = getGroupedEmployees();
+
     return (
-        <div className="h-[calc(100vh-6rem)] flex flex-col md:flex-row gap-6">
-            {/* Sidebar List */}
-            <div className={`w-full md:w-80 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col overflow-hidden shrink-0 ${selectedEmp ? 'hidden md:flex' : 'flex'}`}>
-                <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                            <Users size={20} className="text-indigo-600" />
-                            Personnel
-                        </h2>
-                        <button
-                            onClick={() => setShowAddModal(true)}
-                            className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                        >
-                            <UserPlus size={18} />
-                        </button>
-                    </div>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                        <input
-                            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                            placeholder="Rechercher..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                    {loading ? (
-                        <div className="p-4 text-center text-gray-400 text-sm">Chargement...</div>
-                    ) : filteredEmployees.map(emp => (
-                        <div
-                            key={emp.id}
-                            onClick={() => setSelectedEmp(emp)}
-                            className={`p-3 rounded-xl cursor-pointer transition-all border ${selectedEmp?.id === emp.id
-                                ? 'bg-indigo-50 border-indigo-200 shadow-sm'
-                                : 'bg-white border-transparent hover:bg-gray-50 hover:border-gray-100'
-                                }`}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <div className={`font-bold ${selectedEmp?.id === emp.id ? 'text-indigo-900' : 'text-gray-800'}`}>
-                                        {emp.name}
-                                    </div>
-                                    <div className="text-xs text-gray-500 mt-0.5">{emp.assignment || emp.role || 'Sans poste'}</div>
-                                </div>
-                                {emp.interim_agency && (
-                                    <span className="text-[10px] px-2 py-1 rounded-md bg-gray-100 text-gray-600 font-medium">
-                                        {emp.interim_agency}
-                                    </span>
-                                )}
-                            </div>
+        <div className="h-[calc(100dvh-8rem)] md:h-[calc(100vh-6rem)]">
+            {!selectedEmp ? (
+                // --- GRID VIEW ---
+                <div className="h-full flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    {/* Header Controls */}
+                    <div className="p-4 md:p-6 border-b border-gray-100 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
+                        <div className="flex justify-between w-full xl:w-auto items-center">
+                            <h2 className="font-bold text-gray-800 text-xl flex items-center gap-2">
+                                <Users size={24} className="text-indigo-600" />
+                                <span className="hidden xs:inline">Personnel</span>
+                                <span className="xs:hidden">Equipe</span>
+                                <span className="text-gray-400 text-sm font-normal">({filteredEmployees.length})</span>
+                            </h2>
+                            {/* Mobile Add Button shows here if needed, but we have one below */}
                         </div>
-                    ))}
-                </div>
-            </div>
 
-            {/* Main Content */}
-            <div className={`flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col ${!selectedEmp ? 'hidden md:flex' : 'flex'}`}>
-                {selectedEmp ? (
-                    <>
-                        {/* Header */}
-                        <div className="p-6 md:p-8 flex flex-col h-full overflow-hidden">
-                            {/* Header */}
-                            <div className="flex justify-between items-start mb-6 shrink-0">
-                                <div className="flex items-center gap-4">
-                                    {/* Mobile Back Button */}
-                                    <button
-                                        onClick={() => setSelectedEmp(null)}
-                                        className="md:hidden p-2 -ml-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
-                                    >
-                                        <ArrowLeft size={20} />
-                                    </button>
-
-                                    <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-2xl shrink-0">
-                                        {selectedEmp.name.charAt(0)}
-                                    </div>
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-gray-900 leading-tight">
-                                            {selectedEmp.name}
-                                        </h2>
-                                        <p className="text-gray-500 font-medium">
-                                            {selectedEmp.assignment || selectedEmp.role || 'Aucun poste'} • {selectedEmp.team || 'Non assigné'}
-                                        </p>
-                                    </div>
+                        <div className="flex flex-col gap-3 w-full xl:w-auto">
+                            <div className="flex gap-2 w-full">
+                                {/* Search */}
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input
+                                        className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="Rechercher..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
                                 </div>
                                 <button
-                                    onClick={() => handleDeleteEmployee(selectedEmp.id)}
-                                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Supprimer l'employé"
+                                    onClick={() => setShowAddModal(true)}
+                                    className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-200 active:scale-95 shrink-0"
                                 >
-                                    <Trash2 size={20} />
+                                    <UserPlus size={20} />
                                 </button>
                             </div>
 
-                            {/* Tabs - Responsive Pill Design */}
-                            <div className="bg-gray-100/80 p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full mb-6 shrink-0">
+                            {/* Grouping Toggles - Scrollable on mobile */}
+                            <div className="flex bg-gray-100 p-1 rounded-xl shrink-0 overflow-x-auto no-scrollbar">
+                                <button
+                                    onClick={() => setGrouping('none')}
+                                    className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${grouping === 'none' ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Grille
+                                </button>
+                                <button
+                                    onClick={() => setGrouping('interim_agency')}
+                                    className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${grouping === 'interim_agency' ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Société
+                                </button>
+                                <button
+                                    onClick={() => setGrouping('role')}
+                                    className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${grouping === 'role' ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    Fonction
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Grid Content */}
+                    <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50 custom-scrollbar">
+                        {loading ? (
+                            <div className="h-full flex items-center justify-center text-gray-400">
+                                <div className="animate-spin mr-3 h-5 w-5 border-2 border-indigo-500 border-t-transparent rounded-full"></div>
+                                Chargement...
+                            </div>
+                        ) : (
+                            <div className="space-y-8">
+                                {Object.entries(groupedData).map(([groupTitle, emps]) => (
+                                    <div key={groupTitle}>
+                                        {grouping !== 'none' && (
+                                            <h3 className="font-bold text-gray-500 uppercase tracking-wider text-sm mb-4 pl-1 border-l-4 border-indigo-500 ml-1">
+                                                {groupTitle} <span className="text-gray-400 font-normal">({emps.length})</span>
+                                            </h3>
+                                        )}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                            {emps.map(emp => (
+                                                <div
+                                                    key={emp.id}
+                                                    onClick={() => setSelectedEmp(emp)}
+                                                    className="group bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden"
+                                                >
+                                                    <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <ChevronRight size={18} className="text-gray-300" />
+                                                    </div>
+
+                                                    <div className="flex items-start gap-4 mb-4">
+                                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center text-indigo-600 font-bold text-lg border border-indigo-100 shrink-0">
+                                                            {emp.name.charAt(0)}
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-gray-900 line-clamp-1">{emp.name}</div>
+                                                            <div className="text-sm text-gray-500 line-clamp-1">{emp.role || 'Aucun rôle'}</div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-wrap gap-2 text-xs">
+                                                        {emp.assignment && (
+                                                            <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-lg border border-gray-100 font-medium">
+                                                                {emp.assignment}
+                                                            </span>
+                                                        )}
+                                                        {emp.team && (
+                                                            <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 font-medium">
+                                                                {emp.team}
+                                                            </span>
+                                                        )}
+                                                        {emp.interim_agency && (
+                                                            <span className="px-2 py-1 bg-purple-50 text-purple-600 rounded-lg border border-purple-100 font-medium">
+                                                                {emp.interim_agency}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                // --- DETAIL VIEW ---
+                <div className="h-full flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-in slide-in-from-right duration-300">
+                    {/* Header */}
+                    <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between md:items-center gap-4 bg-white z-10">
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={() => setSelectedEmp(null)}
+                                className="p-2 -ml-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 rounded-xl transition-colors flex items-center gap-2"
+                            >
+                                <ArrowLeft size={20} />
+                                <span className="font-medium hidden sm:inline">Retour</span>
+                            </button>
+                            <div className="h-8 w-px bg-gray-200 mx-2 hidden sm:block"></div>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold shrink-0">
+                                    {selectedEmp.name.charAt(0)}
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 leading-none">{selectedEmp.name}</h2>
+                                    <p className="text-sm text-gray-500 mt-1">{selectedEmp.role || 'Poste non défini'}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 self-end md:self-auto">
+                            <div className="bg-gray-100/80 p-1 rounded-xl flex items-center gap-1">
                                 {[
-                                    { id: 'info', label: 'Informations', fullLabel: 'Informations & Contrat', icon: FileText, activeColor: 'text-blue-600', iconColor: 'text-blue-500' },
-                                    { id: 'absences', label: 'Absences', fullLabel: 'Absences & Congés', icon: Calendar, activeColor: 'text-amber-600', iconColor: 'text-amber-500' },
-                                    { id: 'medical', label: 'Médical', fullLabel: 'Suivi Médical', icon: Stethoscope, activeColor: 'text-emerald-600', iconColor: 'text-emerald-500' },
+                                    { id: 'info', label: 'Infos', icon: FileText },
+                                    { id: 'absences', label: 'Absences', icon: Calendar },
+                                    { id: 'medical', label: 'Médical', icon: Stethoscope },
                                 ].map(tab => (
                                     <button
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id)}
-                                        className={`
-                                    relative flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-200 ease-out whitespace-nowrap flex-1
-                                    ${activeTab === tab.id
-                                                ? `bg-white shadow-sm ring-1 ring-black/5 ${tab.activeColor} font-bold`
-                                                : 'text-gray-500 hover:text-gray-700 hover:bg-white/50 font-medium'
-                                            }
-                                `}
+                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === tab.id ? 'bg-white shadow text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
                                     >
-                                        <tab.icon size={18} className={`transition-colors ${activeTab === tab.id ? tab.iconColor : 'text-gray-400'}`} />
-                                        <span className="text-sm tracking-wide hidden sm:inline">{tab.fullLabel}</span>
-                                        <span className="text-sm tracking-wide sm:hidden">{tab.label}</span>
+                                        <tab.icon size={16} />
+                                        <span className="hidden sm:inline">{tab.label}</span>
                                     </button>
                                 ))}
                             </div>
-
-                            {/* Content Container */}
-                            <div className="flex-1 overflow-hidden bg-gray-50/30 relative rounded-2xl border border-gray-100/50">
-                                {activeTab === 'info' && (
-                                    <InfoTab employee={selectedEmp} onUpdate={handleUpdateEmployee} />
-                                )}
-                                {activeTab === 'absences' && (
-                                    <div className="h-full overflow-y-auto p-6 custom-scrollbar">
-                                        <AbsencesTab employee={selectedEmp} absences={absences} refresh={() => fetchEmployeeDetails(selectedEmp.id)} />
-                                    </div>
-                                )}
-                                {activeTab === 'medical' && (
-                                    <div className="h-full overflow-y-auto p-6 custom-scrollbar">
-                                        <MedicalTab employee={selectedEmp} events={medicalEvents} refresh={() => fetchEmployeeDetails(selectedEmp.id)} />
-                                    </div>
-                                )}
-                            </div>
+                            <div className="h-8 w-px bg-gray-200 mx-1"></div>
+                            <button
+                                onClick={() => handleDeleteEmployee(selectedEmp.id)}
+                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                                <Trash2 size={20} />
+                            </button>
                         </div>
-                    </>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-gray-300">
-                        <Users size={64} className="mb-4 text-gray-200" />
-                        <p>Sélectionnez un employé pour voir les détails</p>
                     </div>
-                )}
-            </div>
+
+                    {/* Content */}
+                    <div className="flex-1 overflow-hidden bg-gray-50/30">
+                        {activeTab === 'info' && (
+                            <InfoTab employee={selectedEmp} onUpdate={handleUpdateEmployee} />
+                        )}
+                        {activeTab === 'absences' && (
+                            <div className="h-full overflow-y-auto p-6 custom-scrollbar">
+                                <AbsencesTab employee={selectedEmp} absences={absences} refresh={() => fetchEmployeeDetails(selectedEmp.id)} />
+                            </div>
+                        )}
+                        {activeTab === 'medical' && (
+                            <div className="h-full overflow-y-auto p-6 custom-scrollbar">
+                                <MedicalTab employee={selectedEmp} events={medicalEvents} refresh={() => fetchEmployeeDetails(selectedEmp.id)} />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {showAddModal && <AddEmployeeModal onClose={() => setShowAddModal(false)} onAdded={fetchEmployees} />}
         </div>

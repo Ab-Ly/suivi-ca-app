@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Card } from './ui/Card';
 import { DateInput } from './ui/DateInput';
-import { Loader2, Calendar, Package, DollarSign, Droplet, Trash2, Plus } from 'lucide-react';
+import { Loader2, Calendar, Package, DollarSign, Droplet, Trash2, Plus, RotateCcw, Edit2 } from 'lucide-react';
 import { formatPrice, formatNumber } from '../utils/formatters';
 import BulkFuelEntryModal from './BulkFuelEntryModal';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
+import EditSaleModal from './EditSaleModal';
 
 export default function Sales() {
     const [activeTab, setActiveTab] = useState('sales'); // 'sales' | 'fuel'
@@ -13,6 +14,9 @@ export default function Sales() {
     const [fuelSales, setFuelSales] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showBulkEntryModal, setShowBulkEntryModal] = useState(false);
+
+    // Edit Sale State
+    const [editingSale, setEditingSale] = useState(null);
 
     // Delete Confirmation State
     const [deleteConfig, setDeleteConfig] = useState({ isOpen: false, id: null });
@@ -87,8 +91,6 @@ export default function Sales() {
                 end.setHours(23, 59, 59, 999);
                 query = query.lte('sale_date', end.toISOString());
             }
-            // Search term and category don't apply directly to fuel sales the same way, 
-            // but we could filter by fuel_type if we wanted. For now, ignore category filter for fuel.
 
             const { data, error } = await query;
 
@@ -132,14 +134,31 @@ export default function Sales() {
         setCategory('');
     };
 
+    // Helper to group sales by Month Year
+    const groupSalesByMonth = (salesData) => {
+        const groups = {};
+        salesData.forEach(sale => {
+            const date = new Date(sale.sale_date);
+            const key = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            if (!groups[key]) {
+                groups[key] = [];
+            }
+            groups[key].push(sale);
+        });
+        return groups;
+    };
+
+    const salesByMonth = groupSalesByMonth(sales);
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <h2 className="text-2xl font-bold text-text-main">Historique des Ventes</h2>
                 <button
                     onClick={resetFilters}
-                    className="text-sm text-primary hover:text-primary/80 underline font-medium"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 shadow-sm rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-all"
                 >
+                    <RotateCcw size={16} />
                     Réinitialiser les filtres
                 </button>
             </div>
@@ -241,6 +260,7 @@ export default function Sales() {
                                         <th className="py-3 px-4 font-medium">Catégorie</th>
                                         <th className="py-3 px-4 font-medium text-right">Quantité</th>
                                         <th className="py-3 px-4 font-medium text-right">Total</th>
+                                        <th className="py-3 px-4 font-medium text-center">Action</th>
                                     </>
                                 ) : (
                                     <>
@@ -255,72 +275,100 @@ export default function Sales() {
                         <tbody className="divide-y divide-notion-border">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={activeTab === 'sales' ? 5 : 4} className="py-8 text-center">
+                                    <td colSpan={activeTab === 'sales' ? 6 : 4} className="py-8 text-center">
                                         <div className="flex justify-center">
                                             <Loader2 className="animate-spin text-notion-gray" size={24} />
                                         </div>
                                     </td>
                                 </tr>
-                            ) : (activeTab === 'sales' ? sales : fuelSales).length === 0 ? (
-                                <tr>
-                                    <td colSpan={activeTab === 'sales' ? 5 : 4} className="py-8 text-center text-notion-gray">
-                                        Aucune vente trouvée
-                                    </td>
-                                </tr>
                             ) : (
                                 activeTab === 'sales' ? (
-                                    sales.map((sale) => (
-                                        <tr key={sale.id} className="hover:bg-notion-sidebar transition-colors">
-                                            <td className="py-3 px-4 text-sm">
-                                                {new Date(sale.sale_date).toLocaleString('fr-FR')}
-                                            </td>
-                                            <td className="py-3 px-4 font-medium">
-                                                {sale.articles?.name || 'Article inconnu'}
-                                            </td>
-                                            <td className="py-3 px-4 text-sm text-notion-gray">
-                                                {sale.articles?.category}
-                                                {sale.sales_location && (
-                                                    <span className="ml-2 text-xs bg-gray-100 px-1.5 py-0.5 rounded">
-                                                        {sale.sales_location === 'piste' ? 'Piste' : 'Bosch'}
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-mono text-sm">
-                                                {sale.quantity}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-medium">
-                                                {formatPrice(sale.total_price)}
+                                    sales.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={6} className="py-8 text-center text-notion-gray">
+                                                Aucune vente trouvée
                                             </td>
                                         </tr>
-                                    ))
+                                    ) : (
+                                        Object.entries(salesByMonth).map(([month, monthSales]) => (
+                                            <React.Fragment key={month}>
+                                                <tr className="bg-gray-50/80">
+                                                    <td colSpan={6} className="py-2 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider sticky top-0">
+                                                        {month}
+                                                    </td>
+                                                </tr>
+                                                {monthSales.map((sale) => (
+                                                    <tr key={sale.id} className="hover:bg-notion-sidebar transition-colors">
+                                                        <td className="py-3 px-4 text-sm whitespace-nowrap">
+                                                            {new Date(sale.sale_date).toLocaleString('fr-FR')}
+                                                        </td>
+                                                        <td className="py-3 px-4 font-medium">
+                                                            {sale.articles?.name || 'Article inconnu'}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-sm text-notion-gray">
+                                                            {sale.articles?.category}
+                                                            {sale.sales_location && (
+                                                                <span className="ml-2 text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                                                                    {sale.sales_location === 'piste' ? 'Piste' : 'Bosch'}
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-right font-mono text-sm">
+                                                            {sale.quantity}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-right font-medium">
+                                                            {formatPrice(sale.total_price)}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center">
+                                                            <button
+                                                                onClick={() => setEditingSale(sale)}
+                                                                className="text-gray-400 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-indigo-50 transition-colors"
+                                                                title="Modifier"
+                                                            >
+                                                                <Edit2 size={16} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </React.Fragment>
+                                        ))
+                                    )
                                 ) : (
-                                    fuelSales.map((sale) => (
-                                        <tr key={sale.id} className="hover:bg-notion-sidebar transition-colors">
-                                            <td className="py-3 px-4 text-sm">
-                                                {new Date(sale.sale_date).toLocaleDateString('fr-FR')}
-                                            </td>
-                                            <td className="py-3 px-4 font-medium">
-                                                <span className={`px-2 py-1 rounded-lg text-xs font-bold ${sale.fuel_type === 'Gasoil' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                                                    {sale.fuel_type}
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-mono text-sm font-medium">
-                                                {formatNumber(Number(sale.quantity_liters))} L
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-mono text-sm text-gray-500">
-                                                {formatNumber(Number(sale.quantity_liters) / 1000, 3)} m³
-                                            </td>
-                                            <td className="py-3 px-4 text-center">
-                                                <button
-                                                    onClick={() => handleDeleteFuelSale(sale.id)}
-                                                    className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                                                    title="Supprimer"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                    fuelSales.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="py-8 text-center text-notion-gray">
+                                                Aucune vente carburant trouvée
                                             </td>
                                         </tr>
-                                    ))
+                                    ) : (
+                                        fuelSales.map((sale) => (
+                                            <tr key={sale.id} className="hover:bg-notion-sidebar transition-colors">
+                                                <td className="py-3 px-4 text-sm">
+                                                    {new Date(sale.sale_date).toLocaleDateString('fr-FR')}
+                                                </td>
+                                                <td className="py-3 px-4 font-medium">
+                                                    <span className={`px-2 py-1 rounded-lg text-xs font-bold ${sale.fuel_type === 'Gasoil' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                                                        {sale.fuel_type}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-4 text-right font-mono text-sm font-medium">
+                                                    {formatNumber(Number(sale.quantity_liters))} L
+                                                </td>
+                                                <td className="py-3 px-4 text-right font-mono text-sm text-gray-500">
+                                                    {formatNumber(Number(sale.quantity_liters) / 1000, 3)} m³
+                                                </td>
+                                                <td className="py-3 px-4 text-center">
+                                                    <button
+                                                        onClick={() => handleDeleteFuelSale(sale.id)}
+                                                        className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                                                        title="Supprimer"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )
                                 )
                             )}
                         </tbody>
@@ -332,6 +380,13 @@ export default function Sales() {
                 isOpen={showBulkEntryModal}
                 onClose={() => setShowBulkEntryModal(false)}
                 onSuccess={fetchFuelSales}
+            />
+
+            <EditSaleModal
+                isOpen={!!editingSale}
+                onClose={() => setEditingSale(null)}
+                sale={editingSale}
+                onSuccess={fetchSales}
             />
 
             <PasswordConfirmationModal
