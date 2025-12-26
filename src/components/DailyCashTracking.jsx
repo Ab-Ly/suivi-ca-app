@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X } from 'lucide-react';
 import { format } from 'date-fns';
@@ -1094,9 +1095,9 @@ export default function DailyCashTracking() {
 
             {/* Add Transaction Modal */}
             {
-                showAddModal && (
+                showAddModal && createPortal(
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setShowAddModal(false)}>
-                        <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-xl font-bold text-gray-900">Nouvelle Opération</h3>
                                 <button
@@ -1274,12 +1275,13 @@ export default function DailyCashTracking() {
                                 </div>
                             </form>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )
             }
 
             {/* Add Entity Modal */}
-            {isAddEntityModalOpen && (
+            {isAddEntityModalOpen && createPortal(
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setIsAddEntityModalOpen(false)}>
                     <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-8">
@@ -1328,10 +1330,11 @@ export default function DailyCashTracking() {
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
             {/* Entity History Modal */}
-            {selectedEntityHistory && (
+            {selectedEntityHistory && createPortal(
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setSelectedEntityHistory(null)}>
                     <div className="bg-white rounded-2xl w-full max-w-2xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
                         {/* Header */}
@@ -1458,7 +1461,8 @@ export default function DailyCashTracking() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

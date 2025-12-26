@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Card } from './ui/Card';
 import { DateInput } from './ui/DateInput';
-import { Loader2, Calendar, Package, DollarSign, Droplet, Trash2, Plus, RotateCcw, Edit2 } from 'lucide-react';
+import { Loader2, Calendar, Package, DollarSign, Droplet, Trash2, Plus, RotateCcw, Edit2, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatPrice, formatNumber } from '../utils/formatters';
 import BulkFuelEntryModal from './BulkFuelEntryModal';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
@@ -17,6 +17,7 @@ export default function Sales() {
 
     // Edit Sale State
     const [editingSale, setEditingSale] = useState(null);
+    const [expandedMonths, setExpandedMonths] = useState({});
 
     // Delete Confirmation State
     const [deleteConfig, setDeleteConfig] = useState({ isOpen: false, id: null });
@@ -26,6 +27,22 @@ export default function Sales() {
     const [endDate, setEndDate] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [category, setCategory] = useState('');
+
+    const toggleMonth = (month) => {
+        setExpandedMonths(prev => {
+            // If it's already defined, toggle it.
+            // If undefined, it means we need to check the default (current month).
+            // But since we want to toggle, we should calculate the current state first, then flip it.
+
+            const currentMonthKey = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            const isCurrentlyExpanded = prev[month] !== undefined ? prev[month] : month === currentMonthKey;
+
+            return {
+                ...prev,
+                [month]: !isCurrentlyExpanded
+            };
+        });
+    };
 
     useEffect(() => {
         if (activeTab === 'sales') {
@@ -290,48 +307,75 @@ export default function Sales() {
                                             </td>
                                         </tr>
                                     ) : (
-                                        Object.entries(salesByMonth).map(([month, monthSales]) => (
-                                            <React.Fragment key={month}>
-                                                <tr className="bg-gray-50/80">
-                                                    <td colSpan={6} className="py-2 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider sticky top-0">
-                                                        {month}
-                                                    </td>
-                                                </tr>
-                                                {monthSales.map((sale) => (
-                                                    <tr key={sale.id} className="hover:bg-notion-sidebar transition-colors">
-                                                        <td className="py-3 px-4 text-sm whitespace-nowrap">
-                                                            {new Date(sale.sale_date).toLocaleString('fr-FR')}
-                                                        </td>
-                                                        <td className="py-3 px-4 font-medium">
-                                                            {sale.articles?.name || 'Article inconnu'}
-                                                        </td>
-                                                        <td className="py-3 px-4 text-sm text-notion-gray">
-                                                            {sale.articles?.category}
-                                                            {sale.sales_location && (
-                                                                <span className="ml-2 text-xs bg-gray-100 px-1.5 py-0.5 rounded">
-                                                                    {sale.sales_location === 'piste' ? 'Piste' : 'Bosch'}
-                                                                </span>
-                                                            )}
-                                                        </td>
-                                                        <td className="py-3 px-4 text-right font-mono text-sm">
-                                                            {sale.quantity}
-                                                        </td>
-                                                        <td className="py-3 px-4 text-right font-medium">
-                                                            {formatPrice(sale.total_price)}
-                                                        </td>
-                                                        <td className="py-3 px-4 text-center">
-                                                            <button
-                                                                onClick={() => setEditingSale(sale)}
-                                                                className="text-gray-400 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-indigo-50 transition-colors"
-                                                                title="Modifier"
-                                                            >
-                                                                <Edit2 size={16} />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </React.Fragment>
-                                        ))
+                                        (() => {
+                                            const currentMonthKey = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+                                            return Object.entries(salesByMonth).map(([month, monthSales]) => {
+                                                // Default to expanded if it's the current month, or if explicitly set to true
+                                                // If strictness is needed (ONLY current month open, others closed):
+                                                // But if user opened it, keep it open.
+                                                // expandedMonths[month] stores the toggle state.
+                                                // If undefined, we default to (month === currentMonthKey).
+                                                const isExpanded = expandedMonths[month] !== undefined
+                                                    ? expandedMonths[month]
+                                                    : month === currentMonthKey;
+
+                                                return (
+                                                    <React.Fragment key={month}>
+                                                        <tr
+                                                            className="bg-gray-50/80 cursor-pointer hover:bg-gray-100 transition-colors border-b border-gray-100"
+                                                            onClick={() => toggleMonth(month)}
+                                                        >
+                                                            <td colSpan={6} className="py-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                                                <div className="flex items-center gap-2">
+                                                                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                                                    {month}
+                                                                    <span className="ml-auto text-gray-400 font-normal normal-case">
+                                                                        {monthSales.length} vent{monthSales.length > 1 ? 'es' : 'e'}
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        {isExpanded && monthSales.map((sale) => (
+                                                            <tr key={sale.id} className="hover:bg-notion-sidebar transition-colors">
+                                                                <td className="py-3 px-4 text-sm whitespace-nowrap">
+                                                                    {new Date(sale.sale_date).toLocaleString('fr-FR')}
+                                                                </td>
+                                                                <td className="py-3 px-4 font-medium">
+                                                                    {sale.articles?.name || 'Article inconnu'}
+                                                                </td>
+                                                                <td className="py-3 px-4 text-sm text-notion-gray">
+                                                                    {sale.articles?.category}
+                                                                    {sale.sales_location && (
+                                                                        <span className="ml-2 text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                                                                            {sale.sales_location === 'piste' ? 'Piste' : 'Bosch'}
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-3 px-4 text-right font-mono text-sm">
+                                                                    {sale.quantity}
+                                                                </td>
+                                                                <td className="py-3 px-4 text-right font-medium">
+                                                                    {formatPrice(sale.total_price)}
+                                                                </td>
+                                                                <td className="py-3 px-4 text-center">
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setEditingSale(sale);
+                                                                        }}
+                                                                        className="text-gray-400 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-indigo-50 transition-colors"
+                                                                        title="Modifier"
+                                                                    >
+                                                                        <Edit2 size={16} />
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </React.Fragment>
+                                                );
+                                            });
+                                        })()
                                     )
                                 ) : (
                                     fuelSales.length === 0 ? (

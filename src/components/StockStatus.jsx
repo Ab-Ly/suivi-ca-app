@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader } from './ui/Card';
-import { Search, Filter, CirclePlus, CircleMinus, PackagePlus, Loader2, History, LayoutGrid, Calendar } from 'lucide-react';
+import { Search, Filter, CirclePlus, CircleMinus, PackagePlus, Loader2, History, LayoutGrid, Calendar, Truck } from 'lucide-react';
 import ArticleManager from './ArticleManager';
+import LubricantDeliveryModal from './LubricantDeliveryModal';
 import { supabase } from '../lib/supabase';
 import { Modal } from './ui/Modal';
 import { DateInput } from './ui/DateInput';
@@ -11,6 +12,7 @@ export default function StockStatus() {
     const [activeTab, setActiveTab] = useState('status'); // 'status' or 'movements'
     const [searchTerm, setSearchTerm] = useState('');
     const [isArticleManagerOpen, setIsArticleManagerOpen] = useState(false);
+    const [isLubricantDeliveryOpen, setIsLubricantDeliveryOpen] = useState(false);
     const [stockData, setStockData] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -182,6 +184,13 @@ export default function StockStatus() {
                             <span className="font-bold text-lg text-primary">{totalValue.toLocaleString()} MAD</span>
                         </div>
                         <button
+                            onClick={() => setIsLubricantDeliveryOpen(true)}
+                            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl shadow-md hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200"
+                        >
+                            <Truck size={20} />
+                            <span className="hidden sm:inline font-medium">Livraison Lubrifiant</span>
+                        </button>
+                        <button
                             onClick={() => setIsArticleManagerOpen(true)}
                             className="flex items-center gap-2 bg-gradient-purple text-white px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
                         >
@@ -197,6 +206,12 @@ export default function StockStatus() {
                             <span className="hidden sm:inline font-medium">Nettoyer</span>
                         </button>
                     </div>
+
+                    <LubricantDeliveryModal
+                        isOpen={isLubricantDeliveryOpen}
+                        onClose={() => setIsLubricantDeliveryOpen(false)}
+                        onSuccess={() => fetchStock()}
+                    />
 
                     <PasswordConfirmationModal
                         isOpen={deleteConfig.isOpen}
@@ -414,7 +429,8 @@ export default function StockStatus() {
                         )}
                     </div>
                 </Card>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }

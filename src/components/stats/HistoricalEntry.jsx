@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Loader2, Save, AlertCircle } from 'lucide-react';
+import { Loader2, Save, AlertCircle, FileCheck } from 'lucide-react';
+import CloseMonthModal from './CloseMonthModal';
 
 const CATEGORIES = ['Shop', 'Café', 'Bosch Service', "Main d'oeuvre", 'Pneumatique', 'Lubrifiant Piste', 'Lubrifiant Bosch'];
 const FUEL_CATEGORIES = ['Gasoil Volume', 'SSP Volume'];
@@ -25,6 +26,7 @@ export default function HistoricalEntry() {
     const [saving, setSaving] = useState(false);
     const [data, setData] = useState({});
     const [message, setMessage] = useState(null);
+    const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
 
     useEffect(() => {
         fetchHistoricalData();
@@ -139,79 +141,63 @@ export default function HistoricalEntry() {
                     {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                     Enregistrer
                 </button>
+                <button
+                    onClick={() => setIsCloseModalOpen(true)}
+                    className="flex items-center gap-2 px-6 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors ml-2 shadow-sm"
+                >
+                    <FileCheck size={18} />
+                    Clôturer Mois
+                </button>
             </div>
 
-            {message && (
-                <div className={`p-4 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                    <AlertCircle size={20} />
-                    {message.text}
-                </div>
-            )}
+            <CloseMonthModal
+                isOpen={isCloseModalOpen}
+                onClose={() => setIsCloseModalOpen(false)}
+                onClosed={() => {
+                    fetchHistoricalData();
+                    setMessage({ type: 'success', text: 'Mois clôturé et données mises à jour !' });
+                }}
+            />
 
-            {loading ? (
-                <div className="flex justify-center py-12">
-                    <Loader2 className="animate-spin text-gray-400" size={32} />
-                </div>
-            ) : (
-                <div className="space-y-8">
-                    {/* Sales Table */}
-                    <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-gray-50 text-gray-700 font-medium">
-                                <tr>
-                                    <th className="px-4 py-3 border-b">Mois</th>
-                                    {CATEGORIES.map(cat => (
-                                        <th key={cat} className="px-4 py-3 border-b text-right min-w-[120px]">{cat}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100 bg-white">
-                                {MONTHS.map(month => (
-                                    <tr key={month.value} className="hover:bg-gray-50/50">
-                                        <td className="px-4 py-3 font-medium text-gray-900">{month.label}</td>
-                                        {CATEGORIES.map(cat => (
-                                            <td key={cat} className="px-2 py-2">
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    step="0.01"
-                                                    className="w-full px-3 py-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-primary/20 focus:border-primary text-right transition-all"
-                                                    placeholder="0.00"
-                                                    value={data[`${month.value}_${cat}`] || ''}
-                                                    onChange={(e) => handleChange(month.value, cat, e.target.value)}
-                                                />
-                                            </td>
-                                        ))}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+            {
+                message && (
+                    <div className={`p-4 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                        <AlertCircle size={20} />
+                        {message.text}
                     </div>
+                )
+            }
 
-                    {/* Fuel Table */}
-                    <div>
-                        <h4 className="font-bold text-lg text-gray-900 mb-4">Saisie Historique Carburant (Volume en Litres)</h4>
-                        <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm max-w-3xl">
+            {
+                loading ? (
+                    <div className="flex justify-center py-12">
+                        <Loader2 className="animate-spin text-gray-400" size={32} />
+                    </div>
+                ) : (
+                    <div className="space-y-8">
+                        {/* Sales Table */}
+                        <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-gray-50 text-gray-700 font-medium">
                                     <tr>
                                         <th className="px-4 py-3 border-b">Mois</th>
-                                        <th className="px-4 py-3 border-b text-right min-w-[150px]">Gasoil (L)</th>
-                                        <th className="px-4 py-3 border-b text-right min-w-[150px]">SSP (L)</th>
+                                        {CATEGORIES.map(cat => (
+                                            <th key={cat} className="px-4 py-3 border-b text-right min-w-[120px]">{cat}</th>
+                                        ))}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100 bg-white">
                                     {MONTHS.map(month => (
                                         <tr key={month.value} className="hover:bg-gray-50/50">
                                             <td className="px-4 py-3 font-medium text-gray-900">{month.label}</td>
-                                            {FUEL_CATEGORIES.map(cat => (
+                                            {CATEGORIES.map(cat => (
                                                 <td key={cat} className="px-2 py-2">
                                                     <input
                                                         type="number"
                                                         min="0"
                                                         step="0.01"
-                                                        className="w-full px-3 py-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-primary/20 focus:border-primary text-right transition-all font-mono"
-                                                        placeholder="0"
+                                                        className="w-full px-3 py-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-primary/20 focus:border-primary text-right transition-all"
+                                                        placeholder="0.00"
                                                         value={data[`${month.value}_${cat}`] || ''}
                                                         onChange={(e) => handleChange(month.value, cat, e.target.value)}
                                                     />
@@ -222,9 +208,45 @@ export default function HistoricalEntry() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Fuel Table */}
+                        <div>
+                            <h4 className="font-bold text-lg text-gray-900 mb-4">Saisie Historique Carburant (Volume en Litres)</h4>
+                            <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-sm max-w-3xl">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-gray-50 text-gray-700 font-medium">
+                                        <tr>
+                                            <th className="px-4 py-3 border-b">Mois</th>
+                                            <th className="px-4 py-3 border-b text-right min-w-[150px]">Gasoil (L)</th>
+                                            <th className="px-4 py-3 border-b text-right min-w-[150px]">SSP (L)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 bg-white">
+                                        {MONTHS.map(month => (
+                                            <tr key={month.value} className="hover:bg-gray-50/50">
+                                                <td className="px-4 py-3 font-medium text-gray-900">{month.label}</td>
+                                                {FUEL_CATEGORIES.map(cat => (
+                                                    <td key={cat} className="px-2 py-2">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            className="w-full px-3 py-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-primary/20 focus:border-primary text-right transition-all font-mono"
+                                                            placeholder="0"
+                                                            value={data[`${month.value}_${cat}`] || ''}
+                                                            onChange={(e) => handleChange(month.value, cat, e.target.value)}
+                                                        />
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
