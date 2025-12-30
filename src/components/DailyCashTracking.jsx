@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { formatPrice, formatNumber } from '../utils/formatters';
@@ -22,6 +22,18 @@ export default function DailyCashTracking() {
     const [description, setDescription] = useState('');
     const [selectedEntity, setSelectedEntity] = useState('');
     const [category, setCategory] = useState('ENTITY_TRANSACTION'); // ENTITY_TRANSACTION, EXPENSE_FUND, OTHER
+    const [paymentMethod, setPaymentMethod] = useState('ESPECES'); // ESPECES, CHEQUE, VIREMENT, CARTE_BANCAIRE
+
+    // Settlement / Reimbursement State
+    const [selectedOps, setSelectedOps] = useState(new Set());
+    const [showSettlementModal, setShowSettlementModal] = useState(false);
+    const [settlementMethod, setSettlementMethod] = useState('ESPECES');
+    const [isSettling, setIsSettling] = useState(false);
+
+    // Collapsible Months State
+    const [expandedMonths, setExpandedMonths] = useState(new Set());
+    // Grouped Operations State
+    const [groupedExpenseOperations, setGroupedExpenseOperations] = useState({});
 
     // State for Entity History Modal
     const [selectedEntityHistory, setSelectedEntityHistory] = useState(null);
@@ -67,6 +79,7 @@ export default function DailyCashTracking() {
     const [monthlyOperations, setMonthlyOperations] = useState([]);
     const [monthExpenseOpening, setMonthExpenseOpening] = useState(0);
     const [monthExpenseClosing, setMonthExpenseClosing] = useState(0);
+    const [monthlyRecap, setMonthlyRecap] = useState([]); // Array of { month: number, amount: number, label: string }
 
     const fetchData = React.useCallback(async () => {
         setLoading(true);
@@ -107,10 +120,12 @@ export default function DailyCashTracking() {
             if (monthOpsError) throw monthOpsError;
             setMonthlyOperations(monthOps || []);
 
-            // 3. Fetch ALL operations to calculate global balances (Optimized: could use RPC)
+            // 3. Fetch ALL operations to calculate global balances and history
             const { data: allOps, error: allOpsError } = await supabase
                 .from('daily_cash_operations')
-                .select('type, amount, category, entity_id, date, description');
+                .select('*')
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false });
 
             if (allOpsError) throw allOpsError;
 
@@ -179,6 +194,36 @@ export default function DailyCashTracking() {
             setMonthExpenseOpening(mExpOpen);
             setMonthExpenseClosing(mExpClose);
 
+            // C. Annual Recap Calculation
+            const currentYear = new Date().getFullYear();
+            const recap = Array.from({ length: 12 }, (_, i) => ({
+                month: i,
+                label: format(new Date(currentYear, i, 1), 'MMMM', { locale: fr }),
+                amount: 0
+            }));
+
+            allOps.forEach(op => {
+                if (op.category === 'EXPENSE_FUND' && op.type === 'OUT') {
+                    const d = new Date(op.date);
+                    if (d.getFullYear() === currentYear) {
+                        recap[d.getMonth()].amount += Number(op.amount);
+                    }
+                }
+            });
+            // D. Grouping Logic for History View
+            const grouped = {};
+            allOps.forEach(op => {
+                if (op.category === 'EXPENSE_FUND') { // Filter for Expense Fund
+                    const monthKey = format(new Date(op.date), 'yyyy-MM');
+                    if (!grouped[monthKey]) grouped[monthKey] = [];
+                    grouped[monthKey].push(op);
+                }
+            });
+            // Sort keys descending (though allOps is already sorted, explicit sort for keys is good practice if iterating via Object.entries)
+            setGroupedExpenseOperations(grouped);
+
+            setMonthlyRecap(recap);
+
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {
@@ -221,6 +266,7 @@ export default function DailyCashTracking() {
                 amount: parseFloat(amount),
                 description,
                 category,
+                payment_method: paymentMethod,
                 entity_id: category === 'ENTITY_TRANSACTION' ? selectedEntity : null
             };
 
@@ -234,10 +280,75 @@ export default function DailyCashTracking() {
             setShowAddModal(false);
             setAmount('');
             setDescription('');
+            setPaymentMethod('ESPECES');
             fetchData();
         } catch (error) {
             console.error('Error adding transaction:', error);
             alert('Erreur lors de l\'ajout de la transaction');
+        }
+    };
+
+    const handleToggleSelectOp = (id) => {
+        const newSelected = new Set(selectedOps);
+        if (newSelected.has(id)) {
+            newSelected.delete(id);
+        } else {
+            newSelected.add(id);
+        }
+        setSelectedOps(newSelected);
+    };
+
+    const handleSettleOperations = async () => {
+        if (selectedOps.size === 0) return;
+        setIsSettling(true);
+
+        try {
+            // 1. Calculate Total - Look in ALL loaded operations (groupedExpenseOperations values flattened, or just operations/monthlyOperations if we want to be safe)
+            // Ideally we need a master list. 'monthlyOperations' is only the current month in old logic.
+            // We should use 'allOps' or flatten the grouped ops. 
+            // Since 'monthlyOperations' variable scope is limited to render or state, let's use a new approach:
+            // Iterate through the grouped state to find the selected ops.
+            const allLoadedOps = Object.values(groupedExpenseOperations).flat();
+            // Fallback to monthlyOperations if grouped is empty (initial load edge case)
+            const sourceOps = allLoadedOps.length > 0 ? allLoadedOps : monthlyOperations;
+
+            const opsToSettle = sourceOps.filter(op => selectedOps.has(op.id));
+            const totalAmount = opsToSettle.reduce((sum, op) => sum + Math.abs(Number(op.amount)), 0);
+
+            // 2. Create Reimbursement Calculation (IN operation)
+            const { error: insertError } = await supabase
+                .from('daily_cash_operations')
+                .insert([{
+                    created_at: new Date().toISOString(),
+                    type: 'IN',
+                    amount: totalAmount,
+                    category: 'EXPENSE_FUND',
+                    description: `Remboursement ${opsToSettle.length} opérations`,
+                    payment_method: settlementMethod,
+                    status: 'COMPLETED' // The reimbursement itself is completed
+                }]);
+
+            if (insertError) throw insertError;
+
+            // 3. Update Status of Selected Operations
+            const { error: updateError } = await supabase
+                .from('daily_cash_operations')
+                .update({ status: 'REIMBURSED' })
+                .in('id', Array.from(selectedOps));
+
+            if (updateError) throw updateError;
+
+            // 4. Cleanup
+            setShowSettlementModal(false);
+            setSelectedOps(new Set());
+            setSettlementMethod('ESPECES');
+            fetchData();
+
+        } catch (error) {
+            console.error('Error settling operations:', error);
+            alert("Erreur lors du solde des opérations");
+        } finally {
+            setIsSettling(false);
         }
     };
 
@@ -569,76 +680,161 @@ export default function DailyCashTracking() {
                                     </div>
                                 </div>
 
-                                {/* Detailed Operations Table */}
-                                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                                        <h4 className="font-bold text-gray-800 text-lg">Détail des Opérations (Mensuel)</h4>
-                                        <span className="text-xs font-medium px-2 py-1 bg-gray-200 text-gray-600 rounded-md">
-                                            {monthlyOperations.filter(op => op.category === 'EXPENSE_FUND').length} opérations
-                                        </span>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left">
-                                            <thead className="bg-gray-50 text-gray-500 font-semibold text-xs uppercase tracking-wider">
-                                                <tr>
-                                                    <th className="p-4">Date</th>
-                                                    <th className="p-4">Description</th>
-                                                    <th className="p-4 text-right">Montant</th>
-                                                    <th className="p-4 text-center">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {monthlyOperations.filter(op => op.category === 'EXPENSE_FUND').length === 0 ? (
-                                                    <tr>
-                                                        <td colSpan="4" className="p-12 text-center">
-                                                            <div className="flex flex-col items-center justify-center text-gray-400">
-                                                                <Wallet size={48} className="mb-4 opacity-20" />
-                                                                <p className="font-medium">Aucune dépense enregistrée pour ce mois</p>
+                                {/* Collapsible Operations List */}
+                                <div className="space-y-6">
+                                    {Object.keys(groupedExpenseOperations).length === 0 ? (
+                                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center text-gray-500">
+                                            <Wallet size={48} className="mx-auto mb-4 opacity-20" />
+                                            <p>Aucune dépense enregistrée</p>
+                                        </div>
+                                    ) : (
+                                        Object.entries(groupedExpenseOperations)
+                                            .sort((a, b) => b[0].localeCompare(a[0])) // Sort by Month DESC
+                                            .map(([monthKey, ops]) => {
+                                                const isExpanded = expandedMonths.has(monthKey);
+                                                const monthTotal = ops.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+                                                const opsCount = ops.length;
+                                                const dateObj = new Date(monthKey + '-01');
+
+                                                return (
+                                                    <div key={monthKey} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                                                        <div
+                                                            onClick={() => {
+                                                                const newExpanded = new Set(expandedMonths);
+                                                                if (newExpanded.has(monthKey)) newExpanded.delete(monthKey);
+                                                                else newExpanded.add(monthKey);
+                                                                setExpandedMonths(newExpanded);
+                                                            }}
+                                                            className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition-colors select-none"
+                                                        >
+                                                            <div className="flex items-center gap-4">
+                                                                <div className={`p-2 rounded-full transition-transform duration-300 ${isExpanded ? 'rotate-90 bg-gray-200' : 'rotate-0 bg-white border'}`}>
+                                                                    <ChevronRight size={16} className={isExpanded ? 'text-gray-700' : 'text-gray-400'} />
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="font-bold text-gray-800 text-lg capitalize">
+                                                                        {format(dateObj, 'MMMM yyyy', { locale: fr })}
+                                                                    </h4>
+                                                                    <div className="text-xs text-gray-500 font-medium">
+                                                                        {opsCount} opérations
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                        </td>
-                                                    </tr>
-                                                ) : (
-                                                    monthlyOperations
-                                                        .filter(op => op.category === 'EXPENSE_FUND')
-                                                        .map(op => (
-                                                            <tr key={op.id} className="hover:bg-gray-50 transition-colors group">
-                                                                <td className="p-4 text-gray-500 font-mono text-sm">
-                                                                    <div className="font-bold text-gray-700">{format(new Date(op.date), 'dd/MM')}</div>
-                                                                    <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
-                                                                </td>
-                                                                <td className="p-4 font-medium text-gray-800">
-                                                                    {op.description || 'Dépense diverse'}
-                                                                </td>
-                                                                <td className="p-4 text-right font-bold text-red-600 font-mono">
-                                                                    -{formatPrice(Math.abs(op.amount))}
-                                                                </td>
-                                                                <td className="p-4 text-center">
-                                                                    <button
-                                                                        onClick={() => handleDeleteOperation(op.id)}
-                                                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                                                        title="Supprimer"
-                                                                    >
-                                                                        <Trash2 size={18} />
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        ))
-                                                )}
-                                            </tbody>
-                                            {monthlyOperations.filter(op => op.category === 'EXPENSE_FUND').length > 0 && (
-                                                <tfoot className="bg-gray-50 font-bold text-gray-800">
-                                                    <tr>
-                                                        <td colSpan="2" className="p-4 text-right uppercase text-xs tracking-wider text-gray-500">Total Dépenses Mois</td>
-                                                        <td className="p-4 text-right text-red-600 font-mono text-lg">
-                                                            -{formatPrice(monthlyOperations
-                                                                .filter(op => op.category === 'EXPENSE_FUND')
-                                                                .reduce((sum, op) => sum + Number(op.amount), 0))}
-                                                        </td>
-                                                        <td></td>
-                                                    </tr>
-                                                </tfoot>
-                                            )}
-                                        </table>
+                                                            <div className="text-right">
+                                                                <div className="font-mono font-bold text-lg text-gray-900">
+                                                                    -{formatPrice(monthTotal)} <span className="text-xs text-gray-400 font-sans">MAD</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {isExpanded && (
+                                                            <div className="overflow-x-auto animate-in slide-in-from-top-2 duration-300">
+                                                                <table className="w-full text-left">
+                                                                    <thead className="bg-white text-gray-400 font-semibold text-xs uppercase tracking-wider border-b border-gray-50">
+                                                                        <tr>
+                                                                            <th className="p-4 w-12 text-center"></th>
+                                                                            <th className="p-4">Date</th>
+                                                                            <th className="p-4">Description</th>
+                                                                            <th className="p-4 text-right">Montant</th>
+                                                                            <th className="p-4 text-center">Actions</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-gray-50">
+                                                                        {ops.map(op => {
+                                                                            const isSettled = op.status === 'REIMBURSED' || op.status === 'PAID';
+                                                                            const isSelectable = op.type === 'OUT' && !isSettled;
+                                                                            const isSelected = selectedOps.has(op.id);
+
+                                                                            return (
+                                                                                <tr
+                                                                                    key={op.id}
+                                                                                    className={`group transition-all duration-200 ${isSelected ? 'bg-indigo-50/50' :
+                                                                                        isSettled ? 'bg-gray-50 opacity-60' :
+                                                                                            'hover:bg-gray-50'
+                                                                                        }`}
+                                                                                >
+                                                                                    <td className="p-4 text-center">
+                                                                                        {isSelectable ? (
+                                                                                            <input
+                                                                                                type="checkbox"
+                                                                                                checked={isSelected}
+                                                                                                onChange={(e) => { e.stopPropagation(); handleToggleSelectOp(op.id); }}
+                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                                className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black cursor-pointer accent-black transition-transform active:scale-90"
+                                                                                            />
+                                                                                        ) : isSettled && (
+                                                                                            <div className="flex items-center justify-center text-green-500" title="Remboursé / Soldé">
+                                                                                                <Check size={18} strokeWidth={3} />
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </td>
+                                                                                    <td className="p-4 text-gray-500 font-mono text-sm">
+                                                                                        <div className={`font-bold ${isSettled ? 'text-gray-500 line-through decoration-gray-400' : 'text-gray-700'}`}>
+                                                                                            {format(new Date(op.date || op.created_at), 'dd/MM')}
+                                                                                        </div>
+                                                                                        <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
+                                                                                    </td>
+                                                                                    <td className="p-4 font-medium text-gray-800">
+                                                                                        <div className="flex items-center justify-between">
+                                                                                            <span className={isSettled ? 'line-through text-gray-400' : ''}>{op.description || 'Dépense diverse'}</span>
+                                                                                            {op.payment_method && (
+                                                                                                <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded border ${isSettled ? 'bg-gray-100 text-gray-400 border-transparent' : 'bg-white border-gray-100 text-gray-500 shadow-sm'}`}>
+                                                                                                    {op.payment_method === 'ESPECES' && <Banknote size={14} />}
+                                                                                                    {op.payment_method === 'CHEQUE' && <Landmark size={14} />}
+                                                                                                    {op.payment_method === 'VIREMENT' && <ArrowUpRight size={14} />}
+                                                                                                    {op.payment_method === 'CARTE_BANCAIRE' && <CreditCard size={14} />}
+                                                                                                    <span className="capitalize">{op.payment_method.replace(/_/g, ' ').toLowerCase()}</span>
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </td>
+                                                                                    <td className={`p-4 text-right font-bold font-mono ${isSettled ? 'text-gray-400 line-through decoration-gray-400' : 'text-red-600'}`}>
+                                                                                        -{formatPrice(Math.abs(op.amount))}
+                                                                                    </td>
+                                                                                    <td className="p-4 text-center">
+                                                                                        {!isSettled && (
+                                                                                            <button
+                                                                                                onClick={(e) => { e.stopPropagation(); handleDeleteOperation(op.id); }}
+                                                                                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                                                title="Supprimer"
+                                                                                            >
+                                                                                                <Trash2 size={18} />
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </td>
+                                                                                </tr>
+                                                                            );
+                                                                        })}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })
+                                    )}
+                                </div>
+
+                                {/* Annual Recap Grid */}
+                                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                                    <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                                        <h4 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                                            <Calendar size={20} className="text-indigo-500" />
+                                            Récapitulatif Annuel {new Date().getFullYear()}
+                                        </h4>
+                                    </div>
+                                    <div className="p-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        {monthlyRecap.map((m, idx) => {
+                                            const isCurrentMonth = idx === new Date().getMonth();
+                                            return (
+                                                <div key={idx} className={`p-4 rounded-xl border ${isCurrentMonth ? 'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200' : 'bg-gray-50 border-gray-100'}`}>
+                                                    <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">{m.label}</div>
+                                                    <div className={`text-lg font-bold font-mono ${m.amount > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                                                        {formatPrice(m.amount)}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
                                     </div>
                                 </div>
                             </div>
@@ -675,6 +871,15 @@ export default function DailyCashTracking() {
                                                             {op.daily_cash_entities && (
                                                                 <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                                                     {op.daily_cash_entities.name}
+                                                                </span>
+                                                            )}
+                                                            {op.payment_method && (
+                                                                <span className="ml-2 inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                                                    {op.payment_method === 'ESPECES' && <Banknote size={12} />}
+                                                                    {op.payment_method === 'CHEQUE' && <Landmark size={12} />}
+                                                                    {op.payment_method === 'VIREMENT' && <ArrowUpRight size={12} />}
+                                                                    {op.payment_method === 'CARTE_BANCAIRE' && <CreditCard size={12} />}
+                                                                    <span className="capitalize hidden sm:inline">{op.payment_method.replace(/_/g, ' ').toLowerCase()}</span>
                                                                 </span>
                                                             )}
                                                         </td>
@@ -1090,8 +1295,10 @@ export default function DailyCashTracking() {
                             </div>
                         )}
                     </>
-                )}
+                )
+                }
             </div>
+
 
             {/* Add Transaction Modal */}
             {
@@ -1231,6 +1438,33 @@ export default function DailyCashTracking() {
                                     </div>
                                 )}
 
+
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Mode de Paiement</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                            { id: 'ESPECES', label: 'Espèces', icon: Banknote },
+                                            { id: 'CHEQUE', label: 'Chèque', icon: Landmark },
+                                            { id: 'VIREMENT', label: 'Virement', icon: ArrowUpRight },
+                                            { id: 'CARTE_BANCAIRE', label: 'Carte Bancaire', icon: CreditCard },
+                                        ].map(method => (
+                                            <button
+                                                key={method.id}
+                                                type="button"
+                                                onClick={() => setPaymentMethod(method.id)}
+                                                className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${paymentMethod === method.id
+                                                    ? 'bg-black text-white border-black shadow-md'
+                                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                    }`}
+                                            >
+                                                <method.icon size={18} />
+                                                <span className="text-sm font-medium">{method.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Montant</label>
                                     <div className="relative">
@@ -1251,11 +1485,24 @@ export default function DailyCashTracking() {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                                     <input
                                         type="text"
+                                        list="description-suggestions"
                                         value={description}
                                         onChange={(e) => setDescription(e.target.value)}
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none"
                                         placeholder="Libellé de l'opération"
                                     />
+                                    <datalist id="description-suggestions">
+                                        <option value="Achat Materiel" />
+                                        <option value="Transport" />
+                                        <option value="Repas" />
+                                        <option value="Maintenance" />
+                                        <option value="Fourniture Bureau" />
+                                        <option value="Achat Ciment" />
+                                        <option value="Technicien" />
+                                        <option value="Frais de Géstion" />
+                                        <option value="Avance Salaire" />
+                                        <option value="Remboursement" />
+                                    </datalist>
                                 </div>
 
                                 <div className="flex gap-3 pt-2">
@@ -1274,6 +1521,126 @@ export default function DailyCashTracking() {
                                     </button>
                                 </div>
                             </form>
+                        </div >
+                    </div >,
+                    document.body
+                )
+            }
+
+            {/* Settlement / Reimbursement Modal */}
+            {
+                showSettlementModal && createPortal(
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setShowSettlementModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold text-gray-900">Remboursement Caisse</h3>
+                                <button
+                                    onClick={() => setShowSettlementModal(false)}
+                                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                                >
+                                    <X size={20} className="text-gray-500" />
+                                </button>
+                            </div>
+
+                            <div className="mb-6">
+                                <div className="text-sm text-gray-500 mb-1">Total à rembourser</div>
+                                <div className="text-4xl font-black text-gray-900 tracking-tight">
+                                    {formatPrice(monthlyOperations
+                                        .filter(op => selectedOps.has(op.id))
+                                        .reduce((sum, op) => sum + Math.abs(Number(op.amount)), 0)
+                                    )} <span className="text-lg text-gray-400 font-normal">MAD</span>
+                                </div>
+                                <div className="mt-2 text-sm text-gray-500 flex items-center gap-2">
+                                    <CheckSquare size={16} className="text-green-600" />
+                                    {selectedOps.size} opérations sélectionnées
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Moyen de Paiement du Remboursement</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                            { id: 'ESPECES', label: 'Espèces', icon: Banknote },
+                                            { id: 'CHEQUE', label: 'Chèque', icon: Landmark },
+                                            { id: 'VIREMENT', label: 'Virement', icon: ArrowUpRight },
+                                            { id: 'CARTE_BANCAIRE', label: 'Carte', icon: CreditCard },
+                                        ].map(method => (
+                                            <button
+                                                key={method.id}
+                                                type="button"
+                                                onClick={() => setSettlementMethod(method.id)}
+                                                className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${settlementMethod === method.id
+                                                    ? 'bg-black text-white border-black shadow-md'
+                                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                    }`}
+                                            >
+                                                <method.icon size={18} />
+                                                <span className="text-sm font-medium">{method.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    Cette action va créer une entrée (Recette) du montant total et marquer les dépenses sélectionnées comme remboursées.
+                                </p>
+
+                                <button
+                                    onClick={handleSettleOperations}
+                                    disabled={isSettling}
+                                    className="w-full py-3.5 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors font-bold shadow-lg shadow-gray-200 flex justify-center items-center gap-2"
+                                >
+                                    {isSettling ? (
+                                        <>
+                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                            Traitement...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Check size={20} />
+                                            Confirmer le Remboursement
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )
+            }
+
+            {/* Sticky Action Bar for Selection */}
+            {
+                selectedOps.size > 0 && createPortal(
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+                        <div className="bg-gray-900/95 backdrop-blur-md text-white p-2 pl-6 pr-2 rounded-full shadow-2xl flex items-center gap-6 border border-white/10 ring-1 ring-black/20">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-white/20 px-3 py-1 rounded-full text-sm font-bold">
+                                    {selectedOps.size}
+                                </div>
+                                <span className="text-sm font-medium text-gray-300">opérations sélectionnées</span>
+                                <div className="h-6 w-px bg-white/20"></div>
+                                <span className="font-mono font-bold text-lg">
+                                    {formatPrice(monthlyOperations
+                                        .filter(op => selectedOps.has(op.id))
+                                        .reduce((sum, op) => sum + Math.abs(Number(op.amount)), 0)
+                                    )} <span className="text-xs text-gray-400">MAD</span>
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setShowSettlementModal(true)}
+                                className="bg-white text-black px-6 py-2.5 rounded-full font-bold text-sm hover:bg-gray-100 transition-colors shadow-lg active:scale-95 transform duration-100 flex items-center gap-2"
+                            >
+                                <CheckSquare size={16} />
+                                Solder
+                            </button>
+                            <button
+                                onClick={() => setSelectedOps(new Set())}
+                                className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                            >
+                                <X size={18} />
+                            </button>
                         </div>
                     </div>,
                     document.body
@@ -1281,190 +1648,194 @@ export default function DailyCashTracking() {
             }
 
             {/* Add Entity Modal */}
-            {isAddEntityModalOpen && createPortal(
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setIsAddEntityModalOpen(false)}>
-                    <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-8">
-                            <div>
-                                <h3 className="text-2xl font-bold text-gray-900">Nouvelle Société</h3>
-                                <p className="text-gray-500 text-sm mt-1">Ajouter une nouvelle entité au suivi</p>
-                            </div>
-                            <button
-                                onClick={() => setIsAddEntityModalOpen(false)}
-                                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                            >
-                                <X size={24} className="text-gray-400 hover:text-gray-600" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">Nom de la société</label>
-                                <div className="relative">
-                                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                                    <input
-                                        type="text"
-                                        value={newEntityName}
-                                        onChange={(e) => setNewEntityName(e.target.value)}
-                                        className="w-full p-4 pl-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-lg"
-                                        placeholder="Ex: STE EXAMPLE"
-                                        autoFocus
-                                    />
+            {
+                isAddEntityModalOpen && createPortal(
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setIsAddEntityModalOpen(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-8">
+                                <div>
+                                    <h3 className="text-2xl font-bold text-gray-900">Nouvelle Société</h3>
+                                    <p className="text-gray-500 text-sm mt-1">Ajouter une nouvelle entité au suivi</p>
                                 </div>
-                            </div>
-
-                            <div className="flex gap-4 pt-4">
                                 <button
                                     onClick={() => setIsAddEntityModalOpen(false)}
-                                    className="flex-1 py-3.5 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors font-medium"
+                                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                                 >
-                                    Annuler
-                                </button>
-                                <button
-                                    onClick={handleAddEntity}
-                                    disabled={!newEntityName.trim()}
-                                    className="flex-1 py-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg hover:shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                                >
-                                    Créer la société
+                                    <X size={24} className="text-gray-400 hover:text-gray-600" />
                                 </button>
                             </div>
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-            {/* Entity History Modal */}
-            {selectedEntityHistory && createPortal(
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setSelectedEntityHistory(null)}>
-                    <div className="bg-white rounded-2xl w-full max-w-2xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
-                        {/* Header */}
-                        <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-900">{selectedEntityHistory.name}</h3>
-                                <p className="text-gray-500 text-sm mt-1">
-                                    Historique complet des opérations
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setSelectedEntityHistory(null)}
-                                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-                            >
-                                <X size={24} className="text-gray-500" />
-                            </button>
-                        </div>
 
-                        {/* Content */}
-                        <div className="overflow-y-auto p-4 md:p-6">
-                            {(() => {
-                                if (loadingHistory) {
-                                    return (
-                                        <div className="flex justify-center items-center py-20">
-                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                                        </div>
-                                    )
-                                }
-
-                                const entityOps = historyOperations;
-                                let movement = { in: 0, out: 0 };
-
-                                // Recalculate global movement from ALL history
-                                const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
-                                const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-                                movement = { in: inAmount, out: outAmount };
-
-                                return (<div className="space-y-4">
-                                    {/* Summary Cards (Global) */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                        <div className="p-4 bg-green-50 rounded-xl border border-green-100">
-                                            <div className="text-sm text-green-800 font-medium mb-1">Total Historique Entrées</div>
-                                            <div className="text-xl font-bold text-green-900">+{formatPrice(movement.in)}</div>
-                                        </div>
-                                        <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                                            <div className="text-sm text-red-800 font-medium mb-1">Total Historique Sorties</div>
-                                            <div className="text-xl font-bold text-red-900">-{formatPrice(movement.out)}</div>
-                                        </div>
-                                        <div className={`p-4 rounded-xl border ${movement.in - movement.out >= 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
-                                            <div className={`text-sm font-medium mb-1 ${movement.in - movement.out >= 0 ? 'text-indigo-800' : 'text-orange-800'}`}>Solde Global</div>
-                                            <div className={`text-xl font-bold ${movement.in - movement.out >= 0 ? 'text-indigo-900' : 'text-orange-900'}`}>
-                                                {formatPrice(movement.in - movement.out)}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Operations List */}
-                                    <div>
-                                        <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                                            <Table size={18} className="text-gray-400" />
-                                            Historique complet ({entityOps.length})
-                                        </h4>
-
-                                        {entityOps.length === 0 ? (
-                                            <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                                                <div className="p-3 bg-white rounded-full inline-block mb-3 shadow-sm">
-                                                    <Calendar size={24} className="text-gray-400" />
-                                                </div>
-                                                <p className="text-gray-500">Aucune opération enregistrée.</p>
-                                            </div>
-                                        ) : (
-                                            <div className="border rounded-xl overflow-hidden shadow-sm">
-                                                <div className="max-h-[400px] overflow-y-auto">
-                                                    <table className="w-full text-left border-collapse relative">
-                                                        <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold sticky top-0 z-10 shadow-sm">
-                                                            <tr>
-                                                                <th className="p-3 border-b bg-gray-50">Date</th>
-                                                                <th className="p-3 border-b bg-gray-50">Description</th>
-                                                                <th className="p-3 border-b text-right bg-gray-50">Montant</th>
-                                                                <th className="p-3 border-b text-center bg-gray-50">Type</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-100">
-                                                            {entityOps.map(op => (
-                                                                <tr key={op.id} className="hover:bg-gray-50 transition-colors">
-                                                                    <td className="p-3 text-gray-500 font-mono text-sm whitespace-nowrap">
-                                                                        <div className="font-bold text-gray-700">{format(new Date(op.date), 'dd/MM/yyyy')}</div>
-                                                                        <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
-                                                                    </td>
-                                                                    <td className="p-3 font-medium text-gray-900">
-                                                                        {op.description}
-                                                                    </td>
-                                                                    <td className={`p-3 text-right font-bold font-mono whitespace-nowrap ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
-                                                                        {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
-                                                                    </td>
-                                                                    <td className="p-3 text-center">
-                                                                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${op.type === 'IN'
-                                                                            ? 'bg-green-100 text-green-700'
-                                                                            : 'bg-red-100 text-red-700'
-                                                                            }`}>
-                                                                            {op.type === 'IN' ? 'Recette' : 'Dépense'}
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        )}
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Nom de la société</label>
+                                    <div className="relative">
+                                        <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                        <input
+                                            type="text"
+                                            value={newEntityName}
+                                            onChange={(e) => setNewEntityName(e.target.value)}
+                                            className="w-full p-4 pl-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-lg"
+                                            placeholder="Ex: STE EXAMPLE"
+                                            autoFocus
+                                        />
                                     </div>
                                 </div>
-                                );
-                            })()}
-                        </div>
 
-                        {/* Footer */}
-                        <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
-                            <button
-                                onClick={() => setSelectedEntityHistory(null)}
-                                className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors shadow-sm"
-                            >
-                                Fermer
-                            </button>
+                                <div className="flex gap-4 pt-4">
+                                    <button
+                                        onClick={() => setIsAddEntityModalOpen(false)}
+                                        className="flex-1 py-3.5 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors font-medium"
+                                    >
+                                        Annuler
+                                    </button>
+                                    <button
+                                        onClick={handleAddEntity}
+                                        disabled={!newEntityName.trim()}
+                                        className="flex-1 py-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg hover:shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                                    >
+                                        Créer la société
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>,
-                document.body
-            )}
-        </div>
+                    </div>,
+                    document.body
+                )
+            }
+            {/* Entity History Modal */}
+            {
+                selectedEntityHistory && createPortal(
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setSelectedEntityHistory(null)}>
+                        <div className="bg-white rounded-2xl w-full max-w-2xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+                            {/* Header */}
+                            <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-900">{selectedEntityHistory.name}</h3>
+                                    <p className="text-gray-500 text-sm mt-1">
+                                        Historique complet des opérations
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedEntityHistory(null)}
+                                    className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                                >
+                                    <X size={24} className="text-gray-500" />
+                                </button>
+                            </div>
+
+                            {/* Content */}
+                            <div className="overflow-y-auto p-4 md:p-6">
+                                {(() => {
+                                    if (loadingHistory) {
+                                        return (
+                                            <div className="flex justify-center items-center py-20">
+                                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                                            </div>
+                                        )
+                                    }
+
+                                    const entityOps = historyOperations;
+                                    let movement = { in: 0, out: 0 };
+
+                                    // Recalculate global movement from ALL history
+                                    const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+                                    const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+                                    movement = { in: inAmount, out: outAmount };
+
+                                    return (<div className="space-y-4">
+                                        {/* Summary Cards (Global) */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                            <div className="p-4 bg-green-50 rounded-xl border border-green-100">
+                                                <div className="text-sm text-green-800 font-medium mb-1">Total Historique Entrées</div>
+                                                <div className="text-xl font-bold text-green-900">+{formatPrice(movement.in)}</div>
+                                            </div>
+                                            <div className="p-4 bg-red-50 rounded-xl border border-red-100">
+                                                <div className="text-sm text-red-800 font-medium mb-1">Total Historique Sorties</div>
+                                                <div className="text-xl font-bold text-red-900">-{formatPrice(movement.out)}</div>
+                                            </div>
+                                            <div className={`p-4 rounded-xl border ${movement.in - movement.out >= 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
+                                                <div className={`text-sm font-medium mb-1 ${movement.in - movement.out >= 0 ? 'text-indigo-800' : 'text-orange-800'}`}>Solde Global</div>
+                                                <div className={`text-xl font-bold ${movement.in - movement.out >= 0 ? 'text-indigo-900' : 'text-orange-900'}`}>
+                                                    {formatPrice(movement.in - movement.out)}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Operations List */}
+                                        <div>
+                                            <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                                <Table size={18} className="text-gray-400" />
+                                                Historique complet ({entityOps.length})
+                                            </h4>
+
+                                            {entityOps.length === 0 ? (
+                                                <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                                    <div className="p-3 bg-white rounded-full inline-block mb-3 shadow-sm">
+                                                        <Calendar size={24} className="text-gray-400" />
+                                                    </div>
+                                                    <p className="text-gray-500">Aucune opération enregistrée.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="border rounded-xl overflow-hidden shadow-sm">
+                                                    <div className="max-h-[400px] overflow-y-auto">
+                                                        <table className="w-full text-left border-collapse relative">
+                                                            <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold sticky top-0 z-10 shadow-sm">
+                                                                <tr>
+                                                                    <th className="p-3 border-b bg-gray-50">Date</th>
+                                                                    <th className="p-3 border-b bg-gray-50">Description</th>
+                                                                    <th className="p-3 border-b text-right bg-gray-50">Montant</th>
+                                                                    <th className="p-3 border-b text-center bg-gray-50">Type</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-gray-100">
+                                                                {entityOps.map(op => (
+                                                                    <tr key={op.id} className="hover:bg-gray-50 transition-colors">
+                                                                        <td className="p-3 text-gray-500 font-mono text-sm whitespace-nowrap">
+                                                                            <div className="font-bold text-gray-700">{format(new Date(op.date), 'dd/MM/yyyy')}</div>
+                                                                            <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
+                                                                        </td>
+                                                                        <td className="p-3 font-medium text-gray-900">
+                                                                            {op.description}
+                                                                        </td>
+                                                                        <td className={`p-3 text-right font-bold font-mono whitespace-nowrap ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+                                                                            {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
+                                                                        </td>
+                                                                        <td className="p-3 text-center">
+                                                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${op.type === 'IN'
+                                                                                ? 'bg-green-100 text-green-700'
+                                                                                : 'bg-red-100 text-red-700'
+                                                                                }`}>
+                                                                                {op.type === 'IN' ? 'Recette' : 'Dépense'}
+                                                                            </span>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+                                <button
+                                    onClick={() => setSelectedEntityHistory(null)}
+                                    className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors shadow-sm"
+                                >
+                                    Fermer
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )
+            }
+        </div >
     );
 }
 
