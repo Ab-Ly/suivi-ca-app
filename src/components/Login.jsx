@@ -97,7 +97,7 @@ export default function Login() {
                 {/* Footer */}
                 <div className="bg-gray-50 px-8 py-4 text-center border-t border-gray-100">
                     <p className="text-xs text-text-muted">
-                        ipepiniere @t petrom &copy; 2025
+                        ipepiniere @t petrom &copy; {new Date().getFullYear()}
                     </p>
                 </div>
             </div>

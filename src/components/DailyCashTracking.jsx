@@ -680,139 +680,139 @@ export default function DailyCashTracking() {
                                     </div>
                                 </div>
 
-                                {/* Collapsible Operations List */}
-                                <div className="space-y-6">
-                                    {Object.keys(groupedExpenseOperations).length === 0 ? (
-                                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center text-gray-500">
-                                            <Wallet size={48} className="mx-auto mb-4 opacity-20" />
-                                            <p>Aucune dépense enregistrée</p>
-                                        </div>
-                                    ) : (
-                                        Object.entries(groupedExpenseOperations)
-                                            .sort((a, b) => b[0].localeCompare(a[0])) // Sort by Month DESC
-                                            .map(([monthKey, ops]) => {
-                                                const isExpanded = expandedMonths.has(monthKey);
-                                                const monthTotal = ops.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-                                                const opsCount = ops.length;
-                                                const dateObj = new Date(monthKey + '-01');
-
-                                                return (
-                                                    <div key={monthKey} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                                                        <div
-                                                            onClick={() => {
-                                                                const newExpanded = new Set(expandedMonths);
-                                                                if (newExpanded.has(monthKey)) newExpanded.delete(monthKey);
-                                                                else newExpanded.add(monthKey);
-                                                                setExpandedMonths(newExpanded);
-                                                            }}
-                                                            className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition-colors select-none"
-                                                        >
-                                                            <div className="flex items-center gap-4">
-                                                                <div className={`p-2 rounded-full transition-transform duration-300 ${isExpanded ? 'rotate-90 bg-gray-200' : 'rotate-0 bg-white border'}`}>
-                                                                    <ChevronRight size={16} className={isExpanded ? 'text-gray-700' : 'text-gray-400'} />
-                                                                </div>
-                                                                <div>
-                                                                    <h4 className="font-bold text-gray-800 text-lg capitalize">
-                                                                        {format(dateObj, 'MMMM yyyy', { locale: fr })}
-                                                                    </h4>
-                                                                    <div className="text-xs text-gray-500 font-medium">
-                                                                        {opsCount} opérations
-                                                                    </div>
-                                                                </div>
+                                {/* Single Table with Group Headers */}
+                                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-white text-gray-500 font-semibold text-xs uppercase tracking-wider border-b border-gray-100">
+                                                <tr>
+                                                    <th className="p-4 w-12 text-center"></th>
+                                                    <th className="p-4">Date</th>
+                                                    <th className="p-4">Description</th>
+                                                    <th className="p-4 text-right">Montant</th>
+                                                    <th className="p-4 text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50">
+                                                {Object.keys(groupedExpenseOperations).length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="5" className="p-12 text-center">
+                                                            <div className="flex flex-col items-center justify-center text-gray-400">
+                                                                <Wallet size={48} className="mb-4 opacity-20" />
+                                                                <p className="font-medium">Aucune dépense enregistrée</p>
                                                             </div>
-                                                            <div className="text-right">
-                                                                <div className="font-mono font-bold text-lg text-gray-900">
-                                                                    -{formatPrice(monthTotal)} <span className="text-xs text-gray-400 font-sans">MAD</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    Object.entries(groupedExpenseOperations)
+                                                        .sort((a, b) => b[0].localeCompare(a[0]))
+                                                        .map(([monthKey, ops]) => {
+                                                            const isExpanded = expandedMonths.has(monthKey);
+                                                            const monthTotal = ops.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+                                                            const opsCount = ops.length;
+                                                            const dateObj = new Date(monthKey + '-01');
 
-                                                        {isExpanded && (
-                                                            <div className="overflow-x-auto animate-in slide-in-from-top-2 duration-300">
-                                                                <table className="w-full text-left">
-                                                                    <thead className="bg-white text-gray-400 font-semibold text-xs uppercase tracking-wider border-b border-gray-50">
-                                                                        <tr>
-                                                                            <th className="p-4 w-12 text-center"></th>
-                                                                            <th className="p-4">Date</th>
-                                                                            <th className="p-4">Description</th>
-                                                                            <th className="p-4 text-right">Montant</th>
-                                                                            <th className="p-4 text-center">Actions</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody className="divide-y divide-gray-50">
-                                                                        {ops.map(op => {
-                                                                            const isSettled = op.status === 'REIMBURSED' || op.status === 'PAID';
-                                                                            const isSelectable = op.type === 'OUT' && !isSettled;
-                                                                            const isSelected = selectedOps.has(op.id);
+                                                            return (
+                                                                <React.Fragment key={monthKey}>
+                                                                    {/* Group Header Row */}
+                                                                    <tr
+                                                                        onClick={() => {
+                                                                            const newExpanded = new Set(expandedMonths);
+                                                                            if (newExpanded.has(monthKey)) newExpanded.delete(monthKey);
+                                                                            else newExpanded.add(monthKey);
+                                                                            setExpandedMonths(newExpanded);
+                                                                        }}
+                                                                        className="bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors border-t border-gray-200"
+                                                                    >
+                                                                        <td colSpan="5" className="p-3">
+                                                                            <div className="flex items-center justify-between px-2">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
+                                                                                        <ChevronRight size={16} className="text-gray-500" />
+                                                                                    </div>
+                                                                                    <span className="font-bold text-xs uppercase tracking-wider text-gray-700">
+                                                                                        {format(dateObj, 'MMMM yyyy', { locale: fr })}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="text-xs font-semibold text-gray-500">
+                                                                                    {opsCount} ventes
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
 
-                                                                            return (
-                                                                                <tr
-                                                                                    key={op.id}
-                                                                                    className={`group transition-all duration-200 ${isSelected ? 'bg-indigo-50/50' :
+                                                                    {/* Data Rows */}
+                                                                    {isExpanded && ops.map(op => {
+                                                                        const isSettled = op.status === 'REIMBURSED' || op.status === 'PAID';
+                                                                        const isSelectable = op.type === 'OUT' && !isSettled;
+                                                                        const isSelected = selectedOps.has(op.id);
+
+                                                                        return (
+                                                                            <tr
+                                                                                key={op.id}
+                                                                                className={`group transition-all duration-200 ${isSelected ? 'bg-indigo-50/50' :
                                                                                         isSettled ? 'bg-gray-50 opacity-60' :
                                                                                             'hover:bg-gray-50'
-                                                                                        }`}
-                                                                                >
-                                                                                    <td className="p-4 text-center">
-                                                                                        {isSelectable ? (
-                                                                                            <input
-                                                                                                type="checkbox"
-                                                                                                checked={isSelected}
-                                                                                                onChange={(e) => { e.stopPropagation(); handleToggleSelectOp(op.id); }}
-                                                                                                onClick={(e) => e.stopPropagation()}
-                                                                                                className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black cursor-pointer accent-black transition-transform active:scale-90"
-                                                                                            />
-                                                                                        ) : isSettled && (
-                                                                                            <div className="flex items-center justify-center text-green-500" title="Remboursé / Soldé">
-                                                                                                <Check size={18} strokeWidth={3} />
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </td>
-                                                                                    <td className="p-4 text-gray-500 font-mono text-sm">
-                                                                                        <div className={`font-bold ${isSettled ? 'text-gray-500 line-through decoration-gray-400' : 'text-gray-700'}`}>
-                                                                                            {format(new Date(op.date || op.created_at), 'dd/MM')}
+                                                                                    }`}
+                                                                            >
+                                                                                <td className="p-4 text-center">
+                                                                                    {isSelectable ? (
+                                                                                        <input
+                                                                                            type="checkbox"
+                                                                                            checked={isSelected}
+                                                                                            onChange={(e) => { e.stopPropagation(); handleToggleSelectOp(op.id); }}
+                                                                                            onClick={(e) => e.stopPropagation()}
+                                                                                            className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black cursor-pointer accent-black transition-transform active:scale-90"
+                                                                                        />
+                                                                                    ) : isSettled && (
+                                                                                        <div className="flex items-center justify-center text-green-500" title="Remboursé / Soldé">
+                                                                                            <Check size={18} strokeWidth={3} />
                                                                                         </div>
-                                                                                        <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
-                                                                                    </td>
-                                                                                    <td className="p-4 font-medium text-gray-800">
-                                                                                        <div className="flex items-center justify-between">
-                                                                                            <span className={isSettled ? 'line-through text-gray-400' : ''}>{op.description || 'Dépense diverse'}</span>
-                                                                                            {op.payment_method && (
-                                                                                                <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded border ${isSettled ? 'bg-gray-100 text-gray-400 border-transparent' : 'bg-white border-gray-100 text-gray-500 shadow-sm'}`}>
-                                                                                                    {op.payment_method === 'ESPECES' && <Banknote size={14} />}
-                                                                                                    {op.payment_method === 'CHEQUE' && <Landmark size={14} />}
-                                                                                                    {op.payment_method === 'VIREMENT' && <ArrowUpRight size={14} />}
-                                                                                                    {op.payment_method === 'CARTE_BANCAIRE' && <CreditCard size={14} />}
-                                                                                                    <span className="capitalize">{op.payment_method.replace(/_/g, ' ').toLowerCase()}</span>
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    </td>
-                                                                                    <td className={`p-4 text-right font-bold font-mono ${isSettled ? 'text-gray-400 line-through decoration-gray-400' : 'text-red-600'}`}>
-                                                                                        -{formatPrice(Math.abs(op.amount))}
-                                                                                    </td>
-                                                                                    <td className="p-4 text-center">
-                                                                                        {!isSettled && (
-                                                                                            <button
-                                                                                                onClick={(e) => { e.stopPropagation(); handleDeleteOperation(op.id); }}
-                                                                                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                                                                                title="Supprimer"
-                                                                                            >
-                                                                                                <Trash2 size={18} />
-                                                                                            </button>
+                                                                                    )}
+                                                                                </td>
+                                                                                <td className="p-4 text-gray-500 font-mono text-sm">
+                                                                                    <div className={`font-bold ${isSettled ? 'text-gray-500 line-through decoration-gray-400' : 'text-gray-700'}`}>
+                                                                                        {format(new Date(op.date || op.created_at), 'dd/MM/yyyy HH:mm')}
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td className="p-4 font-medium text-gray-800">
+                                                                                    <div className="flex items-center justify-between">
+                                                                                        <span className={isSettled ? 'line-through text-gray-400' : ''}>{op.description || 'Dépense diverse'}</span>
+                                                                                        {op.payment_method && (
+                                                                                            <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded border ${isSettled ? 'bg-gray-100 text-gray-400 border-transparent' : 'bg-white border-gray-100 text-gray-500 shadow-sm'}`}>
+                                                                                                {op.payment_method === 'ESPECES' && <Banknote size={14} />}
+                                                                                                {op.payment_method === 'CHEQUE' && <Landmark size={14} />}
+                                                                                                {op.payment_method === 'VIREMENT' && <ArrowUpRight size={14} />}
+                                                                                                {op.payment_method === 'CARTE_BANCAIRE' && <CreditCard size={14} />}
+                                                                                                <span className="capitalize">{op.payment_method.replace(/_/g, ' ').toLowerCase()}</span>
+                                                                                            </span>
                                                                                         )}
-                                                                                    </td>
-                                                                                </tr>
-                                                                            );
-                                                                        })}
-                                                                    </tbody>
-                                                                </table>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })
-                                    )}
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td className={`p-4 text-right font-bold font-mono ${isSettled ? 'text-gray-400 line-through decoration-gray-400' : 'text-gray-900'}`}>
+                                                                                    {formatPrice(Math.abs(op.amount))} <span className="text-xs text-gray-400 font-sans">MAD</span>
+                                                                                </td>
+                                                                                <td className="p-4 text-center">
+                                                                                    {!isSettled && (
+                                                                                        <button
+                                                                                            onClick={(e) => { e.stopPropagation(); handleDeleteOperation(op.id); }}
+                                                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                                            title="Supprimer"
+                                                                                        >
+                                                                                            <Trash2 size={18} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </React.Fragment>
+                                                            );
+                                                        })
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
 
                                 {/* Annual Recap Grid */}

@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Loader2, Save, Lock, User, CheckCircle2, AlertCircle } from 'lucide-react';
+
+import { performFullBackup, restoreFromBackup } from '../utils/backupUtils';
+import { Loader2, Save, Lock, User, CheckCircle2, AlertCircle, Database, Download, Upload, RotateCcw } from 'lucide-react';
 
 export default function Profile() {
     const [user, setUser] = useState(null);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
+    const [backupLoading, setBackupLoading] = useState(false);
+    const [restoreLoading, setRestoreLoading] = useState(false);
     const [message, setMessage] = useState(null); // { type: 'success' | 'error', text: string }
 
     useEffect(() => {
@@ -46,6 +50,64 @@ export default function Profile() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleBackup = async () => {
+        setBackupLoading(true);
+        // Clear previous messages to avoid confusion
+        setMessage(null);
+        try {
+            await performFullBackup();
+            setMessage({ type: 'success', text: 'Sauvegarde téléchargée avec succès !' });
+        } catch (error) {
+            console.error('Backup error:', error);
+            setMessage({ type: 'error', text: 'Erreur lors de la sauvegarde.' });
+        } finally {
+            setBackupLoading(false);
+        }
+    };
+
+    const handleRestoreClick = () => {
+        // Trigger hidden file input
+        document.getElementById('restore-file-input').click();
+    };
+
+    const handleFileChange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Reset input value to allow selecting same file again
+        event.target.value = '';
+
+        if (!window.confirm("ATTENTION : Cette opération va mettre à jour la base de données avec le contenu du fichier. Assurez-vous d'avoir une sauvegarde récente avant de continuer.\n\nVoulez-vous vraiment continuer ?")) {
+            return;
+        }
+
+        setRestoreLoading(true);
+        setMessage(null);
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const jsonContent = JSON.parse(e.target.result);
+                const result = await restoreFromBackup(jsonContent);
+
+                if (result.success) {
+                    setMessage({ type: 'success', text: 'Restauration terminée avec succès !' });
+                    // Provide detail summary in console or extensive message
+                    console.log('Restore details:', result.details);
+                } else {
+                    console.error('Restore errors:', result.errors);
+                    setMessage({ type: 'error', text: 'La restauration a rencontré des erreurs. Vérifiez la console.' });
+                }
+            } catch (err) {
+                console.error('File parsing error:', err);
+                setMessage({ type: 'error', text: 'Erreur lors de la lecture du fichier de sauvegarde.' });
+            } finally {
+                setRestoreLoading(false);
+            }
+        };
+        reader.readAsText(file);
     };
 
     return (
@@ -131,6 +193,57 @@ export default function Profile() {
                             </button>
                         </div>
                     </form>
+                </div>
+
+                {/* Data Management Card */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-4 mb-6">
+                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                            <Database size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-lg text-text-main">Gestion des Données</h3>
+                            <p className="text-sm text-text-muted">Sauvegarder vos données</p>
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 mb-6 transition-all hover:bg-gray-100/50">
+                        <div className="flex items-start gap-3">
+                            <AlertCircle size={18} className="text-blue-500 mt-0.5" />
+                            <p className="text-sm text-text-muted leading-relaxed">
+                                Cette fonctionnalité permet de télécharger une copie complète de toutes les données de l'application (Ventes, Carburant, Caisse, Personnel, etc.) au format JSON.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <button
+                            onClick={handleBackup}
+                            disabled={backupLoading || restoreLoading}
+                            className="flex-1 px-6 py-3 bg-white text-text-main border border-gray-200 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2 group"
+                        >
+                            {backupLoading ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} className="group-hover:scale-110 transition-transform" />}
+                            {backupLoading ? 'Génération...' : 'Sauvegarder (JSON)'}
+                        </button>
+
+                        <button
+                            onClick={handleRestoreClick}
+                            disabled={backupLoading || restoreLoading}
+                            className="flex-1 px-6 py-3 bg-white text-text-main border border-gray-200 hover:border-red-200 hover:bg-red-50 hover:text-red-700 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2 group"
+                        >
+                            {restoreLoading ? <Loader2 className="animate-spin" size={18} /> : <RotateCcw size={18} className="group-hover:-rotate-180 transition-transform duration-500" />}
+                            {restoreLoading ? 'Restauration...' : 'Restaurer (JSON)'}
+                        </button>
+
+                        {/* Hidden File Input */}
+                        <input
+                            type="file"
+                            id="restore-file-input"
+                            accept=".json"
+                            className="hidden"
+                            onChange={handleFileChange}
+                        />
+                    </div>
                 </div>
             </div>
         </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Droplet, Save, History, AlertCircle, CheckCircle, Truck, FileDown, Plus, Trash2, ChevronDown, ChevronUp, RefreshCw, Loader2 } from 'lucide-react';
+import { Droplet, Save, History, AlertCircle, CheckCircle, Truck, FileDown, Plus, Trash2, ChevronDown, ChevronUp, RefreshCw, Loader2, ChevronRight } from 'lucide-react';
 import { formatNumber } from '../utils/formatters';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 import jsPDF from 'jspdf';
@@ -93,6 +93,7 @@ export default function FuelDeliveryTracking() {
     const [submitting, setSubmitting] = useState(false);
     const [expandedRows, setExpandedRows] = useState(new Set());
     const [notification, setNotification] = useState({ show: false, message: '', type: 'success' }); // 'success' | 'error'
+    const [expandedMonths, setExpandedMonths] = useState(new Set());
 
     // Delete Confirmation State
     const [deleteConfig, setDeleteConfig] = useState({ isOpen: false, id: null });
@@ -131,6 +132,9 @@ export default function FuelDeliveryTracking() {
     useEffect(() => {
         fetchReceptions();
         fetchDraft();
+        // Expand current month by default
+        const currentMonthKey = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+        setExpandedMonths(new Set([currentMonthKey]));
     }, []);
 
     const fetchDraft = async () => {
@@ -142,9 +146,9 @@ export default function FuelDeliveryTracking() {
                 .from('fuel_delivery_drafts')
                 .select('*')
                 .eq('user_id', user.id)
-                .single();
+                .maybeSingle();
 
-            if (error && error.code !== 'PGRST116') throw error; // Ignore not found error
+            if (error) throw error;
 
             if (data && data.draft_data) {
                 const parsed = data.draft_data;
@@ -634,97 +638,145 @@ export default function FuelDeliveryTracking() {
 
                         <div className="flex-1 overflow-auto p-4 space-y-3">
                             {loading ? <p className="text-center text-gray-400 py-10">Chargement...</p> : receptions.length === 0 ? <p className="text-center text-gray-400 py-10">Aucune réception.</p> : (
-                                receptions.map(reception => (
-                                    <div key={reception.id} className="border border-gray-200 rounded-2xl overflow-hidden hover:border-indigo-300 transition-all bg-white group shadow-sm hover:shadow-md">
-                                        <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => toggleRow(reception.id)}>
-                                            <div className="flex items-center gap-3 md:gap-4">
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${reception.global_difference < 0 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                    <Truck size={20} />
-                                                </div>
-                                                <div>
-                                                    <div className="font-bold text-gray-900 text-sm md:text-base flex items-center gap-2">
-                                                        {new Date(reception.date).toLocaleDateString('fr-FR')}
-                                                        <span className="hidden md:inline text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">BL: {reception.bl_number || '-'}</span>
-                                                    </div>
-                                                    <div className="mt-2 grid grid-cols-2 gap-4 border-t border-gray-50 pt-2 w-full max-w-[200px] md:max-w-none">
-                                                        <div>
-                                                            <span className="text-[10px] text-gray-400 uppercase block leading-none mb-0.5">Facturé</span>
-                                                            <span className="font-bold text-gray-600 text-sm block leading-tight">{formatNumber(reception.total_quantity_billed)}</span>
-                                                        </div>
-                                                        <div className="relative pl-3 border-l border-gray-100">
-                                                            <span className="text-[10px] text-gray-400 uppercase block leading-none mb-0.5">Reçu</span>
-                                                            <span className="font-bold text-gray-900 text-sm block leading-tight">{formatNumber(reception.total_quantity_observed)}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                (() => {
+                                    // Group receptions by month
+                                    const groupedReceptions = receptions.reduce((acc, reception) => {
+                                        const monthKey = new Date(reception.date).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                                        if (!acc[monthKey]) acc[monthKey] = [];
+                                        acc[monthKey].push(reception);
+                                        return acc;
+                                    }, {});
 
-                                            <div className="flex items-center gap-3">
-                                                <div className={`text-right hidden md:block ${reception.global_difference < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                    <div className="font-mono font-bold text-sm">
-                                                        {reception.global_difference > 0 ? '+' : ''}{formatNumber(reception.global_difference)} L
-                                                    </div>
-                                                    <div className="text-[10px] font-bold uppercase opacity-75">Ecart</div>
-                                                </div>
+                                    return Object.entries(groupedReceptions).map(([month, monthReceptions]) => {
+                                        const isExpanded = expandedMonths.has(month);
 
-                                                <div className="flex gap-1">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); deleteReception(reception.id); }}
-                                                        className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                                                        title="Supprimer"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); generatePDF(reception); }}
-                                                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-                                                        title="Télécharger PDF"
-                                                    >
-                                                        <FileDown size={18} />
-                                                    </button>
-                                                    <button className="w-8 h-8 flex items-center justify-center text-gray-300 group-hover:text-gray-600 transition-colors">
-                                                        {expandedRows.has(reception.id) ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* EXPANDED DETAILS */}
-                                        {expandedRows.has(reception.id) && (
-                                            <div className="bg-gray-50 border-t border-gray-100 p-4 space-y-2 animate-fade-in">
-                                                <div className="md:hidden text-xs text-gray-500 mb-2 font-mono">
-                                                    N° BL: {reception.bl_number || 'N/A'} <br />
-                                                    Ecart: {reception.global_difference} L
-                                                </div>
-                                                {reception.items.map(item => (
-                                                    <div key={item.id} className="flex justify-between items-center text-sm bg-white p-2.5 rounded-xl border border-gray-100 shadow-sm">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className={`w-2 h-8 rounded-full ${item.product_type.includes('Gasoil') ? 'bg-orange-500' : 'bg-green-500'}`}></div>
-                                                            <div>
-                                                                <div className="font-bold text-gray-700">{item.tank_name}</div>
-                                                                <div className="text-[10px] text-gray-400 uppercase">{item.product_type}</div>
+                                        return (
+                                            <div key={month} className="mb-4">
+                                                {/* Month Header */}
+                                                <div
+                                                    className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors select-none mb-3"
+                                                    onClick={() => {
+                                                        const newSet = new Set(expandedMonths);
+                                                        if (newSet.has(month)) newSet.delete(month);
+                                                        else newSet.add(month);
+                                                        setExpandedMonths(newSet);
+                                                    }}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
+                                                            <div className="bg-white p-1 rounded-full border border-gray-200 shadow-sm text-gray-500">
+                                                                <ChevronRight size={14} />
                                                             </div>
                                                         </div>
-                                                        <div className="flex gap-4 text-gray-600 text-xs">
-                                                            <div className="text-right">
-                                                                <span className="block text-[10px] text-gray-400 uppercase">Avant</span>
-                                                                <span className="font-mono">{formatNumber(item.level_before)}</span>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <span className="block text-[10px] text-gray-400 uppercase">Après</span>
-                                                                <span className="font-mono">{formatNumber(item.level_after)}</span>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <span className="block text-[10px] text-gray-400 uppercase">Reçu</span>
-                                                                <span className="font-mono font-bold text-indigo-600">{formatNumber(item.quantity_observed)} L</span>
-                                                            </div>
-                                                        </div>
+                                                        <span className="font-bold text-xs uppercase tracking-wider text-gray-700">
+                                                            {month}
+                                                        </span>
                                                     </div>
-                                                ))}
+                                                    <span className="text-xs font-semibold text-gray-400 bg-white px-2 py-1 rounded-full border border-gray-100">
+                                                        {monthReceptions.length} BL
+                                                    </span>
+                                                </div>
+
+                                                {/* Content - Cards List */}
+                                                {isExpanded && (
+                                                    <div className="space-y-3 px-2 pb-2">
+                                                        {monthReceptions.map(reception => (
+                                                            <div key={reception.id} className="border border-gray-200 rounded-2xl overflow-hidden hover:border-indigo-300 transition-all bg-white group shadow-sm hover:shadow-md">
+                                                                <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => toggleRow(reception.id)}>
+                                                                    <div className="flex items-center gap-3 md:gap-4">
+                                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${reception.global_difference < 0 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                                            <Truck size={20} />
+                                                                        </div>
+                                                                        <div>
+                                                                            <div className="font-bold text-gray-900 text-sm md:text-base flex items-center gap-2">
+                                                                                {new Date(reception.date).toLocaleDateString('fr-FR')}
+                                                                                <span className="hidden md:inline text-xs font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">BL: {reception.bl_number || '-'}</span>
+                                                                            </div>
+                                                                            <div className="mt-2 grid grid-cols-2 gap-4 border-t border-gray-50 pt-2 w-full max-w-[200px] md:max-w-none">
+                                                                                <div>
+                                                                                    <span className="text-[10px] text-gray-400 uppercase block leading-none mb-0.5">Facturé</span>
+                                                                                    <span className="font-bold text-gray-600 text-sm block leading-tight">{formatNumber(reception.total_quantity_billed)}</span>
+                                                                                </div>
+                                                                                <div className="relative pl-3 border-l border-gray-100">
+                                                                                    <span className="text-[10px] text-gray-400 uppercase block leading-none mb-0.5">Reçu</span>
+                                                                                    <span className="font-bold text-gray-900 text-sm block leading-tight">{formatNumber(reception.total_quantity_observed)}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`text-right hidden md:block ${reception.global_difference < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                                            <div className="font-mono font-bold text-sm">
+                                                                                {reception.global_difference > 0 ? '+' : ''}{formatNumber(reception.global_difference)} L
+                                                                            </div>
+                                                                            <div className="text-[10px] font-bold uppercase opacity-75">Ecart</div>
+                                                                        </div>
+
+                                                                        <div className="flex gap-1">
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); deleteReception(reception.id); }}
+                                                                                className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                                                                title="Supprimer"
+                                                                            >
+                                                                                <Trash2 size={16} />
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); generatePDF(reception); }}
+                                                                                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                                                                                title="Télécharger PDF"
+                                                                            >
+                                                                                <FileDown size={18} />
+                                                                            </button>
+                                                                            <button className="w-8 h-8 flex items-center justify-center text-gray-300 group-hover:text-gray-600 transition-colors">
+                                                                                {expandedRows.has(reception.id) ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* EXPANDED DETAILS */}
+                                                                {expandedRows.has(reception.id) && (
+                                                                    <div className="bg-gray-50 border-t border-gray-100 p-4 space-y-2 animate-fade-in">
+                                                                        <div className="md:hidden text-xs text-gray-500 mb-2 font-mono">
+                                                                            N° BL: {reception.bl_number || 'N/A'} <br />
+                                                                            Ecart: {reception.global_difference} L
+                                                                        </div>
+                                                                        {reception.items.map(item => (
+                                                                            <div key={item.id} className="flex justify-between items-center text-sm bg-white p-2.5 rounded-xl border border-gray-100 shadow-sm">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <div className={`w-2 h-8 rounded-full ${item.product_type.includes('Gasoil') ? 'bg-orange-500' : 'bg-green-500'}`}></div>
+                                                                                    <div>
+                                                                                        <div className="font-bold text-gray-700">{item.tank_name}</div>
+                                                                                        <div className="text-[10px] text-gray-400 uppercase">{item.product_type}</div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="flex gap-4 text-gray-600 text-xs">
+                                                                                    <div className="text-right">
+                                                                                        <span className="block text-[10px] text-gray-400 uppercase">Avant</span>
+                                                                                        <span className="font-mono">{formatNumber(item.level_before)}</span>
+                                                                                    </div>
+                                                                                    <div className="text-right">
+                                                                                        <span className="block text-[10px] text-gray-400 uppercase">Après</span>
+                                                                                        <span className="font-mono">{formatNumber(item.level_after)}</span>
+                                                                                    </div>
+                                                                                    <div className="text-right">
+                                                                                        <span className="block text-[10px] text-gray-400 uppercase">Reçu</span>
+                                                                                        <span className="font-mono font-bold text-indigo-600">{formatNumber(item.quantity_observed)} L</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
-                                ))
+                                        );
+                                    });
+                                })()
                             )}
                         </div>
                     </div>

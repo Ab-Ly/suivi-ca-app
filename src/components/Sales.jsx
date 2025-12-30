@@ -217,26 +217,26 @@ export default function Sales() {
             )}
 
             {/* Filters */}
-            <Card className="p-6 border-none shadow-lg shadow-gray-100/50 rounded-2xl">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
                     {activeTab === 'sales' && (
                         <>
                             <div>
-                                <label className="block text-xs font-medium text-text-muted mb-1.5">Rechercher</label>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Rechercher</label>
                                 <input
                                     type="text"
                                     placeholder="Nom de l'article..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full px-4 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200"
+                                    className="w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder:text-gray-300"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-text-muted mb-1.5">Catégorie</label>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Catégorie</label>
                                 <select
                                     value={category}
                                     onChange={(e) => setCategory(e.target.value)}
-                                    className="w-full px-4 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all duration-200"
+                                    className="w-full px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all appearance-none"
                                 >
                                     <option value="">Toutes</option>
                                     <option value="Shop">Shop</option>
@@ -263,162 +263,198 @@ export default function Sales() {
                         />
                     </div>
                 </div>
-            </Card>
+            </div>
 
-            <Card>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="border-b border-notion-border text-notion-gray text-sm">
-                                <th className="py-3 px-4 font-medium">Date</th>
-                                {activeTab === 'sales' ? (
-                                    <>
-                                        <th className="py-3 px-4 font-medium">Article</th>
-                                        <th className="py-3 px-4 font-medium">Catégorie</th>
-                                        <th className="py-3 px-4 font-medium text-right">Quantité</th>
-                                        <th className="py-3 px-4 font-medium text-right">Total</th>
-                                        <th className="py-3 px-4 font-medium text-center">Action</th>
-                                    </>
-                                ) : (
-                                    <>
-                                        <th className="py-3 px-4 font-medium">Type Carburant</th>
-                                        <th className="py-3 px-4 font-medium text-right">Volume (L)</th>
-                                        <th className="py-3 px-4 font-medium text-right">Volume (m³)</th>
-                                        <th className="py-3 px-4 font-medium text-center">Action</th>
-                                    </>
-                                )}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-notion-border">
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={activeTab === 'sales' ? 6 : 4} className="py-8 text-center">
-                                        <div className="flex justify-center">
-                                            <Loader2 className="animate-spin text-notion-gray" size={24} />
+            {/* Sales List */}
+            <div className="space-y-4">
+                {loading ? (
+                    <div className="text-center py-12 bg-white rounded-2xl border border-gray-100">
+                        <Loader2 className="animate-spin text-gray-300 mx-auto" size={24} />
+                    </div>
+                ) : activeTab === 'sales' ? (
+                    sales.length === 0 ? (
+                        <div className="text-center py-12 bg-white rounded-2xl border border-gray-100 text-gray-400 font-medium">
+                            Aucune vente trouvée
+                        </div>
+                    ) : (
+                        Object.entries(salesByMonth).map(([month, monthSales]) => {
+                            const currentMonthKey = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                            const isExpanded = expandedMonths[month] !== undefined
+                                ? expandedMonths[month]
+                                : month === currentMonthKey;
+
+                            return (
+                                <div key={month} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                                    {/* Month Header */}
+                                    <div
+                                        className="bg-gray-50 border-b border-gray-100 p-4 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                        onClick={() => toggleMonth(month)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`transition-transform duration-200 text-gray-400 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
+                                                <div className="bg-white p-1 rounded-full border border-gray-200 shadow-sm text-gray-500">
+                                                    <ChevronRight size={14} />
+                                                </div>
+                                            </div>
+                                            <span className="font-bold text-xs uppercase tracking-wider text-gray-700">
+                                                {month}
+                                            </span>
                                         </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                activeTab === 'sales' ? (
-                                    sales.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={6} className="py-8 text-center text-notion-gray">
-                                                Aucune vente trouvée
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        (() => {
-                                            const currentMonthKey = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                                        <span className="text-xs font-semibold text-gray-400 bg-white px-2.5 py-1 rounded-full border border-gray-100">
+                                            {monthSales.length} ventes
+                                        </span>
+                                    </div>
 
-                                            return Object.entries(salesByMonth).map(([month, monthSales]) => {
-                                                // Default to expanded if it's the current month, or if explicitly set to true
-                                                // If strictness is needed (ONLY current month open, others closed):
-                                                // But if user opened it, keep it open.
-                                                // expandedMonths[month] stores the toggle state.
-                                                // If undefined, we default to (month === currentMonthKey).
-                                                const isExpanded = expandedMonths[month] !== undefined
-                                                    ? expandedMonths[month]
-                                                    : month === currentMonthKey;
-
-                                                return (
-                                                    <React.Fragment key={month}>
-                                                        <tr
-                                                            className="bg-gray-50/80 cursor-pointer hover:bg-gray-100 transition-colors border-b border-gray-100"
-                                                            onClick={() => toggleMonth(month)}
-                                                        >
-                                                            <td colSpan={6} className="py-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                                                <div className="flex items-center gap-2">
-                                                                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                                                    {month}
-                                                                    <span className="ml-auto text-gray-400 font-normal normal-case">
-                                                                        {monthSales.length} vent{monthSales.length > 1 ? 'es' : 'e'}
-                                                                    </span>
-                                                                </div>
+                                    {/* Month Table */}
+                                    {isExpanded && (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-white text-gray-400 font-bold text-[10px] uppercase tracking-wider border-b border-gray-100">
+                                                        <th className="py-3 px-6">Date</th>
+                                                        <th className="py-3 px-6">Article</th>
+                                                        <th className="py-3 px-6">Catégorie</th>
+                                                        <th className="py-3 px-6 text-center">Quantité</th>
+                                                        <th className="py-3 px-6 text-right">Total</th>
+                                                        <th className="py-3 px-6 text-center">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {monthSales.map((sale) => (
+                                                        <tr key={sale.id} className="group hover:bg-gray-50/50 transition-colors border-b border-gray-100 last:border-0">
+                                                            <td className="py-4 px-6 text-xs font-bold text-gray-400 font-mono whitespace-nowrap">
+                                                                {new Date(sale.sale_date).toLocaleString('fr-FR')}
                                                             </td>
-                                                        </tr>
-                                                        {isExpanded && monthSales.map((sale) => (
-                                                            <tr key={sale.id} className="hover:bg-notion-sidebar transition-colors">
-                                                                <td className="py-3 px-4 text-sm whitespace-nowrap">
-                                                                    {new Date(sale.sale_date).toLocaleString('fr-FR')}
-                                                                </td>
-                                                                <td className="py-3 px-4 font-medium">
+                                                            <td className="py-4 px-6">
+                                                                <span className="text-sm font-bold text-gray-800 block">
                                                                     {sale.articles?.name || 'Article inconnu'}
-                                                                </td>
-                                                                <td className="py-3 px-4 text-sm text-notion-gray">
-                                                                    {sale.articles?.category}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-4 px-6">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-medium text-gray-500">{sale.articles?.category}</span>
                                                                     {sale.sales_location && (
-                                                                        <span className="ml-2 text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${sale.sales_location === 'piste' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
                                                                             {sale.sales_location === 'piste' ? 'Piste' : 'Bosch'}
                                                                         </span>
                                                                     )}
-                                                                </td>
-                                                                <td className="py-3 px-4 text-right font-mono text-sm">
-                                                                    {sale.quantity}
-                                                                </td>
-                                                                <td className="py-3 px-4 text-right font-medium">
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-4 px-6 text-center font-bold text-gray-900 text-sm">
+                                                                {sale.quantity}
+                                                            </td>
+                                                            <td className="py-4 px-6 text-right">
+                                                                <span className="font-mono font-bold text-gray-900 text-sm">
                                                                     {formatPrice(sale.total_price)}
-                                                                </td>
-                                                                <td className="py-3 px-4 text-center">
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setEditingSale(sale);
-                                                                        }}
-                                                                        className="text-gray-400 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-indigo-50 transition-colors"
-                                                                        title="Modifier"
-                                                                    >
-                                                                        <Edit2 size={16} />
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </React.Fragment>
-                                                );
-                                            });
-                                        })()
-                                    )
-                                ) : (
-                                    fuelSales.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={4} className="py-8 text-center text-notion-gray">
-                                                Aucune vente carburant trouvée
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        fuelSales.map((sale) => (
-                                            <tr key={sale.id} className="hover:bg-notion-sidebar transition-colors">
-                                                <td className="py-3 px-4 text-sm">
-                                                    {new Date(sale.sale_date).toLocaleDateString('fr-FR')}
-                                                </td>
-                                                <td className="py-3 px-4 font-medium">
-                                                    <span className={`px-2 py-1 rounded-lg text-xs font-bold ${sale.fuel_type === 'Gasoil' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                                                        {sale.fuel_type}
-                                                    </span>
-                                                </td>
-                                                <td className="py-3 px-4 text-right font-mono text-sm font-medium">
-                                                    {formatNumber(Number(sale.quantity_liters))} L
-                                                </td>
-                                                <td className="py-3 px-4 text-right font-mono text-sm text-gray-500">
-                                                    {formatNumber(Number(sale.quantity_liters) / 1000, 3)} m³
-                                                </td>
-                                                <td className="py-3 px-4 text-center">
-                                                    <button
-                                                        onClick={() => handleDeleteFuelSale(sale.id)}
-                                                        className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                                                        title="Supprimer"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )
-                                )
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </Card>
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-4 px-6 text-center">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setEditingSale(sale);
+                                                                    }}
+                                                                    className="text-gray-400 hover:text-indigo-600 transition-colors"
+                                                                    title="Modifier"
+                                                                >
+                                                                    <Edit2 size={16} />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )
+                ) : (
+                    fuelSales.length === 0 ? (
+                        <div className="text-center py-12 bg-white rounded-2xl border border-gray-100 text-gray-400 font-medium">
+                            Aucune vente carburant trouvée
+                        </div>
+                    ) : (
+                        Object.entries(groupSalesByMonth(fuelSales)).map(([month, monthSales]) => {
+                            const currentMonthKey = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                            const isExpanded = expandedMonths[month] !== undefined
+                                ? expandedMonths[month]
+                                : month === currentMonthKey;
+
+                            return (
+                                <div key={month} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                                    {/* Month Header */}
+                                    <div
+                                        className="bg-gray-50 border-b border-gray-100 p-4 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                        onClick={() => toggleMonth(month)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`transition-transform duration-200 text-gray-400 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
+                                                <div className="bg-white p-1 rounded-full border border-gray-200 shadow-sm text-gray-500">
+                                                    <ChevronRight size={14} />
+                                                </div>
+                                            </div>
+                                            <span className="font-bold text-xs uppercase tracking-wider text-gray-700">
+                                                {month}
+                                            </span>
+                                        </div>
+                                        <span className="text-xs font-semibold text-gray-400 bg-white px-2.5 py-1 rounded-full border border-gray-100">
+                                            {monthSales.length} entrées
+                                        </span>
+                                    </div>
+
+                                    {/* Month Table */}
+                                    {isExpanded && (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-white text-gray-400 font-bold text-[10px] uppercase tracking-wider border-b border-gray-50">
+                                                        <th className="py-3 px-6">Date</th>
+                                                        <th className="py-3 px-6">Type Carburant</th>
+                                                        <th className="py-3 px-6 text-right">Volume (L)</th>
+                                                        <th className="py-3 px-6 text-right">Volume (m³)</th>
+                                                        <th className="py-3 px-6 text-center">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {monthSales.map((sale) => (
+                                                        <tr key={sale.id} className="group hover:bg-gray-50/50 transition-colors border-b border-gray-100 last:border-0">
+                                                            <td className="py-4 px-6 text-xs font-bold text-gray-400 font-mono">
+                                                                {new Date(sale.sale_date).toLocaleDateString('fr-FR')}
+                                                            </td>
+                                                            <td className="py-4 px-6 font-medium">
+                                                                <span className={`px-2 py-1 rounded-lg text-xs font-bold ${sale.fuel_type === 'Gasoil' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                                                                    {sale.fuel_type}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-4 px-6 text-right font-mono text-sm font-bold text-gray-700">
+                                                                {formatNumber(Number(sale.quantity_liters))} L
+                                                            </td>
+                                                            <td className="py-4 px-6 text-right font-mono text-sm text-gray-500">
+                                                                {formatNumber(Number(sale.quantity_liters) / 1000, 3)} m³
+                                                            </td>
+                                                            <td className="py-4 px-6 text-center">
+                                                                <button
+                                                                    onClick={() => handleDeleteFuelSale(sale.id)}
+                                                                    className="text-gray-300 hover:text-red-500 transition-colors"
+                                                                    title="Supprimer"
+                                                                >
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )
+                )}
+            </div>
 
             <BulkFuelEntryModal
                 isOpen={showBulkEntryModal}
