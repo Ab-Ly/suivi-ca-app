@@ -1,11 +1,25 @@
 import React, { useState, useEffect } from 'react';
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Cell } from 'recharts';
-import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, ShoppingBag, Coffee, Wrench, Droplet, Disc, Hammer } from 'lucide-react';
 import { formatPrice, formatNumber } from '../../utils/formatters';
 import { fetchComparisonStats } from '../../utils/statisticsUtils';
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+const getCategoryIcon = (category) => {
+    const catLower = category.toLowerCase();
+    if (catLower.includes('shop')) return <ShoppingBag size={20} className="text-purple-600" />;
+    if (catLower.includes('café') || catLower.includes('cafe')) return <Coffee size={20} className="text-amber-700" />;
+    if (catLower.includes('bosch')) {
+        if (catLower.includes('lubrifiant')) return <Droplet size={20} className="text-blue-600" />;
+        return <Wrench size={20} className="text-red-600" />;
+    }
+    if (catLower.includes('main')) return <Hammer size={20} className="text-slate-600" />;
+    if (catLower.includes('pneumatique')) return <Disc size={20} className="text-gray-700" />;
+    if (catLower.includes('lubrifiant')) return <Droplet size={20} className="text-blue-600" />;
+    return <div className="w-2 h-2 rounded-full bg-gray-400" />;
+};
 
 
 export default function ComparisonCharts() {
@@ -168,7 +182,7 @@ export default function ComparisonCharts() {
                                 onChange={(e) => setYear(Number(e.target.value))}
                                 className="appearance-none bg-white border border-gray-200 text-gray-700 py-2 pl-4 pr-10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-medium shadow-sm"
                             >
-                                {[new Date().getFullYear(), new Date().getFullYear() + 1].map(y => (
+                                {[new Date().getFullYear() - 2, new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map(y => (
                                     <option key={y} value={y}>{y}</option>
                                 ))}
                             </select>
@@ -304,7 +318,14 @@ export default function ComparisonCharts() {
                             <tbody className="divide-y divide-gray-100">
                                 {categoryDetails.map((cat) => (
                                     <tr key={cat.name} className="hover:bg-gray-50/50 transition-colors text-xs sm:text-sm">
-                                        <td className="py-4 pr-2 sm:pr-4 font-medium text-gray-900 break-words max-w-[100px] sm:max-w-none">{cat.name}</td>
+                                        <td className="py-4 pr-2 sm:pr-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-gray-50 rounded-xl shrink-0 border border-gray-100">
+                                                    {getCategoryIcon(cat.name)}
+                                                </div>
+                                                <span className="font-medium text-gray-900 break-words">{cat.name}</span>
+                                            </div>
+                                        </td>
                                         <td className="py-4 px-1 sm:px-4 text-right text-gray-600 font-mono whitespace-nowrap">{formatPrice(cat.previous)}</td>
                                         <td className="py-4 px-1 sm:px-4 text-right text-gray-900 font-medium font-mono whitespace-nowrap">{formatPrice(cat.current)}</td>
                                         <td className="py-4 pl-1 sm:pl-4 text-right">

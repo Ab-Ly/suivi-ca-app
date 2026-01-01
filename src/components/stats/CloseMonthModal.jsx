@@ -79,8 +79,11 @@ export default function CloseMonthModal({ isOpen, onClose, onClosed }) {
 
                 // Normalize Category Matching
                 const catLower = category.toLowerCase().trim();
+                const articleName = sale.articles?.name || '';
+                const nameLower = articleName.toLowerCase();
 
-                if (catLower === 'shop') aggregates['Shop'] += amount;
+                if (nameLower.includes("main d'oeuvre")) aggregates["Main d'oeuvre"] += amount;
+                else if (catLower === 'shop') aggregates['Shop'] += amount;
                 else if (catLower === 'cafe' || catLower === 'café') aggregates['Café'] += amount;
                 else if (catLower.includes('bosch service') || catLower === 'bosch_service') aggregates['Bosch Service'] += amount;
                 else if (catLower.includes("main d'oeuvre")) aggregates["Main d'oeuvre"] += amount;

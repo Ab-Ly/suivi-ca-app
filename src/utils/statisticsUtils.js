@@ -89,6 +89,14 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         let previousTotal = 0;
         let categoryStats = {};
 
+        const historyKeysCurrent = new Set();
+        const historyKeysPrevious = new Set();
+
+        if (period === 'year' || period === 'custom') {
+            historyCurrent?.forEach(h => historyKeysCurrent.add(`${h.month - 1}-${h.category}`));
+            historyPrevious?.forEach(h => historyKeysPrevious.add(`${h.month - 1}-${h.category}`));
+        }
+
         // Initialize Data Structure
         if (period === 'year') {
             processedData = Array.from({ length: 12 }, (_, i) => ({ name: MONTHS[i], current: 0, previous: 0, month: i + 1 }));
@@ -137,18 +145,24 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         CATEGORIES.forEach(cat => categoryStats[cat] = { name: cat, current: 0, previous: 0 });
 
         currentSales?.forEach(sale => {
+            const mappedCategory = getMappedCategory(sale.articles?.category || 'Autre', sale.sales_location, sale.articles?.name);
+            // Granular Check: Only skip if THIS category has history for THIS month
+            if ((period === 'year' || period === 'custom') && historyKeysCurrent.has(`${new Date(sale.sale_date).getMonth()}-${mappedCategory}`)) return;
+
             const amount = sale.total_price;
             currentTotal += amount;
             addToData(sale.sale_date, amount, true);
-            const mappedCategory = getMappedCategory(sale.articles?.category || 'Autre', sale.sales_location, sale.articles?.name);
             if (categoryStats[mappedCategory]) categoryStats[mappedCategory].current += amount;
         });
 
         previousSales?.forEach(sale => {
+            const mappedCategory = getMappedCategory(sale.articles?.category || 'Autre', sale.sales_location, sale.articles?.name);
+            // Granular Check
+            if ((period === 'year' || period === 'custom') && historyKeysPrevious.has(`${new Date(sale.sale_date).getMonth()}-${mappedCategory}`)) return;
+
             const amount = sale.total_price;
             previousTotal += amount;
             addToData(sale.sale_date, amount, false);
-            const mappedCategory = getMappedCategory(sale.articles?.category || 'Autre', sale.sales_location, sale.articles?.name);
             if (categoryStats[mappedCategory]) categoryStats[mappedCategory].previous += amount;
         });
 
@@ -228,6 +242,10 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         let totalGasoil = 0, totalSSP = 0, totalGasoilPrev = 0, totalSSPPrev = 0;
 
         fuelSalesCurrent.forEach(sale => {
+            const histCategory = sale.fuel_type === 'Gasoil' ? 'Gasoil Volume' : (sale.fuel_type === 'SSP' ? 'SSP Volume' : '');
+            // Granular Check
+            if ((period === 'year' || period === 'custom') && histCategory && historyKeysCurrent.has(`${new Date(sale.sale_date).getMonth()}-${histCategory}`)) return;
+
             const qty = Number(sale.quantity_liters);
             addToFuelData(sale.sale_date, qty, sale.fuel_type, true);
             if (sale.fuel_type === 'Gasoil') totalGasoil += qty;
@@ -235,6 +253,10 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         });
 
         fuelSalesPrevious.forEach(sale => {
+            const histCategory = sale.fuel_type === 'Gasoil' ? 'Gasoil Volume' : (sale.fuel_type === 'SSP' ? 'SSP Volume' : '');
+            // Granular Check
+            if ((period === 'year' || period === 'custom') && histCategory && historyKeysPrevious.has(`${new Date(sale.sale_date).getMonth()}-${histCategory}`)) return;
+
             const qty = Number(sale.quantity_liters);
             addToFuelData(sale.sale_date, qty, sale.fuel_type, false);
             if (sale.fuel_type === 'Gasoil') totalGasoilPrev += qty;
@@ -394,6 +416,77 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             }
         }
 
+        // FILTER FUTURE MONTHS (To prevent erroneous data in future months)
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+
+        if (year === currentYear) {
+            if (period === 'year') {
+                processedData.forEach((d, i) => {
+                    if (i > currentMonth) {
+                        currentTotal -= d.current; // Deduct from total
+                        d.current = 0;
+
+                        // Also adjust category stats if possible (Harder since we aggregated already)
+                        // Best effort: We just cleaned the chart data and totals. 
+                        // Cleaning categoryStats would require re-aggregating excluding future.
+                    }
+                });
+
+                fuelProcessedData.forEach((d, i) => {
+                    if (i > currentMonth) {
+                        totalGasoil -= d.gasoil;
+                        totalSSP -= d.ssp;
+                        d.gasoil = 0;
+                        d.ssp = 0;
+                    }
+                });
+            } else if (period === 'custom') {
+                // Logic for custom period if it spans into future
+                processedData.forEach((d, i) => {
+                    // d.month is 1-based index of the month
+                    if (d.month - 1 > currentMonth) {
+                        currentTotal -= d.current;
+                        d.current = 0;
+                    }
+                });
+                fuelProcessedData.forEach((d, i) => {
+                    // fuelProcessedData indices align with months in custom view if we constructed it that way?
+                    // Wait, fuelProcessedData in custom view is: 
+                    // name: MONTHS[customStartMonth + i]
+                    const monthIndex = customStartMonth + i;
+                    if (monthIndex > currentMonth) {
+                        totalGasoil -= d.gasoil;
+                        totalSSP -= d.ssp;
+                        d.gasoil = 0;
+                        d.ssp = 0;
+                    }
+                });
+            } else if (period === 'month' && selectedMonth === currentMonth) {
+                const currentDay = today.getDate(); // 1-31
+
+                processedData.forEach((d) => {
+                    // d.day is 1-based day number
+                    if (d.day > currentDay) {
+                        currentTotal -= d.current;
+                        d.current = 0;
+                    }
+                });
+
+                fuelProcessedData.forEach((d, i) => {
+                    // i is 0-indexed, so day is i + 1
+                    if (i + 1 > currentDay) {
+                        totalGasoil -= d.gasoil;
+                        totalSSP -= d.ssp;
+                        d.gasoil = 0;
+                        d.ssp = 0;
+                    }
+                });
+            }
+        }
+
+        // Re-calculate Growth after filtering
         const growth = previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal) * 100 : 0;
         const gasoilGrowth = totalGasoilPrev > 0 ? ((totalGasoil - totalGasoilPrev) / totalGasoilPrev) * 100 : 0;
         const sspGrowth = totalSSPPrev > 0 ? ((totalSSP - totalSSPPrev) / totalSSPPrev) * 100 : 0;

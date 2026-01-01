@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Card } from './ui/Card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
-import { DollarSign, Coffee, Wrench, Droplet, ShoppingBag, Loader2, Fuel, LayoutDashboard } from 'lucide-react';
+import { DollarSign, Coffee, Wrench, Droplet, ShoppingBag, Loader2, Fuel, LayoutDashboard, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatPrice, formatNumber } from '../utils/formatters';
 import { getMappedCategory } from '../utils/statisticsUtils';
@@ -31,21 +31,78 @@ export default function Dashboard() {
     const [fuelChartData, setFuelChartData] = useState([]);
     const [fuelUnit, setFuelUnit] = useState('L'); // 'L' or 'm3'
 
+    const [dateReference, setDateReference] = useState(new Date());
+
     useEffect(() => {
         fetchDashboardData();
-    }, [period, refreshTrigger]);
+    }, [period, dateReference, refreshTrigger]);
+
+    const handlePrevious = () => {
+        const newDate = new Date(dateReference);
+        if (period === 'day') newDate.setDate(newDate.getDate() - 1);
+        else if (period === 'week') newDate.setDate(newDate.getDate() - 7);
+        else if (period === 'month') newDate.setMonth(newDate.getMonth() - 1);
+        else if (period === 'year') newDate.setFullYear(newDate.getFullYear() - 1);
+        setDateReference(newDate);
+    };
+
+    const handleNext = () => {
+        const newDate = new Date(dateReference);
+        if (period === 'day') newDate.setDate(newDate.getDate() + 1);
+        else if (period === 'week') newDate.setDate(newDate.getDate() + 7);
+        else if (period === 'month') newDate.setMonth(newDate.getMonth() + 1);
+        else if (period === 'year') newDate.setFullYear(newDate.getFullYear() + 1);
+        setDateReference(newDate);
+    };
+
+    const isCurrentPeriod = () => {
+        const now = new Date();
+        if (period === 'day') return dateReference.toDateString() === now.toDateString();
+        if (period === 'month') return dateReference.getMonth() === now.getMonth() && dateReference.getFullYear() === now.getFullYear();
+        if (period === 'year') return dateReference.getFullYear() === now.getFullYear();
+        return false;
+    };
+
+    const getPeriodLabel = () => {
+        if (period === 'day') return dateReference.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+        if (period === 'month') return dateReference.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+        if (period === 'year') return dateReference.getFullYear().toString();
+        return 'Semaine du ' + dateReference.toLocaleDateString('fr-FR');
+    };
 
     const fetchDashboardData = async () => {
         setLoading(true);
         try {
             // Define date range based on period
-            const now = new Date();
-            let startDate = new Date();
+            const now = new Date(dateReference); // Use reference date
+            let startDate = new Date(now);
+            let endDate = new Date(now);
 
-            if (period === 'day') startDate.setDate(now.getDate() - 1);
-            else if (period === 'week') startDate.setDate(now.getDate() - 7);
-            else if (period === 'month') startDate = new Date(now.getFullYear(), now.getMonth(), 1); // Start of current month
-            else if (period === 'year') startDate = new Date(now.getFullYear(), 0, 1);
+            if (period === 'day') {
+                startDate.setHours(0, 0, 0, 0); // Start of selected day
+                endDate.setHours(23, 59, 59, 999); // End of selected day
+                // Previously logic used startDate = now - 1 day. 
+                // Standard logic: Day View = Selected Day.
+                // If user wants yesterday, they click "Previous".
+            }
+            else if (period === 'week') {
+                const day = startDate.getDay() || 7; // Get current day number, converting Sun (0) to 7
+                if (day !== 1) startDate.setHours(-24 * (day - 1)); // Set to Monday
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(startDate);
+                endDate.setDate(endDate.getDate() + 6);
+                endDate.setHours(23, 59, 59, 999);
+            }
+            else if (period === 'month') {
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                endDate.setHours(23, 59, 59, 999);
+            }
+            else if (period === 'year') {
+                startDate = new Date(now.getFullYear(), 0, 1);
+                endDate = new Date(now.getFullYear(), 11, 31);
+                endDate.setHours(23, 59, 59, 999);
+            }
 
             // Fetch Sales
             const { data: sales, error } = await supabase
@@ -58,7 +115,7 @@ export default function Dashboard() {
                         )
                     `)
                 .gte('sale_date', startDate.toISOString())
-                .lte('sale_date', now.toISOString());
+                .lte('sale_date', endDate.toISOString());
 
             if (error) throw error;
 
@@ -69,7 +126,7 @@ export default function Dashboard() {
                     .from('fuel_sales')
                     .select('*')
                     .gte('sale_date', startDate.toISOString())
-                    .lte('sale_date', now.toISOString());
+                    .lte('sale_date', endDate.toISOString());
 
                 if (fuelError) {
                     console.warn('Error fetching fuel sales (table might be missing):', fuelError);
@@ -304,6 +361,19 @@ export default function Dashboard() {
                     <p className="text-text-muted text-sm pl-[52px]">Aperçu de vos performances</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 items-center">
+                    {/* Date Navigation */}
+                    <div className="flex items-center gap-2 bg-white p-1 rounded-xl shadow-sm border border-border">
+                        <button onClick={handlePrevious} className="p-1.5 hover:bg-gray-50 rounded-lg text-text-muted hover:text-text-main transition-colors">
+                            <ChevronDown className="rotate-90" size={20} />
+                        </button>
+                        <span className="px-2 text-sm font-bold text-text-main min-w-[120px] text-center capitalize">
+                            {getPeriodLabel()}
+                        </span>
+                        <button onClick={handleNext} disabled={isCurrentPeriod()} className={`p-1.5 rounded-lg transition-colors ${isCurrentPeriod() ? 'text-gray-300 cursor-not-allowed' : 'text-text-muted hover:text-text-main hover:bg-gray-50'}`}>
+                            <ChevronDown className="-rotate-90" size={20} />
+                        </button>
+                    </div>
+
                     {/* Period Selector */}
                     <div className="flex bg-white p-1 rounded-xl shadow-sm border border-border">
                         {['day', 'week', 'month', 'year'].map((p) => (

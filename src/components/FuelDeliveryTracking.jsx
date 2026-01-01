@@ -496,7 +496,7 @@ export default function FuelDeliveryTracking() {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-indigo-600 uppercase">Total Facturé (L)</label>
                                     <div className="relative">
-                                        <input type="number" required placeholder="0" className="w-full bg-indigo-50/50 border border-indigo-100 text-indigo-900 text-lg font-black rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block p-3 pr-10 outline-none transition-shadow" value={formData.quantityBilled} onChange={e => setFormData({ ...formData, quantityBilled: e.target.value })} step="0.01" />
+                                        <input type="number" required placeholder="0" inputMode="decimal" className="w-full bg-indigo-50/50 border border-indigo-100 text-indigo-900 text-lg font-black rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block p-3 pr-10 outline-none transition-shadow" value={formData.quantityBilled} onChange={e => setFormData({ ...formData, quantityBilled: e.target.value })} step="0.01" />
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-300 font-bold text-xs">L</span>
                                     </div>
                                 </div>
@@ -505,11 +505,11 @@ export default function FuelDeliveryTracking() {
                             <div className="p-4 bg-gray-50/50 rounded-2xl border border-gray-100/80 space-y-3">
                                 <div className="flex flex-col gap-1">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase">Numéro Facture</label>
-                                    <input type="text" placeholder="Ex: FA-2025-001" className="bg-white border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5 outline-none" value={formData.invoiceNumber} onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })} />
+                                    <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="Ex: 9251043708" className="bg-white border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5 outline-none" value={formData.invoiceNumber} onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })} />
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase">Numéro BL</label>
-                                    <input type="text" placeholder="Ex: BL-888444" className="bg-white border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5 outline-none" value={formData.blNumber} onChange={e => setFormData({ ...formData, blNumber: e.target.value })} />
+                                    <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="Ex: 80316982" className="bg-white border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5 outline-none" value={formData.blNumber} onChange={e => setFormData({ ...formData, blNumber: e.target.value })} />
                                 </div>
                             </div>
                         </div>
@@ -557,11 +557,11 @@ export default function FuelDeliveryTracking() {
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="relative">
                                                     <label className="absolute -top-2 left-2 px-1 bg-white text-[10px] font-bold text-gray-400">AVANT</label>
-                                                    <input type="number" placeholder="0" className="w-full pt-3 pb-2 px-3 text-sm font-mono font-medium border border-gray-200 rounded-xl bg-white focus:border-indigo-500 outline-none" value={item.levelBefore} onChange={e => updateItem(item.id, 'levelBefore', e.target.value)} />
+                                                    <input type="number" placeholder="0" inputMode="decimal" className="w-full pt-3 pb-2 px-3 text-sm font-mono font-medium border border-gray-200 rounded-xl bg-white focus:border-indigo-500 outline-none" value={item.levelBefore} onChange={e => updateItem(item.id, 'levelBefore', e.target.value)} />
                                                 </div>
                                                 <div className="relative">
                                                     <label className="absolute -top-2 left-2 px-1 bg-white text-[10px] font-bold text-gray-400">APRÈS</label>
-                                                    <input type="number" placeholder="0" className="w-full pt-3 pb-2 px-3 text-sm font-bold font-mono text-indigo-900 border border-indigo-200 rounded-xl bg-indigo-50/30 focus:border-indigo-500 outline-none transition-all" value={item.levelAfter} onChange={e => updateItem(item.id, 'levelAfter', e.target.value)} />
+                                                    <input type="number" placeholder="0" inputMode="decimal" className="w-full pt-3 pb-2 px-3 text-sm font-bold font-mono text-indigo-900 border border-indigo-200 rounded-xl bg-indigo-50/30 focus:border-indigo-500 outline-none transition-all" value={item.levelAfter} onChange={e => updateItem(item.id, 'levelAfter', e.target.value)} />
                                                 </div>
                                             </div>
                                         </div>
