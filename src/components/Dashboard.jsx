@@ -201,6 +201,21 @@ export default function Dashboard() {
 
             // Process Real Sales
             sales.forEach(sale => {
+                const saleDate = new Date(sale.sale_date);
+
+                // Flexible Period Filtering to avoid Timezone loss
+                if (period === 'month') {
+                    if (saleDate.getMonth() !== now.getMonth() || saleDate.getFullYear() !== now.getFullYear()) return;
+                } else if (period === 'year') {
+                    if (saleDate.getFullYear() !== now.getFullYear()) return;
+                } else if (period === 'day') {
+                    // For day, strict range is usually fine, or check strict date equality
+                    if (saleDate < startDate || saleDate > endDate) return;
+                } else {
+                    // Week / Custom
+                    if (saleDate < startDate || saleDate > endDate) return;
+                }
+
                 const amount = sale.total_price;
                 const category = sale.articles?.category || 'Autre';
                 const location = sale.sales_location;
@@ -232,6 +247,19 @@ export default function Dashboard() {
 
             // Process Fuel Sales
             fuelSales.forEach(sale => {
+                const saleDate = new Date(sale.sale_date);
+
+                // Flexible Period Filtering
+                if (period === 'month') {
+                    if (saleDate.getMonth() !== now.getMonth() || saleDate.getFullYear() !== now.getFullYear()) return;
+                } else if (period === 'year') {
+                    if (saleDate.getFullYear() !== now.getFullYear()) return;
+                } else if (period === 'day') {
+                    if (saleDate < startDate || saleDate > endDate) return;
+                } else {
+                    if (saleDate < startDate || saleDate > endDate) return;
+                }
+
                 const qty = Number(sale.quantity_liters);
                 const { dateKey, sortKey } = getDateKeys(sale.sale_date);
 

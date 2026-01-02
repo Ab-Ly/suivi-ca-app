@@ -145,6 +145,9 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         CATEGORIES.forEach(cat => categoryStats[cat] = { name: cat, current: 0, previous: 0 });
 
         currentSales?.forEach(sale => {
+            const resultDate = new Date(sale.sale_date);
+            if (resultDate < start || resultDate > end) return;
+
             const mappedCategory = getMappedCategory(sale.articles?.category || 'Autre', sale.sales_location, sale.articles?.name);
             // Granular Check: Only skip if THIS category has history for THIS month
             if ((period === 'year' || period === 'custom') && historyKeysCurrent.has(`${new Date(sale.sale_date).getMonth()}-${mappedCategory}`)) return;
@@ -156,6 +159,9 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         });
 
         previousSales?.forEach(sale => {
+            const resultDate = new Date(sale.sale_date);
+            if (resultDate < prevStart || resultDate > prevEnd) return;
+
             const mappedCategory = getMappedCategory(sale.articles?.category || 'Autre', sale.sales_location, sale.articles?.name);
             // Granular Check
             if ((period === 'year' || period === 'custom') && historyKeysPrevious.has(`${new Date(sale.sale_date).getMonth()}-${mappedCategory}`)) return;
@@ -242,6 +248,9 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         let totalGasoil = 0, totalSSP = 0, totalGasoilPrev = 0, totalSSPPrev = 0;
 
         fuelSalesCurrent.forEach(sale => {
+            const resultDate = new Date(sale.sale_date);
+            if (resultDate < start || resultDate > end) return;
+
             const histCategory = sale.fuel_type === 'Gasoil' ? 'Gasoil Volume' : (sale.fuel_type === 'SSP' ? 'SSP Volume' : '');
             // Granular Check
             if ((period === 'year' || period === 'custom') && histCategory && historyKeysCurrent.has(`${new Date(sale.sale_date).getMonth()}-${histCategory}`)) return;
@@ -253,6 +262,9 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         });
 
         fuelSalesPrevious.forEach(sale => {
+            const resultDate = new Date(sale.sale_date);
+            if (resultDate < prevStart || resultDate > prevEnd) return;
+
             const histCategory = sale.fuel_type === 'Gasoil' ? 'Gasoil Volume' : (sale.fuel_type === 'SSP' ? 'SSP Volume' : '');
             // Granular Check
             if ((period === 'year' || period === 'custom') && histCategory && historyKeysPrevious.has(`${new Date(sale.sale_date).getMonth()}-${histCategory}`)) return;
@@ -392,29 +404,42 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         }
 
         if (period === 'month') {
-            // SPECIAL LOGIC: N-1 Daily Comparison should use the Monthly Average per Day
-            // User Request: (total volume mois n-1 / le nombre des jours dans le mois)
+            // SPECIAL LOGIC: User Requested Average Daily Volume for N-1
+            // Formula: Total N-1 / Days in Month (Average per Day)
             const daysInMonth = fuelProcessedData.length;
             const avgGasoilPrev = daysInMonth > 0 ? totalGasoilPrev / daysInMonth : 0;
             const avgSSPPrev = daysInMonth > 0 ? totalSSPPrev / daysInMonth : 0;
 
+            // Flatten the Previous Curve to the Average
             fuelProcessedData.forEach(d => {
                 d.gasoilPrev = avgGasoilPrev;
                 d.sspPrev = avgSSPPrev;
             });
 
-            // ADJUST KPI TOTALS FOR FAIR COMPARISON (Current Month)
-            // If we are viewing the current month, we should only compare N-1 against the elapsed days of N
+            // ADJUST KPI TOTALS FOR FAIR COMPARISON (Current Month Only)
             const today = new Date();
             const isCurrentMonth = today.getFullYear() === year && today.getMonth() === selectedMonth;
 
             if (isCurrentMonth) {
-                const daysElapsed = today.getDate();
-                // Update the "Previous Total" to be the Target for the elapsed days (Avg * DaysElapsed)
-                totalGasoilPrev = avgGasoilPrev * daysElapsed;
-                totalSSPPrev = avgSSPPrev * daysElapsed;
+                const currentDay = today.getDate();
+
+                // Find the last day that has ACTUAL data entered (Gasoil or SSP > 0)
+                let lastDayWithData = 0;
+
+                fuelProcessedData.forEach((d, i) => {
+                    if (i + 1 <= currentDay && (d.gasoil > 0 || d.ssp > 0)) {
+                        lastDayWithData = i + 1;
+                    }
+                });
+
+                const multiplier = lastDayWithData;
+
+                // Update the "Previous Total" to be the Target for the effective days (Avg * Multiplier)
+                totalGasoilPrev = avgGasoilPrev * multiplier;
+                totalSSPPrev = avgSSPPrev * multiplier;
             }
         }
+
 
         // FILTER FUTURE MONTHS (To prevent erroneous data in future months)
         const today = new Date();
@@ -436,10 +461,41 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
 
                 fuelProcessedData.forEach((d, i) => {
                     if (i > currentMonth) {
+                        // FUTURE MONTHS: Remove BOTH Current and Previous to avoid mismatch
                         totalGasoil -= d.gasoil;
                         totalSSP -= d.ssp;
+
+                        // Also remove Previous from Total
+                        totalGasoilPrev -= d.gasoilPrev;
+                        totalSSPPrev -= d.sspPrev;
+
                         d.gasoil = 0;
                         d.ssp = 0;
+                        d.gasoilPrev = 0;
+                        d.sspPrev = 0;
+                    } else if (i === currentMonth) {
+                        // CURRENT MONTH: Prorate Previous to match the elapsed days of Current
+                        const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
+                        const currentDay = today.getDate();
+
+                        // Ratio of month elapsed
+                        // Better: Use the same "Last Day With Data" logic if possible, 
+                        // but here we might not have daily details. 
+                        // Falback to simple day ratio:
+                        const ratio = currentDay / daysInMonth;
+
+                        // Update Total Prev
+                        const originalPrevGasoil = d.gasoilPrev;
+                        const originalPrevSSP = d.sspPrev;
+
+                        const newPrevGasoil = originalPrevGasoil * ratio;
+                        const newPrevSSP = originalPrevSSP * ratio;
+
+                        totalGasoilPrev -= (originalPrevGasoil - newPrevGasoil);
+                        totalSSPPrev -= (originalPrevSSP - newPrevSSP);
+
+                        d.gasoilPrev = newPrevGasoil;
+                        d.sspPrev = newPrevSSP;
                     }
                 });
             } else if (period === 'custom') {

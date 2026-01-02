@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Cell } from 'recharts';
-import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, ShoppingBag, Coffee, Wrench, Droplet, Disc, Hammer } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, ShoppingBag, Coffee, Wrench, Droplet, Disc, Hammer, Fuel } from 'lucide-react';
 import { formatPrice, formatNumber } from '../../utils/formatters';
 import { fetchComparisonStats } from '../../utils/statisticsUtils';
 
@@ -351,12 +351,17 @@ export default function ComparisonCharts() {
                     {/* Gasoil Card */}
                     <div className="bg-gradient-to-br from-orange-50 to-white p-6 rounded-2xl shadow-sm border border-orange-100">
                         <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <div className="text-sm text-orange-600 font-medium mb-1">Volume Gasoil {period === 'year' ? year : 'Actuel'}</div>
-                                <div className="text-3xl font-bold text-gray-900 mb-1">{formatNumber(fuelKpis.gasoil)} L</div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-gray-500 font-medium">{period === 'year' ? year - 1 : 'Précédent'}:</span>
-                                    <span className="text-gray-700 font-bold">{formatNumber(fuelKpis.gasoilPrev)} L</span>
+                            <div className="flex gap-4 items-center">
+                                <div className="p-3 bg-orange-100/50 rounded-xl text-orange-600">
+                                    <Fuel size={24} />
+                                </div>
+                                <div>
+                                    <div className="text-sm text-orange-600 font-medium mb-1">Volume Gasoil {period === 'year' ? year : 'Actuel'}</div>
+                                    <div className="text-3xl font-bold text-gray-900 mb-1">{formatNumber(fuelKpis.gasoil)} L</div>
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-gray-500 font-medium">{period === 'year' ? year - 1 : 'Précédent'}:</span>
+                                        <span className="text-gray-700 font-bold">{formatNumber(fuelKpis.gasoilPrev)} L</span>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex flex-col items-end gap-1">
@@ -374,12 +379,17 @@ export default function ComparisonCharts() {
                     {/* SSP Card */}
                     <div className="bg-gradient-to-br from-green-50 to-white p-6 rounded-2xl shadow-sm border border-green-100">
                         <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <div className="text-sm text-green-600 font-medium mb-1">Volume SSP {period === 'year' ? year : 'Actuel'}</div>
-                                <div className="text-3xl font-bold text-gray-900 mb-1">{formatNumber(fuelKpis.ssp)} L</div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-gray-500 font-medium">{period === 'year' ? year - 1 : 'Précédent'}:</span>
-                                    <span className="text-gray-700 font-bold">{formatNumber(fuelKpis.sspPrev)} L</span>
+                            <div className="flex gap-4 items-center">
+                                <div className="p-3 bg-green-100/50 rounded-xl text-green-600">
+                                    <Fuel size={24} />
+                                </div>
+                                <div>
+                                    <div className="text-sm text-green-600 font-medium mb-1">Volume SSP {period === 'year' ? year : 'Actuel'}</div>
+                                    <div className="text-3xl font-bold text-gray-900 mb-1">{formatNumber(fuelKpis.ssp)} L</div>
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-gray-500 font-medium">{period === 'year' ? year - 1 : 'Précédent'}:</span>
+                                        <span className="text-gray-700 font-bold">{formatNumber(fuelKpis.sspPrev)} L</span>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex flex-col items-end gap-1">

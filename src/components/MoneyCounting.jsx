@@ -279,6 +279,16 @@ export default function MoneyCounting() {
 
     // Accordion State
     const [expandedId, setExpandedId] = useState(null);
+    const [expandedMonths, setExpandedMonths] = useState({});
+
+    const toggleMonth = (month) => {
+        setExpandedMonths(prev => {
+            const currentMonthKey = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            // Default to expanded if it's the current month
+            const isCurrentlyExpanded = prev[month] !== undefined ? prev[month] : month === currentMonthKey;
+            return { ...prev, [month]: !isCurrentlyExpanded };
+        });
+    };
 
     // Draft State
     const [draftStatus, setDraftStatus] = useState('');
@@ -427,8 +437,9 @@ export default function MoneyCounting() {
             // The prompt says "integre ici l'historique de un mois".
             // Let's fetch from (selectedDate - 30 days) to (selectedDate).
 
+            // Let's fetch from (selectedDate - 90 days) to allow for Monthly grouping
             const endDate = selectedDate;
-            const startDate = format(subDays(parseISO(selectedDate), 30), 'yyyy-MM-dd');
+            const startDate = format(subDays(parseISO(selectedDate), 90), 'yyyy-MM-dd');
 
             const { data, error } = await supabase
                 .from('money_countings')
@@ -548,11 +559,17 @@ export default function MoneyCounting() {
         setExpandedId(prev => prev === id ? null : id);
     };
 
-    // Group history by Date
-    const groupedHistory = history.reduce((acc, item) => {
-        const dateKey = item.date;
-        if (!acc[dateKey]) acc[dateKey] = [];
-        acc[dateKey].push(item);
+    // Group history by Month -> Day
+    const groupedByMonth = history.reduce((acc, item) => {
+        const date = new Date(item.date);
+        const monthKey = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); // e.g. "janvier 2026"
+
+        if (!acc[monthKey]) acc[monthKey] = {};
+
+        const dayKey = item.date;
+        if (!acc[monthKey][dayKey]) acc[monthKey][dayKey] = [];
+        acc[monthKey][dayKey].push(item);
+
         return acc;
     }, {});
 
@@ -736,7 +753,7 @@ export default function MoneyCounting() {
                 <div className="pt-8 border-t max-w-xl mx-auto">
                     <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                         <History className="text-gray-400" />
-                        Historique (30 derniers jours)
+                        Historique (90 derniers jours)
                     </h3>
 
                     {loadingHistory ? (
@@ -747,24 +764,61 @@ export default function MoneyCounting() {
                         </div>
                     ) : (
                         <div className="space-y-6">
-                            {Object.entries(groupedHistory).map(([dateStr, items]) => (
-                                <div key={dateStr} className="space-y-2">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider pl-1">
-                                        {format(parseISO(dateStr), "EEEE d MMMM", { locale: fr })}
-                                    </h4>
-                                    <div className="space-y-3">
-                                        {items.map((item) => (
-                                            <HistoryItem
-                                                key={item.id}
-                                                item={item}
-                                                isExpanded={expandedId === item.id}
-                                                onToggle={() => handleToggleExpand(item.id)}
-                                                onDelete={handleDelete}
-                                            />
-                                        ))}
+                            {Object.entries(groupedByMonth).map(([month, dayGroups]) => {
+                                const currentMonthKey = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                                const isExpanded = expandedMonths[month] !== undefined ? expandedMonths[month] : month === currentMonthKey;
+
+                                // Calculate total items in this month
+                                const totalItems = Object.values(dayGroups).reduce((acc, items) => acc + items.length, 0);
+
+                                return (
+                                    <div key={month} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                                        {/* Month Header */}
+                                        <div
+                                            className="bg-gray-50 border-b border-gray-100 p-4 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                            onClick={() => toggleMonth(month)}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`transition-transform duration-200 text-gray-400 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
+                                                    <div className="bg-white p-1 rounded-full border border-gray-200 shadow-sm text-gray-500">
+                                                        <ChevronDown size={14} className="-rotate-90" />
+                                                    </div>
+                                                </div>
+                                                <span className="font-bold text-xs uppercase tracking-wider text-gray-700">
+                                                    {month}
+                                                </span>
+                                            </div>
+                                            <span className="text-xs font-semibold text-gray-400 bg-white px-2.5 py-1 rounded-full border border-gray-100">
+                                                {totalItems} entrées
+                                            </span>
+                                        </div>
+
+                                        {/* Month Content */}
+                                        {isExpanded && (
+                                            <div className="p-4 space-y-6 bg-white">
+                                                {Object.entries(dayGroups).map(([dateStr, items]) => (
+                                                    <div key={dateStr} className="space-y-2">
+                                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider pl-1 border-l-2 border-indigo-100 ml-1">
+                                                            {format(parseISO(dateStr), "EEEE d MMMM", { locale: fr })}
+                                                        </h4>
+                                                        <div className="space-y-3">
+                                                            {items.map((item) => (
+                                                                <HistoryItem
+                                                                    key={item.id}
+                                                                    item={item}
+                                                                    isExpanded={expandedId === item.id}
+                                                                    onToggle={() => handleToggleExpand(item.id)}
+                                                                    onDelete={handleDelete}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
