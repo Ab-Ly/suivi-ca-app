@@ -17,6 +17,7 @@ import FuelDeliveryTracking from './components/FuelDeliveryTracking';
 
 import PersonnelTracking from './components/PersonnelTracking';
 import PerformanceReview from './components/PerformanceReview';
+import OperatingExpenses from './components/OperatingExpenses';
 
 function App() {
   return (
@@ -43,6 +44,7 @@ function App() {
           <Route path="stock" element={<StockStatus />} />
           <Route path="personnel" element={<PersonnelTracking />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="expenses" element={<OperatingExpenses />} />
 
           <Route path="profile" element={<Profile />} />
         </Route>

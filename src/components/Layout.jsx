@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, ChevronDown, ChevronUp, MonitorPlay } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, ChevronDown, ChevronUp, MonitorPlay, CreditCard } from 'lucide-react';
 import { PullToRefresh } from './ui/PullToRefresh';
 import { ToastProvider } from './ui/Toast';
 import { clsx } from 'clsx';
@@ -83,6 +83,7 @@ export default function Layout() {
         { to: '/personnel', icon: User, label: 'Personnel' },
         { to: '/reports', icon: BarChart3, label: 'Rapports' },
         { to: '/performance-review', icon: MonitorPlay, label: 'Revue de performance' },
+        { to: '/expenses', icon: CreditCard, label: 'Charges (Beta)' },
         { to: '/profile', icon: User, label: 'Profil' },
     ];
 
