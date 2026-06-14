@@ -16,12 +16,19 @@ import FuelDeliveryTracking from './components/FuelDeliveryTracking';
 
 
 import PersonnelTracking from './components/PersonnelTracking';
+import PerformanceReview from './components/PerformanceReview';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+
+        <Route path="/performance-review" element={
+          <ProtectedRoute>
+            <PerformanceReview />
+          </ProtectedRoute>
+        } />
 
         <Route path="/" element={
           <ProtectedRoute>

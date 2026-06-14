@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 export default function ArticleManager({ isOpen, onClose }) {
     const [formData, setFormData] = useState({
         name: '',
-        category: 'shop',
+        category: 'Shop',
         type: 'stockable',
         price: '',
         initialStock: ''
@@ -36,7 +36,7 @@ export default function ArticleManager({ isOpen, onClose }) {
             if (error) throw error;
 
             onClose();
-            setFormData({ name: '', category: 'shop', type: 'stockable', price: '', initialStock: '' });
+            setFormData({ name: '', category: 'Shop', type: 'stockable', price: '', initialStock: '' });
         } catch (error) {
             console.error('Error creating article:', error);
             alert('Erreur lors de la création de l\'article.');
@@ -81,11 +81,11 @@ export default function ArticleManager({ isOpen, onClose }) {
                             value={formData.category}
                             onChange={handleChange}
                         >
-                            <option value="shop">Shop</option>
-                            <option value="cafe">Café</option>
-                            <option value="bosch_service">Bosch Service</option>
-                            <option value="lubricant_piste">Lubrifiant Piste</option>
-                            <option value="lubricant_bosch">Lubrifiant Bosch</option>
+                            <option value="Shop">Shop</option>
+                            <option value="Café">Café</option>
+                            <option value="Bosch Service">Bosch Service</option>
+                            <option value="Pneumatique">Pneumatique</option>
+                            <option value="Lubrifiants">Lubrifiants</option>
                         </select>
                     </div>
                 </div>

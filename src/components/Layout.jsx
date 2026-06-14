@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, ChevronDown, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, FileText, User, LogOut, Menu, X, BarChart2, BarChart3, PlusCircle, Wallet, Truck, ChevronDown, ChevronUp, MonitorPlay } from 'lucide-react';
 import { PullToRefresh } from './ui/PullToRefresh';
 import { ToastProvider } from './ui/Toast';
 import { clsx } from 'clsx';
@@ -8,6 +8,8 @@ import { twMerge } from 'tailwind-merge';
 import SalesEntry from './SalesEntry';
 import UpdateNotification from './UpdateNotification';
 import { supabase } from '../lib/supabase';
+
+
 
 function cn(...inputs) {
     return twMerge(clsx(inputs));
@@ -80,6 +82,7 @@ export default function Layout() {
         { to: '/stock', icon: Package, label: 'Stock' },
         { to: '/personnel', icon: User, label: 'Personnel' },
         { to: '/reports', icon: BarChart3, label: 'Rapports' },
+        { to: '/performance-review', icon: MonitorPlay, label: 'Revue de performance' },
         { to: '/profile', icon: User, label: 'Profil' },
     ];
 

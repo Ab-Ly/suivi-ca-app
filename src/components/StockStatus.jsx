@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader } from './ui/Card';
-import { Search, Filter, CirclePlus, CircleMinus, PackagePlus, Loader2, History, LayoutGrid, Calendar, Truck } from 'lucide-react';
+import { Search, Filter, CirclePlus, CircleMinus, PackagePlus, Loader2, History, LayoutGrid, Calendar, Truck, Edit2 } from 'lucide-react';
 import ArticleManager from './ArticleManager';
+import EditArticleModal from './EditArticleModal';
 import LubricantDeliveryModal from './LubricantDeliveryModal';
 import { supabase } from '../lib/supabase';
 import { Modal } from './ui/Modal';
@@ -34,6 +35,10 @@ export default function StockStatus() {
 
     // Delete Confirmation State (for Deduplication)
     const [deleteConfig, setDeleteConfig] = useState({ isOpen: false });
+
+    // Edit Article State
+    const [isEditArticleOpen, setIsEditArticleOpen] = useState(false);
+    const [editingArticle, setEditingArticle] = useState(null);
 
     useEffect(() => {
         if (activeTab === 'status') {
@@ -265,6 +270,13 @@ export default function StockStatus() {
 
                     <ArticleManager isOpen={isArticleManagerOpen} onClose={() => { setIsArticleManagerOpen(false); fetchStock(); }} />
 
+                    <EditArticleModal
+                        isOpen={isEditArticleOpen}
+                        onClose={() => { setIsEditArticleOpen(false); setEditingArticle(null); }}
+                        article={editingArticle}
+                        onSuccess={() => fetchStock()}
+                    />
+
                     {/* Movement Modal */}
                     <Modal isOpen={movementModalOpen} onClose={() => setMovementModalOpen(false)} title={movementType === 'in' ? "Entrée de Stock" : "Sortie de Stock"}>
                         <div className="space-y-4">
@@ -340,6 +352,16 @@ export default function StockStatus() {
                                                 <td className="py-3 px-4 text-right font-medium">{(item.current_stock * item.price).toLocaleString()} MAD</td>
                                                 <td className="py-3 px-4">
                                                     <div className="flex items-center justify-center gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditingArticle(item);
+                                                                setIsEditArticleOpen(true);
+                                                            }}
+                                                            className="p-1 hover:bg-blue-100 text-blue-600 rounded"
+                                                            title="Modifier Article"
+                                                        >
+                                                            <Edit2 size={18} />
+                                                        </button>
                                                         <button
                                                             onClick={() => openMovementModal(item, 'in')}
                                                             className="p-1 hover:bg-green-100 text-green-600 rounded"

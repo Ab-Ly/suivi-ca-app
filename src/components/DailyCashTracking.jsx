@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { formatPrice, formatNumber } from '../utils/formatters';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 import MoneyCounting from './MoneyCounting';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 export default function DailyCashTracking() {
     const [activeTab, setActiveTab] = useState('entities'); // entities, expense, operations, reconciliation
@@ -64,6 +69,455 @@ export default function DailyCashTracking() {
             alert("Erreur lors du chargement de l'historique");
         } finally {
             setLoadingHistory(false);
+        }
+    };
+
+    const handlePrintHistory = () => {
+        if (!selectedEntityHistory) return;
+        const entityOps = historyOperations;
+        const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+        const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+        const netBalance = inAmount - outAmount;
+
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert("Veuillez autoriser les fenêtres contextuelles pour imprimer.");
+            return;
+        }
+
+        const html = `
+            <html>
+            <head>
+                <title>Historique - ${selectedEntityHistory.name}</title>
+                <style>
+                    body { 
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+                        padding: 40px; 
+                        color: #1f2937; 
+                        background-color: #fff;
+                    }
+                    .header { 
+                        border-bottom: 2px solid #e5e7eb; 
+                        padding-bottom: 20px; 
+                        margin-bottom: 25px; 
+                    }
+                    .title { 
+                        font-size: 26px; 
+                        font-weight: 800; 
+                        color: #111827; 
+                        margin: 0; 
+                    }
+                    .subtitle { 
+                        font-size: 14px; 
+                        color: #6b7280; 
+                        margin-top: 5px; 
+                        margin-bottom: 0; 
+                    }
+                    .summary { 
+                        display: grid; 
+                        grid-template-columns: repeat(3, 1fr); 
+                        gap: 20px; 
+                        margin-bottom: 30px; 
+                    }
+                    .card { 
+                        border: 1px solid #e5e7eb; 
+                        border-radius: 12px; 
+                        padding: 16px; 
+                        background-color: #f9fafb;
+                    }
+                    .card-title { 
+                        font-size: 11px; 
+                        font-weight: 700; 
+                        text-transform: uppercase; 
+                        color: #4b5563; 
+                        letter-spacing: 0.05em; 
+                        margin-bottom: 6px; 
+                    }
+                    .card-value { 
+                        font-size: 20px; 
+                        font-weight: 800; 
+                        font-family: monospace; 
+                    }
+                    table { 
+                        width: 100%; 
+                        border-collapse: collapse; 
+                        margin-top: 10px; 
+                    }
+                    th, td { 
+                        border-bottom: 1px solid #e5e7eb; 
+                        padding: 12px 14px; 
+                        text-align: left; 
+                        font-size: 13px; 
+                    }
+                    th { 
+                        background-color: #f3f4f6; 
+                        font-weight: 700; 
+                        text-transform: uppercase; 
+                        font-size: 11px; 
+                        color: #374151; 
+                        letter-spacing: 0.05em;
+                    }
+                    .amount { 
+                        font-family: monospace; 
+                        font-weight: 700; 
+                        text-align: right; 
+                        white-space: nowrap;
+                    }
+                    .in { color: #16a34a; }
+                    .out { color: #dc2626; }
+                    .badge { 
+                        display: inline-block; 
+                        padding: 3px 8px; 
+                        border-radius: 9999px; 
+                        font-size: 11px; 
+                        font-weight: 600; 
+                        text-align: center;
+                    }
+                    .badge-in { background-color: #dcfce7; color: #166534; }
+                    .badge-out { background-color: #fee2e2; color: #991b1b; }
+                    @media print {
+                        body { padding: 20px; }
+                        @page { margin: 1.5cm; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1 class="title">${selectedEntityHistory.name}</h1>
+                    <p class="subtitle">Historique des transactions - Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+                </div>
+                
+                <div class="summary">
+                    <div class="card">
+                        <div class="card-title">Total Entrées</div>
+                        <div class="card-value in">+${formatPrice(inAmount)}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Total Sorties</div>
+                        <div class="card-value out">-${formatPrice(outAmount)}</div>
+                    </div>
+                    <div class="card" style="border-color: ${netBalance >= 0 ? '#c7d2fe' : '#fed7aa'}; background-color: ${netBalance >= 0 ? '#e0e7ff' : '#ffedd5'};">
+                        <div class="card-title" style="color: ${netBalance >= 0 ? '#3730a3' : '#854d0e'};">Solde Global</div>
+                        <div class="card-value" style="color: ${netBalance >= 0 ? '#312e81' : '#7c2d12'};">${formatPrice(netBalance)}</div>
+                    </div>
+                </div>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date & Heure</th>
+                            <th>Description</th>
+                            <th style="text-align: center;">Type</th>
+                            <th style="text-align: right;">Montant</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${entityOps.map(op => `
+                            <tr>
+                                <td style="font-family: monospace; color: #4b5563;">
+                                    <strong>${format(new Date(op.date), 'dd/MM/yyyy')}</strong>
+                                    <span style="font-size: 11px; color: #9ca3af; margin-left: 5px;">${format(new Date(op.created_at), 'HH:mm')}</span>
+                                </td>
+                                <td>${op.description}</td>
+                                <td style="text-align: center;">
+                                    <span class="badge ${op.type === 'IN' ? 'badge-in' : 'badge-out'}">
+                                        ${op.type === 'IN' ? 'Recette' : 'Dépense'}
+                                    </span>
+                                </td>
+                                <td class="amount ${op.type === 'IN' ? 'in' : 'out'}">
+                                    ${op.type === 'IN' ? '+' : '-'}${formatPrice(Number(op.amount))}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        setTimeout(function() { window.close(); }, 500);
+                    };
+                </script>
+            </body>
+            </html>
+        `;
+        printWindow.document.write(html);
+        printWindow.document.close();
+    };
+
+    const handleExportPDF = () => {
+        if (!selectedEntityHistory) return;
+        const entityOps = historyOperations;
+        const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+        const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+        const netBalance = inAmount - outAmount;
+
+        const doc = new jsPDF();
+
+        // Premium Header background
+        doc.setFillColor(243, 244, 246);
+        doc.rect(0, 0, 210, 42, 'F');
+        
+        doc.setFontSize(22);
+        doc.setTextColor(17, 24, 39);
+        // Header title
+        doc.text(selectedEntityHistory.name.toUpperCase(), 15, 20);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(107, 114, 128);
+        doc.text("HISTORIQUE DES OPÉRATIONS DE CAISSE", 15, 28);
+        doc.text(`Généré le : ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, 15, 34);
+
+        const startY = 55;
+
+        // Print Summary Table
+        const summaryBody = [
+            ["Total Entrées", `+${formatPrice(inAmount)}`],
+            ["Total Sorties", `-${formatPrice(outAmount)}`],
+            [{ content: "Solde Global", styles: { fontStyle: 'bold' } }, { content: `${formatPrice(netBalance)}`, styles: { fontStyle: 'bold', textColor: netBalance >= 0 ? [79, 70, 229] : [234, 88, 12] } }]
+        ];
+
+        autoTable(doc, {
+            startY: startY,
+            head: [['Récapitulatif Financier', 'Montant (MAD)']],
+            body: summaryBody,
+            theme: 'grid',
+            headStyles: { fillColor: [79, 70, 229], textColor: 255 },
+            styles: { fontSize: 10, cellPadding: 3.5 },
+            columnStyles: { 0: { cellWidth: 100 }, 1: { cellWidth: 80, halign: 'right' } }
+        });
+
+        // Print Detail Table
+        const tableBody = entityOps.map(op => [
+            `${format(new Date(op.date), 'dd/MM/yyyy')} ${format(new Date(op.created_at), 'HH:mm')}`,
+            op.description,
+            op.type === 'IN' ? 'Recette' : 'Dépense',
+            { content: `${op.type === 'IN' ? '+' : '-'}${formatPrice(Number(op.amount))}`, styles: { fontStyle: 'bold', textColor: op.type === 'IN' ? [22, 163, 74] : [220, 38, 38] } }
+        ]);
+
+        autoTable(doc, {
+            startY: doc.lastAutoTable.finalY + 15,
+            head: [['Date & Heure', 'Description', 'Type', 'Montant']],
+            body: tableBody,
+            theme: 'striped',
+            headStyles: { fillColor: [31, 41, 55], textColor: 255 },
+            styles: { fontSize: 9, cellPadding: 3 },
+            columnStyles: { 
+                0: { cellWidth: 40 }, 
+                1: { cellWidth: 90 }, 
+                2: { cellWidth: 20, halign: 'center' }, 
+                3: { cellWidth: 30, halign: 'right' } 
+            }
+        });
+
+        doc.save(`Historique_${selectedEntityHistory.name.replace(/\\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
+    const [isBackingUp, setIsBackingUp] = useState(false);
+
+    const handleBackupData = async () => {
+        setIsBackingUp(true);
+        try {
+            // 1. Fetch all entities from Supabase
+            const { data: allEntities, error: entError } = await supabase
+                .from('daily_cash_entities')
+                .select('*')
+                .order('name');
+            if (entError) throw entError;
+
+            // 2. Fetch all operations from Supabase
+            const { data: allOperations, error: opError } = await supabase
+                .from('daily_cash_operations')
+                .select('*')
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false });
+            if (opError) throw opError;
+
+            // 3. Lazy-load ExcelJS
+            const ExcelJS = (await import('exceljs')).default;
+            const workbook = new ExcelJS.Workbook();
+            
+            // Sheet 1: Sociétés
+            const entSheet = workbook.addWorksheet('Sociétés');
+            entSheet.columns = [
+                { header: 'ID', key: 'id', width: 25 },
+                { header: 'Nom de la Société', key: 'name', width: 35 },
+                { header: 'Date de Création', key: 'created_at', width: 25 }
+            ];
+            
+            allEntities.forEach(ent => {
+                entSheet.addRow({
+                    id: ent.id,
+                    name: ent.name,
+                    created_at: ent.created_at ? new Date(ent.created_at).toLocaleString('fr-FR') : ''
+                });
+            });
+
+            // Styling header row for Sociétés
+            entSheet.getRow(1).font = { bold: true };
+            entSheet.getRow(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE0E7FF' } // light indigo
+            };
+
+            // Sheet 2: Opérations
+            const opSheet = workbook.addWorksheet('Opérations de Caisse');
+            opSheet.columns = [
+                { header: 'ID', key: 'id', width: 25 },
+                { header: 'Date', key: 'date', width: 15 },
+                { header: 'Société', key: 'entity_name', width: 35 },
+                { header: 'Type', key: 'type', width: 12 },
+                { header: 'Montant (MAD)', key: 'amount', width: 18 },
+                { header: 'Description', key: 'description', width: 45 },
+                { header: 'Catégorie', key: 'category', width: 25 },
+                { header: 'Moyen de Paiement', key: 'payment_method', width: 20 },
+                { header: 'Enregistré le', key: 'created_at', width: 25 }
+            ];
+
+            // Build entity lookup map
+            const entityMap = {};
+            allEntities.forEach(e => { entityMap[e.id] = e.name; });
+
+            allOperations.forEach(op => {
+                const entityName = op.category === 'EXPENSE_FUND' 
+                    ? 'Caisse Dépense' 
+                    : (entityMap[op.entity_id] || 'Autre / Inconnu');
+                
+                opSheet.addRow({
+                    id: op.id,
+                    date: op.date ? new Date(op.date).toLocaleDateString('fr-FR') : '',
+                    entity_name: entityName,
+                    type: op.type === 'IN' ? 'Recette' : 'Dépense',
+                    amount: Number(op.amount),
+                    description: op.description || '',
+                    category: op.category || '',
+                    payment_method: op.payment_method || '',
+                    created_at: op.created_at ? new Date(op.created_at).toLocaleString('fr-FR') : ''
+                });
+            });
+
+            // Format numbers and styling for Opérations
+            opSheet.getColumn('amount').numFmt = '#,##0.00';
+            opSheet.getRow(1).font = { bold: true };
+            opSheet.getRow(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE0E7FF' } // light indigo
+            };
+
+            // Sheet 3: Bilan des Soldes (qui se colle avec le principe de cette section)
+            const balanceSheet = workbook.addWorksheet('Bilan des Soldes');
+            
+            // Header for selected Date
+            balanceSheet.addRow([`Bilan des Soldes au ${new Date(selectedDate).toLocaleDateString('fr-FR')}`]);
+            balanceSheet.mergeCells('A1:E1');
+            balanceSheet.getRow(1).font = { bold: true, size: 12 };
+            balanceSheet.getRow(1).alignment = { horizontal: 'center' };
+            balanceSheet.getRow(1).height = 25;
+            balanceSheet.addRow([]); // Empty spacer row
+
+            // Define table headers
+            const headerRow = balanceSheet.addRow([
+                'Société',
+                'Solde J-1 (Veille)',
+                'Entrées (J)',
+                'Sorties (J)',
+                'Solde Actuel'
+            ]);
+            headerRow.font = { bold: true };
+            headerRow.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE0E7FF' } // light indigo
+            };
+
+            balanceSheet.columns = [
+                { key: 'name', width: 35 },
+                { key: 'opening', width: 20 },
+                { key: 'in', width: 20 },
+                { key: 'out', width: 20 },
+                { key: 'closing', width: 20 }
+            ];
+
+            // Add balances rows for each entity
+            allEntities.forEach(ent => {
+                const opBal = entityOpeningBalances[ent.id] || 0;
+                const clBal = entityClosingBalances[ent.id] || 0;
+                
+                // Calculate daily movement from allOperations filtered by date
+                const dayOps = allOperations.filter(op => op.entity_id === ent.id && op.date === selectedDate);
+                const dayIn = dayOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+                const dayOut = dayOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+
+                balanceSheet.addRow({
+                    name: ent.name,
+                    opening: opBal,
+                    in: dayIn,
+                    out: dayOut,
+                    closing: clBal
+                });
+            });
+
+            // Format monetary columns
+            balanceSheet.getColumn('opening').numFmt = '#,##0.00';
+            balanceSheet.getColumn('in').numFmt = '#,##0.00';
+            balanceSheet.getColumn('out').numFmt = '#,##0.00';
+            balanceSheet.getColumn('closing').numFmt = '#,##0.00';
+
+            // Add sum row at the bottom
+            const totalRowIndex = balanceSheet.rowCount + 1;
+            const totalRow = balanceSheet.addRow({
+                name: 'TOTAL GENERAL',
+                opening: { formula: `SUM(B4:B${totalRowIndex - 1})` },
+                in: { formula: `SUM(C4:C${totalRowIndex - 1})` },
+                out: { formula: `SUM(D4:D${totalRowIndex - 1})` },
+                closing: { formula: `SUM(E4:E${totalRowIndex - 1})` }
+            });
+            totalRow.font = { bold: true };
+            totalRow.border = {
+                top: { style: 'thin' },
+                bottom: { style: 'double' }
+            };
+
+            // Generate file buffer
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `Sauvegarde_Caisse_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+            // Handle multi-platform download / sharing
+            if (Capacitor.isNativePlatform()) {
+                const base64Data = btoa(
+                    new Uint8Array(buffer)
+                        .reduce((data, byte) => data + String.fromCharCode(byte), '')
+                );
+                
+                const savedFile = await Filesystem.writeFile({
+                    path: fileName,
+                    data: base64Data,
+                    directory: Directory.Cache,
+                });
+
+                await Share.share({
+                    title: 'Sauvegarde de Caisse',
+                    text: `Fichier de sauvegarde : ${fileName}`,
+                    url: savedFile.uri,
+                    dialogTitle: 'Partager ou enregistrer la sauvegarde',
+                });
+            } else {
+                // Web download
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }
+        } catch (error) {
+            console.error('Backup generation failed:', error);
+            alert("Erreur lors de la génération de la sauvegarde : " + error.message);
+        } finally {
+            setIsBackingUp(false);
         }
     };
 
@@ -506,6 +960,19 @@ export default function DailyCashTracking() {
                         <span className="sm:hidden">Ajouter</span>
                     </button>
                     <button
+                        onClick={handleBackupData}
+                        disabled={isBackingUp}
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-100 transition-all shadow-sm hover:shadow-md disabled:opacity-50"
+                        title="Sauvegarde de secours complète (Excel)"
+                    >
+                        {isBackingUp ? (
+                            <Loader2 size={20} className="animate-spin text-emerald-500" />
+                        ) : (
+                            <FileDown size={20} />
+                        )}
+                        <span className="hidden md:inline font-medium">Sauvegarde</span>
+                    </button>
+                    <button
                         onClick={handleResetData}
                         className="flex items-center gap-2 px-4 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all shadow-sm hover:shadow-md"
                         title="Réinitialiser toutes les données"
@@ -566,59 +1033,93 @@ export default function DailyCashTracking() {
                                         {entities.length} Sociétés actives
                                     </span>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {entities.map(entity => {
-                                        const movement = getDailyEntityMovement(entity.id);
-                                        const openingBalance = entityOpeningBalances[entity.id] || 0;
-                                        const closingBalance = entityClosingBalances[entity.id] || 0;
+                                <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-sm bg-white">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
+                                                    <th className="px-6 py-4">Société</th>
+                                                    <th className="px-6 py-4 text-right">Solde J-1</th>
+                                                    <th className="px-6 py-4 text-right">Entrées (J)</th>
+                                                    <th className="px-6 py-4 text-right">Sorties (J)</th>
+                                                    <th className="px-6 py-4 text-right">Solde Actuel</th>
+                                                    <th className="px-6 py-4 text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50">
+                                                {entities.map(entity => {
+                                                    const movement = getDailyEntityMovement(entity.id);
+                                                    const openingBalance = entityOpeningBalances[entity.id] || 0;
+                                                    const closingBalance = entityClosingBalances[entity.id] || 0;
 
-                                        return (
-                                            <div key={entity.id} onClick={() => handleViewEntityHistory(entity)} className="group p-5 border border-gray-100 rounded-2xl hover:shadow-lg transition-all bg-gradient-to-br from-white to-gray-50 cursor-pointer relative overflow-hidden">
-                                                <div className="flex justify-between items-start mb-4">
-                                                    <div className="font-bold text-gray-800 text-lg max-w-[70%] truncate" title={entity.name}>{entity.name}</div>
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            onClick={(e) => handleDeleteEntity(e, entity.id)}
-                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                            title="Supprimer la société"
+                                                    return (
+                                                        <tr 
+                                                            key={entity.id} 
+                                                            onClick={() => handleViewEntityHistory(entity)}
+                                                            className="group hover:bg-slate-50/60 cursor-pointer transition-colors"
                                                         >
-                                                            <Trash2 size={18} />
-                                                        </button>
-                                                        <div className="p-2 bg-white rounded-lg shadow-sm group-hover:scale-110 transition-transform">
-                                                            <Building2 size={20} className="text-indigo-500" />
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-3">
-                                                    <div className="flex justify-between items-center text-sm pb-2 border-b border-gray-100">
-                                                        <span className="text-gray-500">Solde J-1</span>
-                                                        <span className={`font-mono font-medium ${openingBalance >= 0 ? 'text-gray-700' : 'text-red-600'}`}>
-                                                            {formatPrice(openingBalance)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-sm">
-                                                        <span className="text-gray-500">Entrées</span>
-                                                        <span className="font-mono font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded">
-                                                            +{formatPrice(movement.in)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-sm">
-                                                        <span className="text-gray-500">Sorties</span>
-                                                        <span className="font-mono font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded">
-                                                            -{formatPrice(movement.out)}
-                                                        </span>
-                                                    </div>
-                                                    <div className="pt-3 border-t border-gray-200 flex justify-between items-center">
-                                                        <span className="font-medium text-gray-700">Solde Actuel</span>
-                                                        <span className={`font-mono font-bold text-lg ${closingBalance >= 0 ? 'text-indigo-600' : 'text-orange-600'}`}>
-                                                            {formatPrice(closingBalance)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                                            <td className="px-6 py-4.5 whitespace-nowrap">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform duration-200">
+                                                                        <Building2 size={18} />
+                                                                    </div>
+                                                                    <div className="font-bold text-gray-800 text-base" title={entity.name}>
+                                                                        {entity.name}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4.5 text-right whitespace-nowrap">
+                                                                <span className={`font-mono text-sm font-medium ${openingBalance >= 0 ? 'text-gray-600' : 'text-red-500'}`}>
+                                                                    {formatPrice(openingBalance)}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4.5 text-right whitespace-nowrap">
+                                                                {movement.in > 0 ? (
+                                                                    <span className="font-mono text-sm font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-lg">
+                                                                        +{formatPrice(movement.in)}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="font-mono text-sm text-gray-400">—</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-4.5 text-right whitespace-nowrap">
+                                                                {movement.out > 0 ? (
+                                                                    <span className="font-mono text-sm font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg">
+                                                                        -{formatPrice(movement.out)}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="font-mono text-sm text-gray-400">—</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-6 py-4.5 text-right whitespace-nowrap">
+                                                                <span className={`font-mono text-base font-black ${closingBalance >= 0 ? 'text-indigo-600' : 'text-orange-600'}`}>
+                                                                    {formatPrice(closingBalance)}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                                                <div className="flex items-center justify-center gap-1">
+                                                                    <button
+                                                                        onClick={() => handleViewEntityHistory(entity)}
+                                                                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
+                                                                        title="Voir l'historique"
+                                                                    >
+                                                                        <Table size={18} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => handleDeleteEntity(e, entity.id)}
+                                                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                                                        title="Supprimer la société"
+                                                                    >
+                                                                        <Trash2 size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1822,7 +2323,27 @@ export default function DailyCashTracking() {
                             </div>
 
                             {/* Footer */}
-                            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+                            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+                                <div className="flex gap-2">
+                                    {historyOperations.length > 0 && (
+                                        <>
+                                            <button
+                                                onClick={handlePrintHistory}
+                                                className="px-4 py-2 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-xl hover:bg-indigo-100/70 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2"
+                                            >
+                                                <Printer size={16} />
+                                                Imprimer
+                                            </button>
+                                            <button
+                                                onClick={handleExportPDF}
+                                                className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2"
+                                            >
+                                                <FileDown size={16} />
+                                                Exporter PDF
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                                 <button
                                     onClick={() => setSelectedEntityHistory(null)}
                                     className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors shadow-sm"

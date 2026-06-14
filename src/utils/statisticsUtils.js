@@ -118,7 +118,7 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             processedData = Array.from({ length: 24 }, (_, i) => ({ name: `${i}h`, current: 0, previous: 0, hour: i }));
         }
 
-        const addToData = (dateStr, amount, isCurrent) => {
+        const addToData = (dateStr, amount, isCurrent, category = null) => {
             const date = new Date(dateStr);
             let index = -1;
 
@@ -135,8 +135,19 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             else if (period === 'day') index = date.getHours();
 
             if (index >= 0 && index < processedData.length) {
-                if (isCurrent) processedData[index].current += amount;
-                else processedData[index].previous += amount;
+                if (isCurrent) {
+                    processedData[index].current += amount;
+                    if (category) {
+                        processedData[index][category] = (processedData[index][category] || 0) + amount;
+                    }
+                }
+                else {
+                    processedData[index].previous += amount;
+                    if (category) {
+                        const prevKey = `${category}_previous`;
+                        processedData[index][prevKey] = (processedData[index][prevKey] || 0) + amount;
+                    }
+                }
             }
         };
 
@@ -154,7 +165,7 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
 
             const amount = sale.total_price;
             currentTotal += amount;
-            addToData(sale.sale_date, amount, true);
+            addToData(sale.sale_date, amount, true, mappedCategory);
             if (categoryStats[mappedCategory]) categoryStats[mappedCategory].current += amount;
         });
 
@@ -168,7 +179,7 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
 
             const amount = sale.total_price;
             previousTotal += amount;
-            addToData(sale.sale_date, amount, false);
+            addToData(sale.sale_date, amount, false, mappedCategory);
             if (categoryStats[mappedCategory]) categoryStats[mappedCategory].previous += amount;
         });
 
@@ -184,7 +195,11 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                 if (item.month >= 1 && item.month <= 12 && !item.category.includes('Volume')) {
                     if (isMonthInRange(item.month)) {
                         const idx = getIndex(item.month);
-                        if (processedData[idx]) processedData[idx].current += item.amount;
+                        if (processedData[idx]) {
+                            processedData[idx].current += item.amount;
+                            const mappedCat = getMappedCategory(item.category, '', '');
+                            processedData[idx][mappedCat] = (processedData[idx][mappedCat] || 0) + item.amount;
+                        }
                         currentTotal += item.amount;
                         if (categoryStats[item.category]) categoryStats[item.category].current += item.amount;
                     }
@@ -195,7 +210,12 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                 if (item.month >= 1 && item.month <= 12 && !item.category.includes('Volume')) {
                     if (isMonthInRange(item.month)) {
                         const idx = getIndex(item.month);
-                        if (processedData[idx]) processedData[idx].previous += item.amount;
+                        if (processedData[idx]) {
+                            processedData[idx].previous += item.amount;
+                            const mappedCat = getMappedCategory(item.category, '', '');
+                            const prevKey = `${mappedCat}_previous`;
+                            processedData[idx][prevKey] = (processedData[idx][prevKey] || 0) + item.amount;
+                        }
                         previousTotal += item.amount;
                         if (categoryStats[item.category]) categoryStats[item.category].previous += item.amount;
                     }
@@ -326,11 +346,20 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             // 3. Apply Historical Data if needed
             if (useHistoricalCurrent) {
                 const histCurrMonth = historyCurrent?.filter(h => h.month === selectedMonth + 1);
+                const daysInMonth = processedData.length;
                 histCurrMonth?.forEach(item => {
                     if (!item.category.includes('Volume')) {
                         currentTotal += item.amount;
                         if (categoryStats[item.category]) categoryStats[item.category].current += item.amount;
                         else categoryStats[item.category] = { name: item.category, current: item.amount, previous: 0 };
+                        
+                        // Distribute across processedData days for Category Stats & Total Current
+                        const mappedCat = getMappedCategory(item.category, '', '');
+                        const dailyAmount = daysInMonth > 0 ? item.amount / daysInMonth : 0;
+                        processedData.forEach(d => {
+                            d.current += dailyAmount;
+                            d[mappedCat] = (d[mappedCat] || 0) + dailyAmount;
+                        });
                     }
                     if (item.category === 'Gasoil Volume' && useFuelHistoricalCurrent) totalGasoil += item.amount;
                     if (item.category === 'SSP Volume' && useFuelHistoricalCurrent) totalSSP += item.amount;
@@ -339,12 +368,22 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
 
             if (useHistoricalPrevious) {
                 const histPrevMonth = historyPrevious?.filter(h => h.month === selectedMonth + 1);
+                const daysInMonth = processedData.length;
                 histPrevMonth?.forEach(item => {
                     if (!item.category.includes('Volume')) {
                         previousTotal += item.amount;
                         if (categoryStats[item.category]) categoryStats[item.category].previous += item.amount;
                         else if (!categoryStats[item.category]) categoryStats[item.category] = { name: item.category, current: 0, previous: item.amount };
                         else categoryStats[item.category].previous += item.amount;
+
+                        // Distribute across processedData days for Category Stats & Total Previous
+                        const mappedCat = getMappedCategory(item.category, '', '');
+                        const prevKey = `${mappedCat}_previous`;
+                        const dailyAmount = daysInMonth > 0 ? item.amount / daysInMonth : 0;
+                        processedData.forEach(d => {
+                            d.previous += dailyAmount;
+                            d[prevKey] = (d[prevKey] || 0) + dailyAmount;
+                        });
                     }
                     if (item.category === 'Gasoil Volume' && useFuelHistoricalPrevious) totalGasoilPrev += item.amount;
                     if (item.category === 'SSP Volume' && useFuelHistoricalPrevious) totalSSPPrev += item.amount;
