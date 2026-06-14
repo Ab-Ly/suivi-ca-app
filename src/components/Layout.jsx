@@ -108,7 +108,7 @@ export default function Layout() {
 
     // Auto-logout on inactivity
     useEffect(() => {
-        const TIMEOUT_DURATION = 5 * 60 * 1000; // 5 minutes
+        const TIMEOUT_DURATION = 10 * 60 * 1000; // 10 minutes
         let logoutTimer;
 
         const resetTimer = () => {
