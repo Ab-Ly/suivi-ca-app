@@ -13,6 +13,12 @@
   --color-primary: #667EEA;
   --color-secondary: #764BA2;
 
+  --color-notion-bg: #FFFFFF;
+  --color-notion-sidebar: #F7F7F5;
+  --color-notion-border: #E9E9E7;
+  --color-notion-text: #37352F;
+  --color-notion-gray: #ACABA9;
+
   --image-gradient-purple: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
   --image-gradient-orange: linear-gradient(135deg, #FCCF31 0%, #F55555 100%);
   --image-gradient-green: linear-gradient(135deg, #43E97B 0%, #38F9D7 100%);

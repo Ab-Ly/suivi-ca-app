@@ -15,15 +15,23 @@ import {
 } from 'recharts';
 
 const CATEGORIES = [
-    { value: 'Loyer', label: 'Loyer', color: 'bg-blue-50 text-blue-700 border-blue-100' },
-    { value: 'Electricite', label: 'Électricité', color: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
-    { value: 'Eau', label: 'Eau', color: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
-    { value: 'Salaires', label: 'Salaires', color: 'bg-purple-50 text-purple-700 border-purple-100' },
-    { value: 'Taxes', label: 'Taxes et Impôts', color: 'bg-red-50 text-red-700 border-red-100' },
-    { value: 'Assurances', label: 'Assurances', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-    { value: 'Entretien', label: 'Entretien & Réparations', color: 'bg-orange-50 text-orange-700 border-orange-100' },
-    { value: 'Fournitures', label: 'Fournitures', color: 'bg-pink-50 text-pink-700 border-pink-100' },
-    { value: 'Autre', label: 'Autre', color: 'bg-gray-50 text-gray-700 border-gray-100' }
+    { value: 'Loyer', label: 'Loyer / Redevance foncière', color: 'bg-blue-50 text-blue-700 border-blue-100', hex: '#3B82F6' },
+    { value: 'Electricite', label: 'Électricité', color: 'bg-yellow-50 text-yellow-700 border-yellow-100', hex: '#EAB308' },
+    { value: 'Eau', label: 'Eau & Assainissement', color: 'bg-cyan-50 text-cyan-700 border-cyan-100', hex: '#06B6D4' },
+    { value: 'Salaires', label: 'Salaires & CNSS (Fixe)', color: 'bg-purple-50 text-purple-700 border-purple-100', hex: '#A855F7' },
+    { value: 'Interim', label: 'Personnel Intérimaire (Flexible)', color: 'bg-rose-50 text-rose-700 border-rose-100', hex: '#F43F5E' },
+    { value: 'Taxes', label: 'Impôts & Taxes Locales', color: 'bg-red-50 text-red-700 border-red-100', hex: '#EF4444' },
+    { value: 'Assurances', label: 'Assurances', color: 'bg-emerald-50 text-emerald-700 border-emerald-100', hex: '#10B981' },
+    { value: 'Entretien', label: 'Entretien & Réparations', color: 'bg-orange-50 text-orange-700 border-orange-100', hex: '#F97316' },
+    { value: 'Fournitures', label: 'Fournitures & Consommables', color: 'bg-pink-50 text-pink-700 border-pink-100', hex: '#EC4899' },
+    { value: 'Commissions', label: 'Commissions TPE & Cartes', color: 'bg-amber-50 text-amber-700 border-amber-100', hex: '#D97706' },
+    { value: 'Securite', label: 'Sécurité & Gardiennage', color: 'bg-indigo-50 text-indigo-700 border-indigo-100', hex: '#4F46E5' },
+    { value: 'Telecom', label: 'Télécoms & Internet', color: 'bg-sky-50 text-sky-700 border-sky-100', hex: '#0284C7' },
+    { value: 'Comptabilite', label: 'Honoraires Comptables & Juridiques', color: 'bg-violet-50 text-violet-700 border-violet-100', hex: '#7C3AED' },
+    { value: 'Marketing', label: 'Publicité & Marketing', color: 'bg-teal-50 text-teal-700 border-teal-100', hex: '#0D9488' },
+    { value: 'Transport', label: 'Transport & Logistique', color: 'bg-lime-50 text-lime-700 border-lime-100', hex: '#65A30D' },
+    { value: 'Nettoyage', label: 'Nettoyage & Assainissement', color: 'bg-emerald-50 text-emerald-700 border-emerald-100', hex: '#059669' },
+    { value: 'Autre', label: 'Autre / Divers', color: 'bg-gray-50 text-gray-700 border-gray-100', hex: '#6B7280' }
 ];
 
 const PAYMENT_METHODS = [
@@ -39,12 +47,15 @@ const UNIFIED_SQL = `-- Exécutez ce script dans le SQL Editor de Supabase pour 
 CREATE TABLE IF NOT EXISTS public.operating_expenses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     date DATE NOT NULL,
-    category TEXT NOT NULL CHECK (category IN ('Loyer', 'Electricite', 'Eau', 'Salaires', 'Taxes', 'Assurances', 'Entretien', 'Fournitures', 'Autre')),
+    category TEXT NOT NULL,
     amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
     description TEXT,
     payment_method TEXT NOT NULL CHECK (payment_method IN ('VIREMENT', 'PRELEVEMENT', 'ESPECES', 'CHEQUE')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Suppression de la contrainte CHECK de catégorie si elle existe pour supporter toutes les catégories opérationnelles
+ALTER TABLE public.operating_expenses DROP CONSTRAINT IF EXISTS operating_expenses_category_check;
 
 ALTER TABLE public.operating_expenses ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all access for authenticated users on operating_expenses" ON public.operating_expenses;
@@ -68,11 +79,63 @@ CREATE TABLE IF NOT EXISTS public.fuel_prices (
 ALTER TABLE public.fuel_prices ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all access for authenticated users on fuel_prices" ON public.fuel_prices;
 CREATE POLICY "Enable all access for authenticated users on fuel_prices" 
-    ON public.fuel_prices FOR ALL USING (true) WITH CHECK (true);`;
+    ON public.fuel_prices FOR ALL USING (true) WITH CHECK (true);
+
+-- 4. Table des coûts de stock mensuels (Shop, Café, Bosch Service)
+CREATE TABLE IF NOT EXISTS public.monthly_stock_costs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    month TEXT NOT NULL UNIQUE, -- format YYYY-MM
+    shop_cogs NUMERIC(12, 2) DEFAULT 0 CHECK (shop_cogs >= 0),
+    cafe_cogs NUMERIC(12, 2) DEFAULT 0 CHECK (cafe_cogs >= 0),
+    bosch_cogs NUMERIC(12, 2) DEFAULT 0 CHECK (bosch_cogs >= 0),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.monthly_stock_costs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all access for authenticated users on monthly_stock_costs" ON public.monthly_stock_costs;
+CREATE POLICY "Enable all access for authenticated users on monthly_stock_costs" 
+    ON public.monthly_stock_costs FOR ALL USING (true) WITH CHECK (true);`;
+
+const getMonthsInRange = (startStr, endStr) => {
+    if (!startStr || !endStr) return [];
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+    const months = [];
+    
+    let current = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (current <= end) {
+        const yStr = current.getFullYear();
+        const mStr = String(current.getMonth() + 1).padStart(2, '0');
+        months.push(`${yStr}-${mStr}`);
+        current.setMonth(current.getMonth() + 1);
+    }
+    return months;
+};
+
+const getMonthOverlapScale = (monthStr, startDateStr, endDateStr) => {
+    if (!monthStr || !startDateStr || !endDateStr) return 0.0;
+    
+    const [year, month] = monthStr.split('-').map(Number);
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0); // last day of month
+    
+    const queryStart = new Date(startDateStr + 'T00:00:00');
+    const queryEnd = new Date(endDateStr + 'T00:00:00');
+    
+    const intersectStart = new Date(Math.max(monthStart.getTime(), queryStart.getTime()));
+    const intersectEnd = new Date(Math.min(monthEnd.getTime(), queryEnd.getTime()));
+    
+    if (intersectStart > intersectEnd) return 0.0;
+    
+    const totalDaysInMonth = monthEnd.getDate();
+    const intersectDays = Math.round((intersectEnd.getTime() - intersectStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    
+    return Math.min(1.0, Math.max(0.0, intersectDays / totalDaysInMonth));
+};
 
 export default function OperatingExpenses() {
     // Tab state
-    const [activeTab, setActiveTab] = useState('expenses'); // 'expenses' | 'prices' | 'margin'
+    const [activeTab, setActiveTab] = useState('prices'); // 'prices' | 'monthly_cogs' | 'expenses' | 'margin' | 'ebit'
     const [priceSubTab, setPriceSubTab] = useState('fuel'); // 'fuel' | 'lubricants'
 
     // Database Setup Verification
@@ -80,7 +143,8 @@ export default function OperatingExpenses() {
         loading: true,
         operatingExpensesOk: false,
         fuelPricesOk: false,
-        articlesPurchasePriceOk: false
+        articlesPurchasePriceOk: false,
+        monthlyStockCostsOk: false
     });
 
     // Tab 1: Operating Expenses State
@@ -104,15 +168,26 @@ export default function OperatingExpenses() {
     const [fuelPricesLoading, setFuelPricesLoading] = useState(false);
     const [fuelPriceForm, setFuelPriceForm] = useState({
         date: new Date().toISOString().split('T')[0],
-        fuel_type: 'Gasoil',
-        purchase_price: '',
-        sale_price: ''
+        gasoil_purchase: '',
+        gasoil_sale: '',
+        ssp_purchase: '',
+        ssp_sale: ''
     });
 
     // Lubricants
     const [lubricants, setLubricants] = useState([]);
     const [lubricantsLoading, setLubricantsLoading] = useState(false);
     const [lubricantSearch, setLubricantSearch] = useState('');
+
+    // Tab 2: Stocks Vendus State
+    const [monthlyCogs, setMonthlyCogs] = useState([]);
+    const [monthlyCogsLoading, setMonthlyCogsLoading] = useState(false);
+    const [monthlyCogsForm, setMonthlyCogsForm] = useState({
+        month: new Date().toISOString().substring(0, 7), // 'YYYY-MM'
+        shop_cogs: '',
+        cafe_cogs: '',
+        bosch_cogs: ''
+    });
 
     // Tab 3: Margin Calculation State
     const [marginStartDate, setMarginStartDate] = useState(() => {
@@ -127,7 +202,12 @@ export default function OperatingExpenses() {
         gasoil: { liters: 0, revenue: 0, cost: 0, margin: 0, percent: 0 },
         ssp: { liters: 0, revenue: 0, cost: 0, margin: 0, percent: 0 },
         lubricants: { quantity: 0, revenue: 0, cost: 0, margin: 0, percent: 0 },
-        total: { revenue: 0, cost: 0, margin: 0, percent: 0 }
+        shop: { revenue: 0, cost: 0, margin: 0, percent: 0 },
+        cafe: { revenue: 0, cost: 0, margin: 0, percent: 0 },
+        bosch: { revenue: 0, cost: 0, margin: 0, percent: 0 },
+        total: { revenue: 0, cost: 0, margin: 0, percent: 0 },
+        expensesTotal: 0,
+        expensesByCategory: {}
     });
 
     // Check database structure
@@ -136,6 +216,7 @@ export default function OperatingExpenses() {
         let operatingExpensesOk = false;
         let fuelPricesOk = false;
         let articlesPurchasePriceOk = false;
+        let monthlyStockCostsOk = false;
 
         try {
             const { error: expError } = await supabase
@@ -173,21 +254,31 @@ export default function OperatingExpenses() {
             console.error(e);
         }
 
+        try {
+            const { error: stockError } = await supabase
+                .from('monthly_stock_costs')
+                .select('id')
+                .limit(1);
+            if (!stockError || stockError.code !== '42P01') {
+                monthlyStockCostsOk = true;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+
         const setupStatus = {
             loading: false,
             operatingExpensesOk,
             fuelPricesOk,
-            articlesPurchasePriceOk
+            articlesPurchasePriceOk,
+            monthlyStockCostsOk
         };
         setDbSetup(setupStatus);
         return setupStatus;
     };
 
     const initData = async () => {
-        const status = await checkDatabaseSetup();
-        if (status.operatingExpensesOk) {
-            fetchExpenses();
-        }
+        await checkDatabaseSetup();
     };
 
     useEffect(() => {
@@ -196,7 +287,7 @@ export default function OperatingExpenses() {
 
     // Load data based on active tabs
     useEffect(() => {
-        if (!dbSetup.operatingExpensesOk || !dbSetup.fuelPricesOk || !dbSetup.articlesPurchasePriceOk) return;
+        if (!dbSetup.operatingExpensesOk || !dbSetup.fuelPricesOk || !dbSetup.articlesPurchasePriceOk || !dbSetup.monthlyStockCostsOk) return;
 
         if (activeTab === 'expenses') {
             fetchExpenses();
@@ -206,10 +297,12 @@ export default function OperatingExpenses() {
             } else {
                 fetchLubricants();
             }
-        } else if (activeTab === 'margin') {
+        } else if (activeTab === 'monthly_cogs') {
+            fetchMonthlyCogs();
+        } else if (activeTab === 'margin' || activeTab === 'ebit') {
             calculateMargins();
         }
-    }, [activeTab, priceSubTab, marginStartDate, marginEndDate]);
+    }, [activeTab, priceSubTab, marginStartDate, marginEndDate, dbSetup.operatingExpensesOk, dbSetup.fuelPricesOk, dbSetup.articlesPurchasePriceOk, dbSetup.monthlyStockCostsOk]);
 
     // Tab 1: Fetch General Expenses
     const fetchExpenses = async () => {
@@ -308,38 +401,58 @@ export default function OperatingExpenses() {
     // Tab 2: Add/Upsert Fuel Price
     const handleSaveFuelPrice = async (e) => {
         e.preventDefault();
-        if (!fuelPriceForm.purchase_price || Number(fuelPriceForm.purchase_price) < 0) {
-            alert("Prix d'achat invalide");
+        const gasoilP = Number(fuelPriceForm.gasoil_purchase);
+        const gasoilS = Number(fuelPriceForm.gasoil_sale);
+        const sspP = Number(fuelPriceForm.ssp_purchase);
+        const sspS = Number(fuelPriceForm.ssp_sale);
+
+        if (isNaN(gasoilP) || gasoilP < 0 || isNaN(gasoilS) || gasoilS < 0) {
+            alert("Veuillez entrer des prix d'achat et de vente valides pour le Gasoil.");
             return;
         }
-        if (!fuelPriceForm.sale_price || Number(fuelPriceForm.sale_price) < 0) {
-            alert("Prix de vente invalide");
+        if (isNaN(sspP) || sspP < 0 || isNaN(sspS) || sspS < 0) {
+            alert("Veuillez entrer des prix d'achat et de vente valides pour le Sans Plomb (SSP).");
             return;
         }
 
         setSubmitting(true);
         try {
-            const { error } = await supabase
+            // Upsert Gasoil
+            const { error: gError } = await supabase
                 .from('fuel_prices')
                 .upsert({
                     date: fuelPriceForm.date,
-                    fuel_type: fuelPriceForm.fuel_type,
-                    purchase_price: Number(fuelPriceForm.purchase_price),
-                    sale_price: Number(fuelPriceForm.sale_price)
+                    fuel_type: 'Gasoil',
+                    purchase_price: gasoilP,
+                    sale_price: gasoilS
                 }, { onConflict: 'date,fuel_type' });
 
-            if (error) throw error;
+            if (gError) throw gError;
 
-            alert('Prix enregistré avec succès !');
+            // Upsert SSP
+            const { error: sError } = await supabase
+                .from('fuel_prices')
+                .upsert({
+                    date: fuelPriceForm.date,
+                    fuel_type: 'SSP',
+                    purchase_price: sspP,
+                    sale_price: sspS
+                }, { onConflict: 'date,fuel_type' });
+
+            if (sError) throw sError;
+
+            alert('Tarifs Gasoil & SSP enregistrés avec succès !');
             setFuelPriceForm(prev => ({
                 ...prev,
-                purchase_price: '',
-                sale_price: ''
+                gasoil_purchase: '',
+                gasoil_sale: '',
+                ssp_purchase: '',
+                ssp_sale: ''
             }));
             fetchFuelPrices();
         } catch (e) {
-            console.error('Error saving fuel price:', e);
-            alert("Erreur lors de l'enregistrement du prix. Vérifiez si vous n'avez pas de doublons.");
+            console.error('Error saving fuel prices:', e);
+            alert("Erreur lors de l'enregistrement des tarifs. Veuillez réessayer.");
         } finally {
             setSubmitting(false);
         }
@@ -426,6 +539,75 @@ export default function OperatingExpenses() {
         }
     };
 
+    // Tab 2: Fetch Monthly Stock Costs (Cogs)
+    const fetchMonthlyCogs = async () => {
+        setMonthlyCogsLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('monthly_stock_costs')
+                .select('*')
+                .order('month', { ascending: false });
+            if (error) throw error;
+            setMonthlyCogs(data || []);
+        } catch (e) {
+            console.error('Error fetching monthly cogs:', e);
+        } finally {
+            setMonthlyCogsLoading(false);
+        }
+    };
+
+    // Tab 2: Save/Upsert Monthly Stock Costs
+    const handleSaveMonthlyCogs = async (e) => {
+        e.preventDefault();
+        if (!monthlyCogsForm.month) {
+            alert('Veuillez sélectionner un mois');
+            return;
+        }
+        setSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from('monthly_stock_costs')
+                .upsert({
+                    month: monthlyCogsForm.month,
+                    shop_cogs: Number(monthlyCogsForm.shop_cogs || 0),
+                    cafe_cogs: Number(monthlyCogsForm.cafe_cogs || 0),
+                    bosch_cogs: Number(monthlyCogsForm.bosch_cogs || 0)
+                }, { onConflict: 'month' });
+
+            if (error) throw error;
+
+            alert('Coûts de stock enregistrés avec succès !');
+            setMonthlyCogsForm({
+                month: new Date().toISOString().substring(0, 7),
+                shop_cogs: '',
+                cafe_cogs: '',
+                bosch_cogs: ''
+            });
+            fetchMonthlyCogs();
+        } catch (e) {
+            console.error('Error saving monthly cogs:', e);
+            alert("Erreur lors de l'enregistrement des coûts mensuels");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // Tab 2: Delete Monthly Stock Costs
+    const handleDeleteMonthlyCogs = async (id) => {
+        if (!window.confirm("Voulez-vous supprimer ces coûts mensuels ?")) return;
+        try {
+            const { error } = await supabase
+                .from('monthly_stock_costs')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+            fetchMonthlyCogs();
+        } catch (e) {
+            console.error('Error deleting monthly cogs:', e);
+            alert("Erreur lors de la suppression");
+        }
+    };
+
     // Tab 3: Calculate margins
     const calculateMargins = async () => {
         setMarginData(prev => ({ ...prev, loading: true }));
@@ -455,11 +637,10 @@ export default function OperatingExpenses() {
                 .order('date', { ascending: true });
             if (pricesError) throw pricesError;
 
-            // 3. Fetch lubricant sales in date range
+            // 3. Fetch all non-fuel sales in date range
             let salesQuery = supabase
                 .from('sales')
                 .select('*, articles!inner(*)')
-                .in('articles.category', ['lubricant_piste', 'lubricant_bosch', 'Lubrifiants'])
                 .order('sale_date', { ascending: true });
 
             if (marginStartDate) {
@@ -471,8 +652,46 @@ export default function OperatingExpenses() {
                 salesQuery = salesQuery.lte('sale_date', end.toISOString());
             }
 
-            const { data: lubSalesData, error: lubError } = await salesQuery;
-            if (lubError) throw lubError;
+            const { data: nonFuelSales, error: salesError } = await salesQuery;
+            if (salesError) throw salesError;
+
+            // 4. Fetch monthly stock costs
+            const { data: monthlyCogsData, error: monthlyCogsError } = await supabase
+                .from('monthly_stock_costs')
+                .select('*');
+            if (monthlyCogsError) throw monthlyCogsError;
+
+            // 5. Fetch all operating expenses in range for EBIT
+            let expensesQuery = supabase
+                .from('operating_expenses')
+                .select('*')
+                .order('date', { ascending: true });
+
+            if (marginStartDate) {
+                expensesQuery = expensesQuery.gte('date', marginStartDate);
+            }
+            if (marginEndDate) {
+                expensesQuery = expensesQuery.lte('date', marginEndDate);
+            }
+
+            const { data: expensesData, error: expensesError } = await expensesQuery;
+            if (expensesError) throw expensesError;
+
+            const expensesTotal = (expensesData || []).reduce((sum, exp) => sum + Number(exp.amount), 0);
+            const expensesByCategory = {};
+            (expensesData || []).forEach(exp => {
+                expensesByCategory[exp.category] = (expensesByCategory[exp.category] || 0) + Number(exp.amount);
+            });
+
+            // Map monthly cogs
+            const monthlyCogsMap = {};
+            (monthlyCogsData || []).forEach(item => {
+                monthlyCogsMap[item.month] = {
+                    shop: Number(item.shop_cogs || 0),
+                    cafe: Number(item.cafe_cogs || 0),
+                    bosch: Number(item.bosch_cogs || 0)
+                };
+            });
 
             // Helper to match sale date to closest price
             const getFuelPrice = (saleDateStr, fuelType) => {
@@ -516,20 +735,55 @@ export default function OperatingExpenses() {
                 }
             });
 
-            // Compute aggregates - Lubricants
-            let lubQty = 0;
-            let lubRevenue = 0;
-            let lubCost = 0;
+            // Compute aggregates for non-fuel categories
+            let lubQty = 0, lubRevenue = 0, lubCost = 0;
+            let shopRevenue = 0, shopCost = 0;
+            let cafeRevenue = 0, cafeCost = 0;
+            let boschRevenue = 0, boschCost = 0;
 
-            lubSalesData.forEach(sale => {
-                const qty = Number(sale.quantity);
-                const revenue = Number(sale.total_price);
+            nonFuelSales.forEach(sale => {
+                const qty = Number(sale.quantity || 1);
+                const revenue = Number(sale.total_price || 0);
                 const purchasePrice = Number(sale.articles?.purchase_price || 0);
-                const cost = qty * purchasePrice;
 
-                lubQty += qty;
-                lubRevenue += revenue;
-                lubCost += cost;
+                const category = (sale.articles?.category || '').toLowerCase();
+
+                if (['lubricant_piste', 'lubricant_bosch', 'lubrifiants'].includes(category)) {
+                    lubQty += qty;
+                    lubRevenue += revenue;
+                    lubCost += qty * purchasePrice;
+                } else if (category.includes('shop')) {
+                    shopRevenue += revenue;
+                    const saleMonth = sale.sale_date.substring(0, 7);
+                    // Use fallback only if no manual monthly cogs for that month
+                    if (!monthlyCogsMap[saleMonth]) {
+                        shopCost += qty * purchasePrice;
+                    }
+                } else if (category.includes('cafe') || category.includes('café')) {
+                    cafeRevenue += revenue;
+                    const saleMonth = sale.sale_date.substring(0, 7);
+                    if (!monthlyCogsMap[saleMonth]) {
+                        cafeCost += qty * purchasePrice;
+                    }
+                } else {
+                    // Bosch Car Service & garage services (Main d'oeuvre, Pneumatique)
+                    boschRevenue += revenue;
+                    const saleMonth = sale.sale_date.substring(0, 7);
+                    if (!monthlyCogsMap[saleMonth]) {
+                        boschCost += qty * purchasePrice;
+                    }
+                }
+            });
+
+            // Apply monthly cogs proportional overrides for months in date range
+            const uniqueMonths = getMonthsInRange(marginStartDate, marginEndDate);
+            uniqueMonths.forEach(m => {
+                const scale = getMonthOverlapScale(m, marginStartDate, marginEndDate);
+                if (monthlyCogsMap[m]) {
+                    shopCost += monthlyCogsMap[m].shop * scale;
+                    cafeCost += monthlyCogsMap[m].cafe * scale;
+                    boschCost += monthlyCogsMap[m].bosch * scale;
+                }
             });
 
             // Math Gasoil
@@ -545,8 +799,8 @@ export default function OperatingExpenses() {
             const lubPercent = lubRevenue > 0 ? (lubMargin / lubRevenue) * 100 : 0;
 
             // Math Grand Total
-            const totalRevenue = gasoilRevenue + sspRevenue + lubRevenue;
-            const totalCost = gasoilCost + sspCost + lubCost;
+            const totalRevenue = gasoilRevenue + sspRevenue + lubRevenue + shopRevenue + cafeRevenue + boschRevenue;
+            const totalCost = gasoilCost + sspCost + lubCost + shopCost + cafeCost + boschCost;
             const totalMargin = totalRevenue - totalCost;
             const totalPercent = totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : 0;
 
@@ -555,7 +809,12 @@ export default function OperatingExpenses() {
                 gasoil: { liters: gasoilLiters, revenue: gasoilRevenue, cost: gasoilCost, margin: gasoilMargin, percent: gasoilPercent },
                 ssp: { liters: sspLiters, revenue: sspRevenue, cost: sspCost, margin: sspMargin, percent: sspPercent },
                 lubricants: { quantity: lubQty, revenue: lubRevenue, cost: lubCost, margin: lubMargin, percent: lubPercent },
-                total: { revenue: totalRevenue, cost: totalCost, margin: totalMargin, percent: totalPercent }
+                shop: { revenue: shopRevenue, cost: shopCost, margin: shopRevenue - shopCost, percent: shopRevenue > 0 ? ((shopRevenue - shopCost) / shopRevenue) * 100 : 0 },
+                cafe: { revenue: cafeRevenue, cost: cafeCost, margin: cafeRevenue - cafeCost, percent: cafeRevenue > 0 ? ((cafeRevenue - cafeCost) / cafeRevenue) * 100 : 0 },
+                bosch: { revenue: boschRevenue, cost: boschCost, margin: boschRevenue - boschCost, percent: boschRevenue > 0 ? ((boschRevenue - boschCost) / boschRevenue) * 100 : 0 },
+                total: { revenue: totalRevenue, cost: totalCost, margin: totalMargin, percent: totalPercent },
+                expensesTotal,
+                expensesByCategory
             });
 
         } catch (err) {
@@ -564,7 +823,6 @@ export default function OperatingExpenses() {
             setMarginData(prev => ({ ...prev, loading: false }));
         }
     };
-
     // Filter calculations for Tab 1
     const filteredExpenses = expenses.filter(exp => {
         const matchesCategory = selectedCategoryFilter ? exp.category === selectedCategoryFilter : true;
@@ -583,8 +841,31 @@ export default function OperatingExpenses() {
         return acc;
     }, {});
 
+    // Analyses de Masse Salariale et Flexibilité (EBIT)
+    const salairesFixes = Number(marginData.expensesByCategory?.['Salaires'] || 0);
+    const interimVariable = Number(marginData.expensesByCategory?.['Interim'] || 0);
+    const totalMasseSalariale = salairesFixes + interimVariable;
+    const flexRHPercent = totalMasseSalariale > 0 ? (interimVariable / totalMasseSalariale) * 100 : 0;
+    const fixesRHPercent = totalMasseSalariale > 0 ? (salairesFixes / totalMasseSalariale) * 100 : 0;
+    const rhRatioOnRevenue = marginData.total.revenue > 0 ? (totalMasseSalariale / marginData.total.revenue) * 100 : 0;
+
+    const fixedCategories = ['Loyer', 'Salaires', 'Assurances', 'Securite', 'Comptabilite', 'Redevances'];
+    const chargesFixes = Object.entries(marginData.expensesByCategory || {}).reduce((sum, [cat, amount]) => {
+        return fixedCategories.includes(cat) ? sum + Number(amount) : sum;
+    }, 0);
+    const chargesVariables = marginData.expensesTotal - chargesFixes;
+
+    const chargesFixesPercent = marginData.expensesTotal > 0 ? (chargesFixes / marginData.expensesTotal) * 100 : 0;
+    const chargesVariablesPercent = marginData.expensesTotal > 0 ? (chargesVariables / marginData.expensesTotal) * 100 : 0;
+
+    const mcv = marginData.total.margin - chargesVariables;
+    const tmcv = marginData.total.revenue > 0 ? mcv / marginData.total.revenue : 0;
+    const seuilRentabilite = tmcv > 0 ? chargesFixes / tmcv : 0;
+    const margeSecurite = marginData.total.revenue - seuilRentabilite;
+    const indiceSecurite = marginData.total.revenue > 0 && margeSecurite > 0 ? (margeSecurite / marginData.total.revenue) * 100 : 0;
+
     const getCategoryDetails = (catValue) => {
-        return CATEGORIES.find(c => c.value === catValue) || { label: catValue, color: 'bg-gray-100' };
+        return CATEGORIES.find(c => c.value === catValue) || { label: catValue, color: 'bg-gray-100', hex: '#6B7280' };
     };
 
     // Filter lubricants by search input
@@ -604,11 +885,12 @@ export default function OperatingExpenses() {
         );
     }
 
-    if (!dbSetup.operatingExpensesOk || !dbSetup.fuelPricesOk || !dbSetup.articlesPurchasePriceOk) {
+    if (!dbSetup.operatingExpensesOk || !dbSetup.fuelPricesOk || !dbSetup.articlesPurchasePriceOk || !dbSetup.monthlyStockCostsOk) {
         const missingResources = [];
         if (!dbSetup.operatingExpensesOk) missingResources.push('Table "operating_expenses"');
         if (!dbSetup.fuelPricesOk) missingResources.push('Table "fuel_prices"');
         if (!dbSetup.articlesPurchasePriceOk) missingResources.push('Colonne "purchase_price" dans la table "articles"');
+        if (!dbSetup.monthlyStockCostsOk) missingResources.push('Table "monthly_stock_costs"');
 
         return (
             <div className="max-w-4xl mx-auto py-10 px-4">
@@ -679,201 +961,65 @@ export default function OperatingExpenses() {
             </div>
 
             {/* Tabs Navigation */}
-            <div className="flex bg-white p-1 rounded-2xl shadow-sm border border-gray-100 w-full md:w-fit">
-                <button
-                    onClick={() => setActiveTab('expenses')}
-                    className={`flex items-center justify-center gap-2 px-5 py-2.5 text-sm rounded-xl font-bold transition-all ${
-                        activeTab === 'expenses'
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                >
-                    <Receipt size={16} />
-                    Charges Générales
-                </button>
+            <div className="flex flex-wrap bg-white p-1 rounded-2xl shadow-sm border border-gray-100 w-full md:w-fit gap-1">
                 <button
                     onClick={() => setActiveTab('prices')}
-                    className={`flex items-center justify-center gap-2 px-5 py-2.5 text-sm rounded-xl font-bold transition-all ${
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-xl font-bold transition-all ${
                         activeTab === 'prices'
                             ? 'bg-indigo-600 text-white shadow-md'
                             : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                 >
                     <Settings size={16} />
-                    Configuration des Prix
+                    1. Configuration des Prix
+                </button>
+                <button
+                    onClick={() => setActiveTab('monthly_cogs')}
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-xl font-bold transition-all ${
+                        activeTab === 'monthly_cogs'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                    <ShoppingBag size={16} />
+                    2. Stocks Vendus (Mensuel)
+                </button>
+                <button
+                    onClick={() => setActiveTab('expenses')}
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-xl font-bold transition-all ${
+                        activeTab === 'expenses'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                    <Receipt size={16} />
+                    3. Charges Générales
                 </button>
                 <button
                     onClick={() => setActiveTab('margin')}
-                    className={`flex items-center justify-center gap-2 px-5 py-2.5 text-sm rounded-xl font-bold transition-all ${
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-xl font-bold transition-all ${
                         activeTab === 'margin'
                             ? 'bg-indigo-600 text-white shadow-md'
                             : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                 >
                     <Activity size={16} />
-                    Calcul de Marge Brute
+                    4. Calcul de Marge Brute
+                </button>
+                <button
+                    onClick={() => setActiveTab('ebit')}
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm rounded-xl font-bold transition-all ${
+                        activeTab === 'ebit'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                    <TrendingUp size={16} />
+                    5. Résultat (REX)
                 </button>
             </div>
 
-            {/* TAB 1: OPERATING EXPENSES */}
-            {activeTab === 'expenses' && (
-                <>
-                    {/* Stats Summary */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <Receipt size={64} className="text-indigo-600" />
-                            </div>
-                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Total Charges Filtré</div>
-                            <div className="text-3xl font-black text-gray-900">{formatPrice(totalAmount)}</div>
-                            <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-500"></div>
-                        </div>
-
-                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <Calendar size={64} className="text-purple-600" />
-                            </div>
-                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Nombre d'enregistrements</div>
-                            <div className="text-3xl font-black text-gray-900">
-                                {filteredExpenses.length} <span className="text-sm font-semibold text-gray-400">charges</span>
-                            </div>
-                            <div className="absolute bottom-0 left-0 w-full h-1 bg-purple-500"></div>
-                        </div>
-
-                        {(() => {
-                            const sortedCats = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
-                            const topCat = sortedCats[0];
-                            return (
-                                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                        <Sparkles size={64} className="text-orange-600" />
-                                    </div>
-                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Poste le plus important</div>
-                                    <div className="text-2xl font-black text-gray-900 truncate">
-                                        {topCat ? `${getCategoryDetails(topCat[0]).label} (${formatPrice(topCat[1])})` : 'Aucun'}
-                                    </div>
-                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-orange-500"></div>
-                                </div>
-                            );
-                        })()}
-                    </div>
-
-                    {/* Filter controls */}
-                    <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-wrap gap-4 items-center">
-                        <div className="flex items-center gap-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase">Filtrer par :</label>
-                        </div>
-                        
-                        <select
-                            value={selectedCategoryFilter}
-                            onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                            className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
-                        >
-                            <option value="">Toutes les catégories</option>
-                            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                        </select>
-
-                        <select
-                            value={selectedMonthFilter}
-                            onChange={(e) => setSelectedMonthFilter(e.target.value)}
-                            className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
-                        >
-                            <option value="">Tous les mois</option>
-                            {availableMonths.map(m => {
-                                const date = new Date(m + '-02');
-                                return (
-                                    <option key={m} value={m}>
-                                        {format(date, 'MMMM yyyy', { locale: fr })}
-                                    </option>
-                                );
-                            })}
-                        </select>
-
-                        {(selectedCategoryFilter || selectedMonthFilter) && (
-                            <button
-                                onClick={() => {
-                                    setSelectedCategoryFilter('');
-                                    setSelectedMonthFilter('');
-                                }}
-                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors ml-auto"
-                            >
-                                Réinitialiser les filtres
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Expenses List */}
-                    <div className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
-                                        <th className="px-6 py-4">Date</th>
-                                        <th className="px-6 py-4">Catégorie</th>
-                                        <th className="px-6 py-4">Libellé / Description</th>
-                                        <th className="px-6 py-4">Mode de Règlement</th>
-                                        <th className="px-6 py-4 text-right">Montant (MAD)</th>
-                                        <th className="px-6 py-4 text-center">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {loading ? (
-                                        <tr>
-                                            <td colSpan="6" className="text-center py-10">
-                                                <div className="flex justify-center items-center gap-2 text-gray-400">
-                                                    <RefreshCw className="animate-spin text-indigo-500" size={20} />
-                                                    <span>Chargement...</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ) : filteredExpenses.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="6" className="text-center py-16 text-gray-400">
-                                                <Receipt size={40} className="mx-auto mb-3 opacity-30" />
-                                                <p className="text-sm">Aucune charge enregistrée correspondant aux critères.</p>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        filteredExpenses.map(exp => {
-                                            const catInfo = getCategoryDetails(exp.category);
-                                            const pMethod = PAYMENT_METHODS.find(p => p.value === exp.payment_method) || { label: exp.payment_method };
-                                            
-                                            return (
-                                                <tr key={exp.id} className="hover:bg-slate-50/60 transition-colors">
-                                                    <td className="px-6 py-4 whitespace-nowrap font-mono text-sm font-bold text-gray-700">
-                                                        {format(new Date(exp.date), 'dd/MM/yyyy')}
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${catInfo.color}`}>
-                                                            {catInfo.label}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 font-medium text-gray-800">{exp.description || '—'}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">{pMethod.label}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-base font-black text-gray-900">
-                                                        {formatPrice(Number(exp.amount))}
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                        <button
-                                                            onClick={() => handleDeleteExpense(exp.id)}
-                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                                            title="Supprimer"
-                                                        >
-                                                            <Trash2 size={18} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {/* TAB 2: PRICE CONFIGURATION */}
+            {/* TAB 1: PRICE CONFIGURATION */}
             {activeTab === 'prices' && (
                 <div className="space-y-6">
                     {/* Sub tabs */}
@@ -925,43 +1071,73 @@ export default function OperatingExpenses() {
                                         />
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase">Carburant</label>
-                                        <select
-                                            className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
-                                            value={fuelPriceForm.fuel_type}
-                                            onChange={e => setFuelPriceForm({ ...fuelPriceForm, fuel_type: e.target.value })}
-                                        >
-                                            <option value="Gasoil">Gasoil</option>
-                                            <option value="SSP">Sans Plomb (SSP)</option>
-                                        </select>
+                                    {/* Gasoil Section */}
+                                    <div className="border-t border-gray-100 pt-3">
+                                        <h4 className="text-xs font-extrabold text-orange-600 mb-2 flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                                            Gasoil
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-bold text-gray-400 uppercase">Prix d'Achat (L)</label>
+                                                <input
+                                                    type="number"
+                                                    required
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-2.5 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
+                                                    value={fuelPriceForm.gasoil_purchase}
+                                                    onChange={e => setFuelPriceForm({ ...fuelPriceForm, gasoil_purchase: e.target.value })}
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-bold text-gray-400 uppercase">Prix de Vente (L)</label>
+                                                <input
+                                                    type="number"
+                                                    required
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-2.5 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
+                                                    value={fuelPriceForm.gasoil_sale}
+                                                    onChange={e => setFuelPriceForm({ ...fuelPriceForm, gasoil_sale: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Prix d'Achat (L)</label>
-                                            <input
-                                                type="number"
-                                                required
-                                                step="0.01"
-                                                placeholder="0.00"
-                                                className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
-                                                value={fuelPriceForm.purchase_price}
-                                                onChange={e => setFuelPriceForm({ ...fuelPriceForm, purchase_price: e.target.value })}
-                                            />
-                                        </div>
+                                    {/* SSP Section */}
+                                    <div className="border-t border-gray-100 pt-3">
+                                        <h4 className="text-xs font-extrabold text-green-600 mb-2 flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                            Sans Plomb (SSP)
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-bold text-gray-400 uppercase">Prix d'Achat (L)</label>
+                                                <input
+                                                    type="number"
+                                                    required
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-2.5 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
+                                                    value={fuelPriceForm.ssp_purchase}
+                                                    onChange={e => setFuelPriceForm({ ...fuelPriceForm, ssp_purchase: e.target.value })}
+                                                />
+                                            </div>
 
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase">Prix de Vente (L)</label>
-                                            <input
-                                                type="number"
-                                                required
-                                                step="0.01"
-                                                placeholder="0.00"
-                                                className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
-                                                value={fuelPriceForm.sale_price}
-                                                onChange={e => setFuelPriceForm({ ...fuelPriceForm, sale_price: e.target.value })}
-                                            />
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-bold text-gray-400 uppercase">Prix de Vente (L)</label>
+                                                <input
+                                                    type="number"
+                                                    required
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-2.5 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
+                                                    value={fuelPriceForm.ssp_sale}
+                                                    onChange={e => setFuelPriceForm({ ...fuelPriceForm, ssp_sale: e.target.value })}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 
@@ -971,7 +1147,7 @@ export default function OperatingExpenses() {
                                         className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-colors shadow-sm disabled:opacity-50"
                                     >
                                         <Save size={16} />
-                                        {submitting ? 'Enregistrement...' : 'Enregistrer le Prix'}
+                                        {submitting ? 'Enregistrement...' : 'Enregistrer les Tarifs'}
                                     </button>
                                 </form>
                             </div>
@@ -1175,7 +1351,313 @@ export default function OperatingExpenses() {
                 </div>
             )}
 
-            {/* TAB 3: GROSS MARGIN CALCULATIONS */}
+            {/* TAB 2: STOCKS VENDUS (MENSUEL) */}
+            {activeTab === 'monthly_cogs' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Form to insert/update monthly stock costs */}
+                    <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm h-fit space-y-4">
+                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <Plus className="text-indigo-600" size={20} />
+                            Saisir Coût des Stocks
+                        </h3>
+                        <p className="text-xs text-gray-400">
+                            Enregistrez le coût total des stocks vendus (COGS) par mois pour la Boutique, le Café et Bosch Service.
+                        </p>
+
+                        <form onSubmit={handleSaveMonthlyCogs} className="space-y-4 pt-2">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Mois d'activité</label>
+                                <input
+                                    type="month"
+                                    required
+                                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                    value={monthlyCogsForm.month}
+                                    onChange={e => setMonthlyCogsForm({ ...monthlyCogsForm, month: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Boutique / Shop (MAD)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
+                                    value={monthlyCogsForm.shop_cogs}
+                                    onChange={e => setMonthlyCogsForm({ ...monthlyCogsForm, shop_cogs: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Café / Restauration (MAD)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
+                                    value={monthlyCogsForm.cafe_cogs}
+                                    onChange={e => setMonthlyCogsForm({ ...monthlyCogsForm, cafe_cogs: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Bosch Car Service (MAD)</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-bold focus:ring-2 focus:ring-indigo-100 font-mono"
+                                    value={monthlyCogsForm.bosch_cogs}
+                                    onChange={e => setMonthlyCogsForm({ ...monthlyCogsForm, bosch_cogs: e.target.value })}
+                                />
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={submitting}
+                                className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-colors shadow-sm disabled:opacity-50"
+                            >
+                                <Save size={16} />
+                                {submitting ? 'Enregistrement...' : 'Enregistrer Coûts'}
+                            </button>
+                        </form>
+                    </div>
+
+                    {/* Table showing list of monthly entries */}
+                    <div className="lg:col-span-2 bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-4">
+                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <Calendar className="text-indigo-600" size={20} />
+                            Historique des Coûts de Stock
+                        </h3>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
+                                        <th className="px-4 py-3">Mois</th>
+                                        <th className="px-4 py-3 text-right">Shop / Boutique</th>
+                                        <th className="px-4 py-3 text-right">Café / Resto</th>
+                                        <th className="px-4 py-3 text-right">Bosch Service</th>
+                                        <th className="px-4 py-3 text-right">Coût Total</th>
+                                        <th className="px-4 py-3 text-center">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {monthlyCogsLoading ? (
+                                        <tr>
+                                            <td colSpan="6" className="text-center py-8">
+                                                <RefreshCw className="animate-spin text-indigo-500 mx-auto" size={18} />
+                                            </td>
+                                        </tr>
+                                    ) : monthlyCogs.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="6" className="text-center py-10 text-gray-400 text-sm font-medium">
+                                                Aucun coût de stock mensuel configuré.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        monthlyCogs.map(item => {
+                                            const total = Number(item.shop_cogs || 0) + Number(item.cafe_cogs || 0) + Number(item.bosch_cogs || 0);
+                                            const dateObj = new Date(item.month + '-02');
+                                            return (
+                                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                                    <td className="px-4 py-3 whitespace-nowrap font-bold text-sm text-gray-800">
+                                                        {format(dateObj, 'MMMM yyyy', { locale: fr })}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono text-sm text-gray-600">
+                                                        {formatPrice(Number(item.shop_cogs))}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono text-sm text-gray-600">
+                                                        {formatPrice(Number(item.cafe_cogs))}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono text-sm text-gray-600">
+                                                        {formatPrice(Number(item.bosch_cogs))}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono text-sm font-bold text-gray-900">
+                                                        {formatPrice(total)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <button
+                                                            onClick={() => handleDeleteMonthlyCogs(item.id)}
+                                                            className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                                                            title="Supprimer"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 3: OPERATING EXPENSES */}
+            {activeTab === 'expenses' && (
+                <>
+                    {/* Stats Summary */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <Receipt size={64} className="text-indigo-600" />
+                            </div>
+                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Total Charges Filtré</div>
+                            <div className="text-3xl font-black text-gray-900">{formatPrice(totalAmount)}</div>
+                            <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-500"></div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                <Calendar size={64} className="text-purple-600" />
+                            </div>
+                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Nombre d'enregistrements</div>
+                            <div className="text-3xl font-black text-gray-900">
+                                {filteredExpenses.length} <span className="text-sm font-semibold text-gray-400">charges</span>
+                            </div>
+                            <div className="absolute bottom-0 left-0 w-full h-1 bg-purple-500"></div>
+                        </div>
+
+                        {(() => {
+                            const sortedCats = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+                            const topCat = sortedCats[0];
+                            return (
+                                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <Sparkles size={64} className="text-orange-600" />
+                                    </div>
+                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Poste le plus important</div>
+                                    <div className="text-2xl font-black text-gray-900 truncate">
+                                        {topCat ? `${getCategoryDetails(topCat[0]).label} (${formatPrice(topCat[1])})` : 'Aucun'}
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-orange-500"></div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    {/* Filter controls */}
+                    <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-wrap gap-4 items-center">
+                        <div className="flex items-center gap-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase">Filtrer par :</label>
+                        </div>
+                        
+                        <select
+                            value={selectedCategoryFilter}
+                            onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                            className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                        >
+                            <option value="">Toutes les catégories</option>
+                            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        </select>
+
+                        <select
+                            value={selectedMonthFilter}
+                            onChange={(e) => setSelectedMonthFilter(e.target.value)}
+                            className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                        >
+                            <option value="">Tous les mois</option>
+                            {availableMonths.map(m => {
+                                const date = new Date(m + '-02');
+                                return (
+                                    <option key={m} value={m}>
+                                        {format(date, 'MMMM yyyy', { locale: fr })}
+                                    </option>
+                                );
+                            })}
+                        </select>
+
+                        {(selectedCategoryFilter || selectedMonthFilter) && (
+                            <button
+                                onClick={() => {
+                                    setSelectedCategoryFilter('');
+                                    setSelectedMonthFilter('');
+                                }}
+                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors ml-auto"
+                            >
+                                Réinitialiser les filtres
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Expenses List */}
+                    <div className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
+                                        <th className="px-6 py-4">Date</th>
+                                        <th className="px-6 py-4">Catégorie</th>
+                                        <th className="px-6 py-4">Libellé / Description</th>
+                                        <th className="px-6 py-4">Mode de Règlement</th>
+                                        <th className="px-6 py-4 text-right">Montant (MAD)</th>
+                                        <th className="px-6 py-4 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {loading ? (
+                                        <tr>
+                                            <td colSpan="6" className="text-center py-10">
+                                                <div className="flex justify-center items-center gap-2 text-gray-400">
+                                                    <RefreshCw className="animate-spin text-indigo-500" size={20} />
+                                                    <span>Chargement...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : filteredExpenses.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="6" className="text-center py-16 text-gray-400">
+                                                <Receipt size={40} className="mx-auto mb-3 opacity-30" />
+                                                <p className="text-sm">Aucune charge enregistrée correspondant aux critères.</p>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredExpenses.map(exp => {
+                                            const catInfo = getCategoryDetails(exp.category);
+                                            const pMethod = PAYMENT_METHODS.find(p => p.value === exp.payment_method) || { label: exp.payment_method };
+                                            
+                                            return (
+                                                <tr key={exp.id} className="hover:bg-slate-50/60 transition-colors">
+                                                    <td className="px-6 py-4 whitespace-nowrap font-mono text-sm font-bold text-gray-700">
+                                                        {format(new Date(exp.date), 'dd/MM/yyyy')}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${catInfo.color}`}>
+                                                            {catInfo.label}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 font-medium text-gray-800">{exp.description || '—'}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">{pMethod.label}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-base font-black text-gray-900">
+                                                        {formatPrice(Number(exp.amount))}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                        <button
+                                                            onClick={() => handleDeleteExpense(exp.id)}
+                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                            title="Supprimer"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* TAB 4: GROSS MARGIN CALCULATIONS */}
             {activeTab === 'margin' && (
                 <div className="space-y-6">
                     {/* Filters & Actions */}
@@ -1258,7 +1740,7 @@ export default function OperatingExpenses() {
                                 <div className="lg:col-span-2 bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-4">
                                     <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                         <FileText className="text-indigo-600" size={20} />
-                                        Détails de Marge par Produit
+                                        Détails de Marge par Produit (6 Centres de Profit)
                                     </h3>
 
                                     <div className="overflow-x-auto">
@@ -1313,6 +1795,45 @@ export default function OperatingExpenses() {
                                                     <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{formatNumber(marginData.lubricants.percent, 2)} %</td>
                                                 </tr>
 
+                                                {/* Boutique (Shop) */}
+                                                <tr className="hover:bg-slate-50/50">
+                                                    <td className="px-4 py-3 font-bold flex items-center gap-1.5">
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                                                        Boutique (Shop)
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-gray-600">—</td>
+                                                    <td className="px-4 py-3 text-right font-mono">{formatPrice(marginData.shop.revenue)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono text-gray-500">{formatPrice(marginData.shop.cost)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-emerald-600">{formatPrice(marginData.shop.margin)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{formatNumber(marginData.shop.percent, 2)} %</td>
+                                                </tr>
+
+                                                {/* Café */}
+                                                <tr className="hover:bg-slate-50/50">
+                                                    <td className="px-4 py-3 font-bold flex items-center gap-1.5">
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-pink-500"></div>
+                                                        Café / Restauration
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-gray-600">—</td>
+                                                    <td className="px-4 py-3 text-right font-mono">{formatPrice(marginData.cafe.revenue)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono text-gray-500">{formatPrice(marginData.cafe.cost)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-emerald-600">{formatPrice(marginData.cafe.margin)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{formatNumber(marginData.cafe.percent, 2)} %</td>
+                                                </tr>
+
+                                                {/* Bosch & Lavage */}
+                                                <tr className="hover:bg-slate-50/50">
+                                                    <td className="px-4 py-3 font-bold flex items-center gap-1.5">
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>
+                                                        Bosch Car Service & Lavage
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-gray-600">—</td>
+                                                    <td className="px-4 py-3 text-right font-mono">{formatPrice(marginData.bosch.revenue)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono text-gray-500">{formatPrice(marginData.bosch.cost)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-emerald-600">{formatPrice(marginData.bosch.margin)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{formatNumber(marginData.bosch.percent, 2)} %</td>
+                                                </tr>
+
                                                 {/* Grand Total */}
                                                 <tr className="bg-gray-50 border-t border-gray-200">
                                                     <td className="px-4 py-3 font-black text-gray-900 uppercase">Total Général</td>
@@ -1328,64 +1849,508 @@ export default function OperatingExpenses() {
                                 </div>
 
                                 {/* Pie Chart visualization */}
-                                <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm flex flex-col justify-between h-[360px] lg:h-auto">
+                                <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm flex flex-col justify-between min-h-[460px]">
                                     <div>
                                         <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                             <BarChart3 className="text-indigo-600" size={20} />
-                                            Parts de Marge Brute
+                                            Contribution à la Marge Brute
                                         </h3>
                                         <p className="text-xs text-gray-400 mt-1">Répartition de la marge générée par chaque univers.</p>
                                     </div>
 
                                     {marginData.total.margin <= 0 ? (
-                                        <div className="flex-1 flex flex-col items-center justify-center text-gray-300">
+                                        <div className="flex-grow flex flex-col items-center justify-center text-gray-300 py-10">
                                             <Info size={48} className="opacity-20 mb-2" />
                                             <span className="text-sm font-semibold">Aucune marge positive à afficher</span>
                                         </div>
                                     ) : (
-                                        <div className="flex-1 min-h-[200px] relative flex items-center justify-center">
-                                            <ResponsiveContainer width="100%" height={200}>
-                                                <PieChart>
-                                                    <Pie
-                                                        data={[
-                                                            { name: 'Gasoil', value: Math.max(0, marginData.gasoil.margin), color: '#F97316' },
-                                                            { name: 'Sans Plomb', value: Math.max(0, marginData.ssp.margin), color: '#22C55E' },
-                                                            { name: 'Lubrifiants', value: Math.max(0, marginData.lubricants.margin), color: '#6366F1' }
-                                                        ].filter(item => item.value > 0)}
-                                                        dataKey="value"
-                                                        nameKey="name"
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        innerRadius={45}
-                                                        outerRadius={70}
-                                                        paddingAngle={4}
-                                                    >
-                                                        {[
-                                                            { name: 'Gasoil', color: '#F97316' },
-                                                            { name: 'Sans Plomb', color: '#22C55E' },
-                                                            { name: 'Lubrifiants', color: '#6366F1' }
-                                                        ].map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                                        ))}
-                                                    </Pie>
-                                                    <Tooltip formatter={(value) => formatPrice(value)} />
-                                                </PieChart>
-                                            </ResponsiveContainer>
+                                        <div className="flex-grow flex flex-col justify-between mt-4">
+                                            {/* Unified Total Summary above the Chart */}
+                                            <div className="text-center py-2.5 bg-indigo-50/40 rounded-2xl border border-indigo-100/50 mb-2">
+                                                <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider block">Marge Totale Réalisée</span>
+                                                <span className="text-xl font-black text-indigo-950">{formatPrice(marginData.total.margin)}</span>
+                                            </div>
 
-                                            {/* Custom Legends */}
-                                            <div className="absolute bottom-2 flex justify-center gap-4 text-xs font-semibold">
-                                                <div className="flex items-center gap-1.5">
-                                                    <div className="w-2.5 h-2.5 rounded-full bg-orange-500"></div>
-                                                    <span>Gasoil</span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                                                    <span>SSP</span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <div className="w-2.5 h-2.5 rounded-full bg-indigo-500"></div>
-                                                    <span>Lub.</span>
-                                                </div>
+                                            {/* Donut Chart */}
+                                            <div className="relative h-[160px] w-full flex items-center justify-center">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie
+                                                            data={[
+                                                                { name: 'Gasoil', value: Math.max(0, marginData.gasoil.margin), color: '#F97316' },
+                                                                { name: 'Sans Plomb', value: Math.max(0, marginData.ssp.margin), color: '#22C55E' },
+                                                                { name: 'Lubrifiants', value: Math.max(0, marginData.lubricants.margin), color: '#6366F1' },
+                                                                { name: 'Boutique', value: Math.max(0, marginData.shop.margin), color: '#3B82F6' },
+                                                                { name: 'Café', value: Math.max(0, marginData.cafe.margin), color: '#EC4899' },
+                                                                { name: 'Bosch & Services', value: Math.max(0, marginData.bosch.margin), color: '#8B5CF6' }
+                                                            ].filter(item => item.value > 0)}
+                                                            dataKey="value"
+                                                            nameKey="name"
+                                                            cx="50%"
+                                                            cy="50%"
+                                                            innerRadius={50}
+                                                            outerRadius={68}
+                                                            paddingAngle={3}
+                                                        >
+                                                            {[
+                                                                { name: 'Gasoil', color: '#F97316' },
+                                                                { name: 'Sans Plomb', color: '#22C55E' },
+                                                                { name: 'Lubrifiants', color: '#6366F1' },
+                                                                { name: 'Boutique', color: '#3B82F6' },
+                                                                { name: 'Café', color: '#EC4899' },
+                                                                { name: 'Bosch & Services', color: '#8B5CF6' }
+                                                            ].filter(item => Math.max(0, marginData[
+                                                                item.name === 'Sans Plomb' ? 'ssp' :
+                                                                item.name === 'Lubrifiants' ? 'lubricants' :
+                                                                item.name === 'Boutique' ? 'shop' :
+                                                                item.name === 'Café' ? 'cafe' :
+                                                                item.name === 'Bosch & Services' ? 'bosch' : 'gasoil'
+                                                            ]?.margin) > 0).map((entry, index) => (
+                                                                <Cell key={`cell-${index}`} fill={entry.color} />
+                                                            ))}
+                                                        </Pie>
+                                                        <Tooltip formatter={(value) => formatPrice(value)} />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            </div>
+
+                                            {/* Sorted custom legend list with progress bars */}
+                                            {(() => {
+                                                const items = [
+                                                    { name: 'Gasoil', value: Math.max(0, marginData.gasoil.margin), color: '#F97316' },
+                                                    { name: 'Sans Plomb', value: Math.max(0, marginData.ssp.margin), color: '#22C55E' },
+                                                    { name: 'Lubrifiants', value: Math.max(0, marginData.lubricants.margin), color: '#6366F1' },
+                                                    { name: 'Boutique', value: Math.max(0, marginData.shop.margin), color: '#3B82F6' },
+                                                    { name: 'Café', value: Math.max(0, marginData.cafe.margin), color: '#EC4899' },
+                                                    { name: 'Bosch & Services', value: Math.max(0, marginData.bosch.margin), color: '#8B5CF6' }
+                                                ].filter(item => item.value > 0);
+                                                
+                                                const sortedLegend = [...items].sort((a, b) => b.value - a.value);
+                                                const sumPositive = sortedLegend.reduce((sum, entry) => sum + entry.value, 0);
+
+                                                return (
+                                                    <div className="mt-3 space-y-2">
+                                                        {sortedLegend.map((item, idx) => {
+                                                            const pct = sumPositive > 0 ? (item.value / sumPositive) * 100 : 0;
+                                                            return (
+                                                                <div key={idx} className="flex flex-col text-xs font-semibold">
+                                                                    <div className="flex justify-between items-center text-gray-700">
+                                                                        <div className="flex items-center gap-1.5 truncate">
+                                                                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }}></div>
+                                                                            <span className="truncate">{item.name}</span>
+                                                                        </div>
+                                                                        <div className="flex gap-2 text-right">
+                                                                            <span className="text-gray-900 font-mono">{formatPrice(item.value)}</span>
+                                                                            <span className="text-gray-400 font-medium">{formatNumber(pct, 1)}%</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-100 h-1.5 rounded-full mt-1 overflow-hidden">
+                                                                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: item.color }}></div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {/* TAB 5: EBIT & BREAKEVEN (RESULTAT D'EXPLOITATION) */}
+            {activeTab === 'ebit' && (
+                <div className="space-y-6">
+                    {/* Filters & Actions (Period sync) */}
+                    <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-wrap gap-4 items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-gray-400 uppercase">Période d'analyse :</span>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="date"
+                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                    value={marginStartDate}
+                                    onChange={e => setMarginStartDate(e.target.value)}
+                                />
+                                <span className="text-gray-400 font-bold">-</span>
+                                <input
+                                    type="date"
+                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                    value={marginEndDate}
+                                    onChange={e => setMarginEndDate(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={calculateMargins}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl transition-all font-semibold text-sm"
+                        >
+                            <RefreshCw size={16} className={marginData.loading ? 'animate-spin' : ''} />
+                            Recalculer
+                        </button>
+                    </div>
+
+                    {marginData.loading ? (
+                        <div className="flex justify-center items-center py-20">
+                            <div className="flex flex-col items-center gap-2">
+                                <RefreshCw className="animate-spin text-indigo-500" size={32} />
+                                <span className="text-gray-400 text-sm font-semibold">Calcul du résultat en cours...</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {/* KPI cards (EBIT, Marges, Charges) */}
+                            {(() => {
+                                const ebitValue = marginData.total.margin - marginData.expensesTotal;
+                                return (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Total Marges Brutes</div>
+                                            <div className="text-3xl font-black text-emerald-600">{formatPrice(marginData.total.margin)}</div>
+                                            <div className="absolute bottom-0 left-0 w-full h-1 bg-emerald-500"></div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Charges d'Exploitation (Charges)</div>
+                                            <div className="text-3xl font-black text-rose-500">-{formatPrice(marginData.expensesTotal)}</div>
+                                            <div className="absolute bottom-0 left-0 w-full h-1 bg-rose-500"></div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Résultat d'Exploitation (REX)</div>
+                                            <div className={`text-3xl font-black ${ebitValue >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>
+                                                {ebitValue >= 0 ? '+' : ''}{formatPrice(ebitValue)}
+                                            </div>
+                                            <div className={`absolute bottom-0 left-0 w-full h-1 ${ebitValue >= 0 ? 'bg-indigo-500' : 'bg-red-500'}`}></div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Row 1: EBIT breakdown table and Expenses Donut chart */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* EBIT breakdown table */}
+                                <div className="lg:col-span-2 bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-4">
+                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                        <FileText className="text-indigo-600" size={20} />
+                                        Compte de Résultat d'Exploitation (REX)
+                                    </h3>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
+                                                    <th className="px-4 py-3">Poste</th>
+                                                    <th className="px-4 py-3 text-right">Montant (MAD)</th>
+                                                    <th className="px-4 py-3 text-right">% du Chiffre d'Affaires</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50 font-medium text-sm text-gray-800">
+                                                {/* Revenue */}
+                                                <tr className="hover:bg-slate-50/50">
+                                                    <td className="px-4 py-3 font-bold text-gray-900">Chiffre d'Affaires (Ventes de Carburant, Lubs & Services)</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold">{formatPrice(marginData.total.revenue)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono text-gray-400">100.0 %</td>
+                                                </tr>
+                                                {/* COGS */}
+                                                <tr className="hover:bg-slate-50/50 text-gray-600">
+                                                    <td className="px-4 py-3 pl-6 text-xs font-semibold">Coûts de stock / Achat carburants & marchandises (-)</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-semibold text-rose-500">-{formatPrice(marginData.total.cost)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-400">
+                                                        {marginData.total.revenue > 0 ? formatNumber((marginData.total.cost / marginData.total.revenue) * 100, 1) : 0} %
+                                                    </td>
+                                                </tr>
+                                                {/* Gross margin */}
+                                                <tr className="hover:bg-slate-50/50 bg-emerald-50/30">
+                                                    <td className="px-4 py-3 font-bold text-emerald-800">Marge Brute Globale</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">{formatPrice(marginData.total.margin)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono text-emerald-700 font-bold">
+                                                        {marginData.total.revenue > 0 ? formatNumber((marginData.total.margin / marginData.total.revenue) * 100, 1) : 0} %
+                                                    </td>
+                                                </tr>
+                                                {/* General Expenses */}
+                                                <tr className="hover:bg-slate-50/50 text-gray-600">
+                                                    <td className="px-4 py-3 pl-6 text-xs font-semibold">Charges Générales d'Exploitation (Charges) (-)</td>
+                                                    <td className="px-4 py-3 text-right font-mono font-semibold text-rose-500">-{formatPrice(marginData.expensesTotal)}</td>
+                                                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-400">
+                                                        {marginData.total.revenue > 0 ? formatNumber((marginData.expensesTotal / marginData.total.revenue) * 100, 1) : 0} %
+                                                    </td>
+                                                </tr>
+                                                {/* EBIT */}
+                                                {(() => {
+                                                    const ebitVal = marginData.total.margin - marginData.expensesTotal;
+                                                    const ebitPct = marginData.total.revenue > 0 ? (ebitVal / marginData.total.revenue) * 100 : 0;
+                                                    return (
+                                                        <tr className="bg-indigo-50/30 border-t border-gray-200">
+                                                            <td className="px-4 py-3 font-black text-indigo-900 uppercase">Résultat d'Exploitation (REX)</td>
+                                                            <td className={`px-4 py-3 text-right font-mono font-black ${ebitVal >= 0 ? 'text-indigo-700' : 'text-red-700'}`}>
+                                                                {ebitVal >= 0 ? '+' : ''}{formatPrice(ebitVal)}
+                                                            </td>
+                                                            <td className={`px-4 py-3 text-right font-mono font-black ${ebitVal >= 0 ? 'text-indigo-700' : 'text-red-700'}`}>
+                                                                {formatNumber(ebitPct, 1)} %
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })()}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Expenses Donut chart with legend */}
+                                <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm flex flex-col justify-between min-h-[460px]">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                            <BarChart3 className="text-indigo-600" size={20} />
+                                            Répartition des Charges
+                                        </h3>
+                                        <p className="text-xs text-gray-400 mt-1">Répartition des charges générales saisies sur la période.</p>
+                                    </div>
+
+                                    {marginData.expensesTotal <= 0 ? (
+                                        <div className="flex-grow flex flex-col items-center justify-center text-gray-300 py-10">
+                                            <Info size={48} className="opacity-20 mb-2" />
+                                            <span className="text-sm font-semibold">Aucune charge sur cette période</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex-grow flex flex-col justify-between mt-4">
+                                            {/* Unified Total Summary above the Chart */}
+                                            <div className="text-center py-2.5 bg-rose-50/40 rounded-2xl border border-rose-100/50 mb-2">
+                                                <span className="text-[10px] font-extrabold text-rose-500 uppercase tracking-wider block">Charges Totales d'Exploitation</span>
+                                                <span className="text-xl font-black text-rose-950">{formatPrice(marginData.expensesTotal)}</span>
+                                            </div>
+
+                                            {/* Donut Chart */}
+                                            <div className="relative h-[160px] w-full flex items-center justify-center">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie
+                                                            data={Object.entries(marginData.expensesByCategory || {})
+                                                                .map(([cat, amount]) => {
+                                                                    const catInfo = getCategoryDetails(cat);
+                                                                    return {
+                                                                        name: catInfo.label,
+                                                                        value: Number(amount),
+                                                                        color: catInfo.hex || '#6B7280'
+                                                                    };
+                                                                })
+                                                                .filter(item => item.value > 0)}
+                                                            dataKey="value"
+                                                            nameKey="name"
+                                                            cx="50%"
+                                                            cy="50%"
+                                                            innerRadius={50}
+                                                            outerRadius={68}
+                                                            paddingAngle={3}
+                                                        >
+                                                            {Object.entries(marginData.expensesByCategory || {})
+                                                                .map(([cat, amount]) => {
+                                                                    const catInfo = getCategoryDetails(cat);
+                                                                    return { name: catInfo.label, value: Number(amount), color: catInfo.hex || '#6B7280' };
+                                                                })
+                                                                .filter(item => item.value > 0)
+                                                                .map((entry, index) => (
+                                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                                ))}
+                                                        </Pie>
+                                                        <Tooltip formatter={(value) => formatPrice(value)} />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            </div>
+ 
+                                            {/* Sorted custom legend list with progress bars */}
+                                            {(() => {
+                                                const items = Object.entries(marginData.expensesByCategory || {})
+                                                    .map(([cat, amount]) => {
+                                                        const catInfo = getCategoryDetails(cat);
+                                                        return {
+                                                            name: catInfo.label,
+                                                            value: Number(amount),
+                                                            color: catInfo.hex || '#6B7280'
+                                                        };
+                                                    })
+                                                    .filter(item => item.value > 0);
+                                                
+                                                const sortedLegend = [...items].sort((a, b) => b.value - a.value);
+                                                const sumPositive = sortedLegend.reduce((sum, entry) => sum + entry.value, 0);
+
+                                                return (
+                                                    <div className="mt-3 space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                                                        {sortedLegend.map((item, idx) => {
+                                                            const pct = sumPositive > 0 ? (item.value / sumPositive) * 100 : 0;
+                                                            return (
+                                                                <div key={idx} className="flex flex-col text-xs font-semibold">
+                                                                    <div className="flex justify-between items-center text-gray-700">
+                                                                        <div className="flex items-center gap-1.5 truncate">
+                                                                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }}></div>
+                                                                            <span className="truncate">{item.name}</span>
+                                                                        </div>
+                                                                        <div className="flex gap-2 text-right">
+                                                                            <span className="text-gray-900 font-mono">{formatPrice(item.value)}</span>
+                                                                            <span className="text-gray-400 font-medium">{formatNumber(pct, 1)}%</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-100 h-1.5 rounded-full mt-1 overflow-hidden">
+                                                                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: item.color }}></div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Row 2: Analysis Cards (Masse Salariale & Flexibilité RH, Structure des Charges, Point Mort & Sécurité Financière) */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Masse Salariale & Flexibilité RH */}
+                                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between space-y-4">
+                                    <div>
+                                        <h4 className="text-base font-black text-gray-900 flex items-center gap-2">
+                                            <Sparkles className="text-rose-500" size={18} />
+                                            Masse Salariale & Flexibilité RH
+                                        </h4>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Analyse de l'arbitrage entre salaires fixes (CDI/CDD) et personnel intérimaire flexible.
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between text-xs font-bold text-gray-500">
+                                            <span>CDI & CNSS ({formatNumber(fixesRHPercent, 1)}%)</span>
+                                            <span>Intérim ({formatNumber(flexRHPercent, 1)}%)</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 h-3 rounded-full flex overflow-hidden">
+                                            <div className="bg-purple-500 h-full" style={{ width: `${fixesRHPercent}%` }}></div>
+                                            <div className="bg-rose-500 h-full" style={{ width: `${flexRHPercent}%` }}></div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 text-xs font-bold text-gray-700 border-t border-gray-50 pt-3">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-400">Salaires Fixes (CDI/CNSS) :</span>
+                                            <span className="font-mono text-gray-900">{formatPrice(salairesFixes)}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-400">Personnel Intérimaire :</span>
+                                            <span className="font-mono text-gray-900">{formatPrice(interimVariable)}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t border-gray-100 pt-2 text-sm">
+                                            <span className="text-gray-900 font-extrabold">Masse Salariale Totale :</span>
+                                            <span className="font-mono text-indigo-600 font-extrabold">{formatPrice(totalMasseSalariale)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                            <span className="text-gray-400 font-bold">Poids RH sur Chiffre d'Affaires :</span>
+                                            <span className="font-mono">{formatNumber(rhRatioOnRevenue, 1)}%</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-rose-50/50 border border-rose-100 text-rose-800 rounded-xl p-3 text-[11px] font-semibold">
+                                        L'intérim offre une flexibilité de {formatNumber(flexRHPercent, 1)}% pour adapter vos équipes de piste/lavage à l'activité sans alourdir vos charges fixes.
+                                    </div>
+                                </div>
+
+                                {/* Structure des Charges (Fixes vs Variables) */}
+                                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between space-y-4">
+                                    <div>
+                                        <h4 className="text-base font-black text-gray-900 flex items-center gap-2">
+                                            <Activity className="text-blue-500" size={18} />
+                                            Structure des Charges d'Exploitation
+                                        </h4>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Répartition entre charges de structure incompressibles (Fixes) et charges liées à l'activité (Variables).
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between text-xs font-bold text-gray-500">
+                                            <span>Fixes ({formatNumber(chargesFixesPercent, 1)}%)</span>
+                                            <span>Variables ({formatNumber(chargesVariablesPercent, 1)}%)</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 h-3 rounded-full flex overflow-hidden">
+                                            <div className="bg-blue-500 h-full" style={{ width: `${chargesFixesPercent}%` }}></div>
+                                            <div className="bg-orange-500 h-full" style={{ width: `${chargesVariablesPercent}%` }}></div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 text-xs font-bold text-gray-700 border-t border-gray-50 pt-3">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-400">Charges Fixes (Loyer, CDI, Assur.) :</span>
+                                            <span className="font-mono text-gray-900">{formatPrice(chargesFixes)}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-400">Charges Variables (Intérim, Fluides, Taxes) :</span>
+                                            <span className="font-mono text-gray-900">{formatPrice(chargesVariables)}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t border-gray-100 pt-2 text-sm">
+                                            <span className="text-gray-900 font-extrabold">Total Charges :</span>
+                                            <span className="font-mono text-gray-900 font-extrabold">{formatPrice(marginData.expensesTotal)}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-blue-50/50 border border-blue-100 text-blue-800 rounded-xl p-3 text-[11px] font-semibold">
+                                        Les charges fixes représentent {formatNumber(chargesFixesPercent, 1)}% de vos dépenses opérationnelles totales sur la période.
+                                    </div>
+                                </div>
+
+                                {/* Point Mort & Sécurité Financière */}
+                                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between space-y-4">
+                                    <div>
+                                        <h4 className="text-base font-black text-gray-900 flex items-center gap-2">
+                                            <TrendingUp className="text-indigo-500" size={18} />
+                                            Point Mort & Sécurité Financière
+                                        </h4>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            Calcul du seuil de rentabilité théorique nécessaire pour couvrir l'ensemble des charges fixes de la station.
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-2 text-xs font-bold text-gray-700">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-400">TMCV (Taux de Marges sur Coûts Var.) :</span>
+                                            <span className="font-mono text-indigo-600">{formatNumber(tmcv * 100, 2)}%</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm border-t border-gray-50 pt-2">
+                                            <span className="text-gray-900 font-extrabold">Seuil de Rentabilité (SR) :</span>
+                                            <span className="font-mono text-gray-900 font-black">{formatPrice(seuilRentabilite)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-500">
+                                            <span className="text-gray-400">Marge de Sécurité :</span>
+                                            <span className={`font-mono font-bold ${margeSecurite >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                {margeSecurite >= 0 ? '+' : ''}{formatPrice(margeSecurite)}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-500">
+                                            <span className="text-gray-400">Indice de Sécurité Financière :</span>
+                                            <span className={`font-mono font-extrabold ${margeSecurite >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                                {formatNumber(indiceSecurite, 1)}%
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Dynamic alert box */}
+                                    {marginData.total.revenue >= seuilRentabilite ? (
+                                        <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl p-3 text-[11px] font-semibold flex gap-2">
+                                            <CheckCircle size={14} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                                            <div>
+                                                <p className="font-bold text-emerald-950">Seuil de Rentabilité Atteint !</p>
+                                                <p className="text-emerald-700 mt-0.5">La station est bénéficiaire. Marge de sécurité positive à +{formatPrice(margeSecurite)} ({formatNumber(indiceSecurite, 1)}% du CA).</p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-rose-50 border border-rose-100 text-rose-800 rounded-xl p-3 text-[11px] font-semibold flex gap-2">
+                                            <AlertTriangle size={14} className="text-rose-600 flex-shrink-0 mt-0.5" />
+                                            <div>
+                                                <p className="font-bold text-rose-950">Seuil Non Atteint</p>
+                                                <p className="text-rose-700 mt-0.5">La station travaille à perte sur cette période. Il vous manque {formatPrice(Math.abs(margeSecurite))} de CA pour équilibrer vos comptes.</p>
                                             </div>
                                         </div>
                                     )}
