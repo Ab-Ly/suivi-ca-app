@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { 
     CreditCard, Plus, Trash2, Calendar, FileText, CheckCircle, AlertTriangle, 
     X, ShieldAlert, Sparkles, Receipt, RefreshCw, Settings, TrendingUp, 
-    TrendingDown, Search, Info, Save, DollarSign, Droplet, ShoppingBag, BarChart3, Activity
+    TrendingDown, Search, Info, Save, DollarSign, Droplet, ShoppingBag, BarChart3, Activity, UserCog, UserPlus
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -94,7 +94,22 @@ CREATE TABLE IF NOT EXISTS public.monthly_stock_costs (
 ALTER TABLE public.monthly_stock_costs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all access for authenticated users on monthly_stock_costs" ON public.monthly_stock_costs;
 CREATE POLICY "Enable all access for authenticated users on monthly_stock_costs" 
-    ON public.monthly_stock_costs FOR ALL USING (true) WITH CHECK (true);`;
+    ON public.monthly_stock_costs FOR ALL USING (true) WITH CHECK (true);
+
+-- 5. Table des employés pour la gestion de la masse salariale
+CREATE TABLE IF NOT EXISTS public.employees (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    contract_type TEXT NOT NULL CHECK (contract_type IN ('FIXE', 'INTERIM')),
+    base_salary NUMERIC(12, 2) NOT NULL CHECK (base_salary >= 0),
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all access for authenticated users on employees" ON public.employees;
+CREATE POLICY "Enable all access for authenticated users on employees" 
+    ON public.employees FOR ALL USING (true) WITH CHECK (true);`;
 
 const getMonthsInRange = (startStr, endStr) => {
     if (!startStr || !endStr) return [];
@@ -144,8 +159,21 @@ export default function OperatingExpenses() {
         operatingExpensesOk: false,
         fuelPricesOk: false,
         articlesPurchasePriceOk: false,
-        monthlyStockCostsOk: false
+        monthlyStockCostsOk: false,
+        employeesOk: false
     });
+
+    // Tab 3: Employees State (for payroll generator)
+    const [employees, setEmployees] = useState([]);
+    const [employeesLoading, setEmployeesLoading] = useState(false);
+    const [employeeForm, setEmployeeForm] = useState({
+        name: '',
+        contract_type: 'FIXE',
+        base_salary: ''
+    });
+    const [expensesSubTab, setExpensesSubTab] = useState('list'); // 'list' | 'employees'
+    const [payrollMonth, setPayrollMonth] = useState(new Date().toISOString().substring(0, 7)); // 'YYYY-MM'
+    const [payrollAdjustments, setPayrollAdjustments] = useState({}); // id -> value
 
     // Tab 1: Operating Expenses State
     const [expenses, setExpenses] = useState([]);
@@ -266,12 +294,26 @@ export default function OperatingExpenses() {
             console.error(e);
         }
 
+        let employeesOk = false;
+        try {
+            const { error: empError } = await supabase
+                .from('employees')
+                .select('id')
+                .limit(1);
+            if (!empError || empError.code !== '42P01') {
+                employeesOk = true;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+
         const setupStatus = {
             loading: false,
             operatingExpensesOk,
             fuelPricesOk,
             articlesPurchasePriceOk,
-            monthlyStockCostsOk
+            monthlyStockCostsOk,
+            employeesOk
         };
         setDbSetup(setupStatus);
         return setupStatus;
@@ -287,10 +329,11 @@ export default function OperatingExpenses() {
 
     // Load data based on active tabs
     useEffect(() => {
-        if (!dbSetup.operatingExpensesOk || !dbSetup.fuelPricesOk || !dbSetup.articlesPurchasePriceOk || !dbSetup.monthlyStockCostsOk) return;
+        if (!dbSetup.operatingExpensesOk || !dbSetup.fuelPricesOk || !dbSetup.articlesPurchasePriceOk || !dbSetup.monthlyStockCostsOk || !dbSetup.employeesOk) return;
 
         if (activeTab === 'expenses') {
             fetchExpenses();
+            fetchEmployees();
         } else if (activeTab === 'prices') {
             if (priceSubTab === 'fuel') {
                 fetchFuelPrices();
@@ -377,6 +420,167 @@ export default function OperatingExpenses() {
         } catch (error) {
             console.error('Error deleting expense:', error);
             alert('Erreur lors de la suppression');
+        }
+    };
+
+    // Tab 3: Employees management CRUD (Option A)
+    const fetchEmployees = async () => {
+        setEmployeesLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('employees')
+                .select('*')
+                .order('name', { ascending: true });
+            if (error) throw error;
+            setEmployees(data || []);
+        } catch (error) {
+            console.error('Error fetching employees:', error);
+        } finally {
+            setEmployeesLoading(false);
+        }
+    };
+
+    const handleAddEmployee = async (e) => {
+        e.preventDefault();
+        if (!employeeForm.name.trim()) {
+            alert("Veuillez entrer le nom de l'employé");
+            return;
+        }
+        if (!employeeForm.base_salary || Number(employeeForm.base_salary) < 0) {
+            alert('Veuillez entrer un salaire de base valide');
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('employees')
+                .insert({
+                    name: employeeForm.name.trim(),
+                    contract_type: employeeForm.contract_type,
+                    base_salary: Number(employeeForm.base_salary),
+                    is_active: true
+                });
+            if (error) throw error;
+
+            setEmployeeForm({
+                name: '',
+                contract_type: 'FIXE',
+                base_salary: ''
+            });
+            fetchEmployees();
+        } catch (error) {
+            console.error('Error adding employee:', error);
+            alert("Erreur lors de l'ajout de l'employé");
+        }
+    };
+
+    const handleToggleEmployeeStatus = async (id, currentStatus) => {
+        try {
+            const { error } = await supabase
+                .from('employees')
+                .update({ is_active: !currentStatus })
+                .eq('id', id);
+            if (error) throw error;
+            fetchEmployees();
+        } catch (error) {
+            console.error('Error toggling employee status:', error);
+            alert('Erreur lors de la modification du statut');
+        }
+    };
+
+    const handleDeleteEmployee = async (id) => {
+        if (!window.confirm('Voulez-vous vraiment supprimer cet employé ?')) return;
+        try {
+            const { error } = await supabase
+                .from('employees')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+            fetchEmployees();
+        } catch (error) {
+            console.error('Error deleting employee:', error);
+            alert("Erreur lors de la suppression de l'employé");
+        }
+    };
+
+    const handleGenerateMonthlyPayroll = async (e) => {
+        e.preventDefault();
+        
+        const payrollDate = `${payrollMonth}-01`;
+        let totalFixe = 0;
+        let totalInterim = 0;
+        
+        const activeEmployees = employees.filter(emp => emp.is_active);
+        
+        if (activeEmployees.length === 0) {
+            alert('Aucun employé actif à rémunérer pour ce mois.');
+            return;
+        }
+        
+        activeEmployees.forEach(emp => {
+            const adjustment = payrollAdjustments[emp.id];
+            const salary = adjustment !== undefined && adjustment !== '' ? Number(adjustment) : emp.base_salary;
+            if (emp.contract_type === 'FIXE') {
+                totalFixe += salary;
+            } else {
+                totalInterim += salary;
+            }
+        });
+
+        if (totalFixe === 0 && totalInterim === 0) {
+            alert('Le montant total de la paie est de 0 MAD.');
+            return;
+        }
+
+        const formattedMonth = payrollMonth.split('-').reverse().join('/');
+        if (!window.confirm(`Vous allez générer les écritures de paie pour le mois de ${formattedMonth} :\n- Salaires & CNSS (Fixe) : ${totalFixe.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD\n- Personnel Intérimaire : ${totalInterim.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD\n\nLes écritures générées précédemment pour ce mois seront écrasées. Voulez-vous continuer ?`)) {
+            return;
+        }
+
+        try {
+            const descriptions = [
+                `Génération Auto - Paie CDI (${payrollMonth})`,
+                `Génération Auto - Paie Intérim (${payrollMonth})`
+            ];
+            
+            await supabase
+                .from('operating_expenses')
+                .delete()
+                .in('description', descriptions);
+
+            const newExpenses = [];
+            if (totalFixe > 0) {
+                newExpenses.push({
+                    date: payrollDate,
+                    category: 'Salaires',
+                    amount: totalFixe,
+                    description: `Génération Auto - Paie CDI (${payrollMonth})`,
+                    payment_method: 'VIREMENT'
+                });
+            }
+            if (totalInterim > 0) {
+                newExpenses.push({
+                    date: payrollDate,
+                    category: 'Interim',
+                    amount: totalInterim,
+                    description: `Génération Auto - Paie Intérim (${payrollMonth})`,
+                    payment_method: 'VIREMENT'
+                });
+            }
+
+            const { error } = await supabase
+                .from('operating_expenses')
+                .insert(newExpenses);
+
+            if (error) throw error;
+
+            alert('Masse salariale générée et synchronisée avec succès !');
+            setPayrollAdjustments({});
+            fetchExpenses();
+            setExpensesSubTab('list');
+        } catch (error) {
+            console.error('Error generating payroll:', error);
+            alert('Erreur lors de la génération de la paie');
         }
     };
 
@@ -885,12 +1089,13 @@ export default function OperatingExpenses() {
         );
     }
 
-    if (!dbSetup.operatingExpensesOk || !dbSetup.fuelPricesOk || !dbSetup.articlesPurchasePriceOk || !dbSetup.monthlyStockCostsOk) {
+    if (!dbSetup.operatingExpensesOk || !dbSetup.fuelPricesOk || !dbSetup.articlesPurchasePriceOk || !dbSetup.monthlyStockCostsOk || !dbSetup.employeesOk) {
         const missingResources = [];
         if (!dbSetup.operatingExpensesOk) missingResources.push('Table "operating_expenses"');
         if (!dbSetup.fuelPricesOk) missingResources.push('Table "fuel_prices"');
         if (!dbSetup.articlesPurchasePriceOk) missingResources.push('Colonne "purchase_price" dans la table "articles"');
         if (!dbSetup.monthlyStockCostsOk) missingResources.push('Table "monthly_stock_costs"');
+        if (!dbSetup.employeesOk) missingResources.push('Table "employees"');
 
         return (
             <div className="max-w-4xl mx-auto py-10 px-4">
@@ -1502,158 +1707,399 @@ export default function OperatingExpenses() {
             {/* TAB 3: OPERATING EXPENSES */}
             {activeTab === 'expenses' && (
                 <>
-                    {/* Stats Summary */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <Receipt size={64} className="text-indigo-600" />
-                            </div>
-                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Total Charges Filtré</div>
-                            <div className="text-3xl font-black text-gray-900">{formatPrice(totalAmount)}</div>
-                            <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-500"></div>
-                        </div>
+                    {/* Sub-tabs Selector */}
+                    <div className="flex border-b border-gray-100 gap-4 mb-6">
+                        <button
+                            onClick={() => setExpensesSubTab('list')}
+                            className={`flex items-center gap-2 py-3 px-1 border-b-2 font-bold text-sm transition-all -mb-px ${
+                                expensesSubTab === 'list'
+                                    ? 'border-indigo-600 text-indigo-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-900'
+                            }`}
+                        >
+                            <Receipt size={16} />
+                            Liste des Charges
+                        </button>
+                        <button
+                            onClick={() => setExpensesSubTab('employees')}
+                            className={`flex items-center gap-2 py-3 px-1 border-b-2 font-bold text-sm transition-all -mb-px ${
+                                expensesSubTab === 'employees'
+                                    ? 'border-indigo-600 text-indigo-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-900'
+                            }`}
+                        >
+                            <UserCog size={16} />
+                            Gestion du Personnel & Salaires
+                        </button>
+                    </div>
 
-                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                <Calendar size={64} className="text-purple-600" />
-                            </div>
-                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Nombre d'enregistrements</div>
-                            <div className="text-3xl font-black text-gray-900">
-                                {filteredExpenses.length} <span className="text-sm font-semibold text-gray-400">charges</span>
-                            </div>
-                            <div className="absolute bottom-0 left-0 w-full h-1 bg-purple-500"></div>
-                        </div>
-
-                        {(() => {
-                            const sortedCats = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
-                            const topCat = sortedCats[0];
-                            return (
+                    {expensesSubTab === 'list' ? (
+                        <>
+                            {/* Stats Summary */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
                                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                        <Sparkles size={64} className="text-orange-600" />
+                                        <Receipt size={64} className="text-indigo-600" />
                                     </div>
-                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Poste le plus important</div>
-                                    <div className="text-2xl font-black text-gray-900 truncate">
-                                        {topCat ? `${getCategoryDetails(topCat[0]).label} (${formatPrice(topCat[1])})` : 'Aucun'}
-                                    </div>
-                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-orange-500"></div>
+                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Total Charges Filtré</div>
+                                    <div className="text-3xl font-black text-gray-900">{formatPrice(totalAmount)}</div>
+                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-500"></div>
                                 </div>
-                            );
-                        })()}
-                    </div>
 
-                    {/* Filter controls */}
-                    <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-wrap gap-4 items-center">
-                        <div className="flex items-center gap-2">
-                            <label className="text-xs font-bold text-gray-400 uppercase">Filtrer par :</label>
-                        </div>
-                        
-                        <select
-                            value={selectedCategoryFilter}
-                            onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                            className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
-                        >
-                            <option value="">Toutes les catégories</option>
-                            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                        </select>
+                                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <Calendar size={64} className="text-purple-600" />
+                                    </div>
+                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Nombre d'enregistrements</div>
+                                    <div className="text-3xl font-black text-gray-900">
+                                        {filteredExpenses.length} <span className="text-sm font-semibold text-gray-400">charges</span>
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 w-full h-1 bg-purple-500"></div>
+                                </div>
 
-                        <select
-                            value={selectedMonthFilter}
-                            onChange={(e) => setSelectedMonthFilter(e.target.value)}
-                            className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
-                        >
-                            <option value="">Tous les mois</option>
-                            {availableMonths.map(m => {
-                                const date = new Date(m + '-02');
-                                return (
-                                    <option key={m} value={m}>
-                                        {format(date, 'MMMM yyyy', { locale: fr })}
-                                    </option>
-                                );
-                            })}
-                        </select>
+                                {(() => {
+                                    const sortedCats = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+                                    const topCat = sortedCats[0];
+                                    return (
+                                        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                                <Sparkles size={64} className="text-orange-600" />
+                                            </div>
+                                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Poste le plus important</div>
+                                            <div className="text-2xl font-black text-gray-900 truncate">
+                                                {topCat ? `${getCategoryDetails(topCat[0]).label} (${formatPrice(topCat[1])})` : 'Aucun'}
+                                            </div>
+                                            <div className="absolute bottom-0 left-0 w-full h-1 bg-orange-500"></div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
 
-                        {(selectedCategoryFilter || selectedMonthFilter) && (
-                            <button
-                                onClick={() => {
-                                    setSelectedCategoryFilter('');
-                                    setSelectedMonthFilter('');
-                                }}
-                                className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors ml-auto"
-                            >
-                                Réinitialiser les filtres
-                            </button>
-                        )}
-                    </div>
+                            {/* Filter controls */}
+                            <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm flex flex-wrap gap-4 items-center">
+                                <div className="flex items-center gap-2">
+                                    <label className="text-xs font-bold text-gray-400 uppercase">Filtrer par :</label>
+                                </div>
+                                
+                                <select
+                                    value={selectedCategoryFilter}
+                                    onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                >
+                                    <option value="">Toutes les catégories</option>
+                                    {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                </select>
 
-                    {/* Expenses List */}
-                    <div className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
-                                        <th className="px-6 py-4">Date</th>
-                                        <th className="px-6 py-4">Catégorie</th>
-                                        <th className="px-6 py-4">Libellé / Description</th>
-                                        <th className="px-6 py-4">Mode de Règlement</th>
-                                        <th className="px-6 py-4 text-right">Montant (MAD)</th>
-                                        <th className="px-6 py-4 text-center">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {loading ? (
-                                        <tr>
-                                            <td colSpan="6" className="text-center py-10">
-                                                <div className="flex justify-center items-center gap-2 text-gray-400">
-                                                    <RefreshCw className="animate-spin text-indigo-500" size={20} />
-                                                    <span>Chargement...</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ) : filteredExpenses.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="6" className="text-center py-16 text-gray-400">
-                                                <Receipt size={40} className="mx-auto mb-3 opacity-30" />
-                                                <p className="text-sm">Aucune charge enregistrée correspondant aux critères.</p>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        filteredExpenses.map(exp => {
-                                            const catInfo = getCategoryDetails(exp.category);
-                                            const pMethod = PAYMENT_METHODS.find(p => p.value === exp.payment_method) || { label: exp.payment_method };
-                                            
-                                            return (
-                                                <tr key={exp.id} className="hover:bg-slate-50/60 transition-colors">
-                                                    <td className="px-6 py-4 whitespace-nowrap font-mono text-sm font-bold text-gray-700">
-                                                        {format(new Date(exp.date), 'dd/MM/yyyy')}
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${catInfo.color}`}>
-                                                            {catInfo.label}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 font-medium text-gray-800">{exp.description || '—'}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">{pMethod.label}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-base font-black text-gray-900">
-                                                        {formatPrice(Number(exp.amount))}
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                        <button
-                                                            onClick={() => handleDeleteExpense(exp.id)}
-                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                                            title="Supprimer"
-                                                        >
-                                                            <Trash2 size={18} />
-                                                        </button>
+                                <select
+                                    value={selectedMonthFilter}
+                                    onChange={(e) => setSelectedMonthFilter(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                >
+                                    <option value="">Tous les mois</option>
+                                    {availableMonths.map(m => {
+                                        const date = new Date(m + '-02');
+                                        return (
+                                            <option key={m} value={m}>
+                                                {format(date, 'MMMM yyyy', { locale: fr })}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+
+                                {(selectedCategoryFilter || selectedMonthFilter) && (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedCategoryFilter('');
+                                            setSelectedMonthFilter('');
+                                        }}
+                                        className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors ml-auto"
+                                    >
+                                        Réinitialiser les filtres
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Expenses List */}
+                            <div className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
+                                                <th className="px-6 py-4">Date</th>
+                                                <th className="px-6 py-4">Catégorie</th>
+                                                <th className="px-6 py-4">Libellé / Description</th>
+                                                <th className="px-6 py-4">Mode de Règlement</th>
+                                                <th className="px-6 py-4 text-right">Montant (MAD)</th>
+                                                <th className="px-6 py-4 text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {loading ? (
+                                                <tr>
+                                                    <td colSpan="6" className="text-center py-10">
+                                                        <div className="flex justify-center items-center gap-2 text-gray-400">
+                                                            <RefreshCw className="animate-spin text-indigo-500" size={20} />
+                                                            <span>Chargement...</span>
+                                                        </div>
                                                     </td>
                                                 </tr>
-                                            );
-                                        })
+                                            ) : filteredExpenses.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="6" className="text-center py-16 text-gray-400">
+                                                        <Receipt size={40} className="mx-auto mb-3 opacity-30" />
+                                                        <p className="text-sm">Aucune charge enregistrée correspondant aux critères.</p>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                filteredExpenses.map(exp => {
+                                                    const catInfo = getCategoryDetails(exp.category);
+                                                    const pMethod = PAYMENT_METHODS.find(p => p.value === exp.payment_method) || { label: exp.payment_method };
+                                                    
+                                                    return (
+                                                        <tr key={exp.id} className="hover:bg-slate-50/60 transition-colors">
+                                                            <td className="px-6 py-4 whitespace-nowrap font-mono text-sm font-bold text-gray-700">
+                                                                {format(new Date(exp.date), 'dd/MM/yyyy')}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                                <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${catInfo.color}`}>
+                                                                    {catInfo.label}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 font-medium text-gray-800">{exp.description || '—'}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">{pMethod.label}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-base font-black text-gray-900">
+                                                                {formatPrice(Number(exp.amount))}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                                <button
+                                                                    onClick={() => handleDeleteExpense(exp.id)}
+                                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                                    title="Supprimer"
+                                                                >
+                                                                    <Trash2 size={18} />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Formulaire d'ajout de salarié */}
+                            <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm h-fit">
+                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                                    <UserPlus className="text-indigo-600" size={20} />
+                                    Ajouter un Salarié
+                                </h3>
+
+                                <form onSubmit={handleAddEmployee} className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Nom Complet</label>
+                                        <input
+                                            type="text"
+                                            className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                            placeholder="Ex: Ahmed Benjelloun"
+                                            value={employeeForm.name}
+                                            onChange={e => setEmployeeForm(prev => ({ ...prev, name: e.target.value }))}
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Type de Contrat</label>
+                                        <select
+                                            className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                            value={employeeForm.contract_type}
+                                            onChange={e => setEmployeeForm(prev => ({ ...prev, contract_type: e.target.value }))}
+                                        >
+                                            <option value="FIXE">Salarié Fixe (CDI/CDD)</option>
+                                            <option value="INTERIM">Personnel Intérimaire (Flexible)</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Salaire de Base Mensuel (MAD)</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-2.5 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                            placeholder="Ex: 5500.00"
+                                            value={employeeForm.base_salary}
+                                            onChange={e => setEmployeeForm(prev => ({ ...prev, base_salary: e.target.value }))}
+                                            required
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all text-sm shadow-sm"
+                                    >
+                                        Enregistrer le salarié
+                                    </button>
+                                </form>
+                            </div>
+
+                            {/* Section droite : Saisie mensuelle & Liste globale */}
+                            <div className="lg:col-span-2 space-y-6">
+                                {/* Panneau Générateur de Paie Mensuelle */}
+                                <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-50">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                <Calendar className="text-indigo-600" size={20} />
+                                                Calculateur & Synchronisation Mensuelle
+                                            </h3>
+                                            <p className="text-xs text-gray-400 mt-1">Saisissez les ajustements salariaux pour générer les charges.</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-gray-400 uppercase">Mois :</span>
+                                            <input
+                                                type="month"
+                                                className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                                value={payrollMonth}
+                                                onChange={e => setPayrollMonth(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {employees.filter(e => e.is_active).length === 0 ? (
+                                        <div className="text-center py-10 text-gray-400 text-sm font-medium">
+                                            Aucun employé actif pour ce mois. Veuillez d'abord ajouter ou activer des salariés.
+                                        </div>
+                                    ) : (
+                                        <form onSubmit={handleGenerateMonthlyPayroll} className="space-y-4">
+                                            <div className="overflow-x-auto max-h-[300px] overflow-y-auto pr-1">
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead>
+                                                        <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-400 uppercase text-[9px] font-bold tracking-wider">
+                                                            <th className="px-4 py-2.5">Nom</th>
+                                                            <th className="px-4 py-2.5">Type</th>
+                                                            <th className="px-4 py-2.5 text-right">Base (MAD)</th>
+                                                            <th className="px-4 py-2.5 text-right w-[180px]">Net Versé / Coût réel</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-50 font-medium text-xs text-gray-800">
+                                                        {employees.filter(e => e.is_active).map(emp => {
+                                                            const adjustment = payrollAdjustments[emp.id];
+                                                            const val = adjustment !== undefined ? adjustment : emp.base_salary;
+                                                            return (
+                                                                <tr key={emp.id} className="hover:bg-slate-50/30">
+                                                                    <td className="px-4 py-2.5 font-bold text-gray-900">{emp.name}</td>
+                                                                    <td className="px-4 py-2.5">
+                                                                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                                                            emp.contract_type === 'FIXE' 
+                                                                                ? 'bg-purple-50 text-purple-700 border-purple-100' 
+                                                                                : 'bg-rose-50 text-rose-700 border-rose-100'
+                                                                        }`}>
+                                                                            {emp.contract_type === 'FIXE' ? 'Fixe CDI/CDD' : 'Intérimaire'}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-2.5 text-right font-mono text-gray-500">{formatPrice(emp.base_salary)}</td>
+                                                                    <td className="px-4 py-2.5 text-right">
+                                                                        <div className="flex items-center gap-1.5 justify-end">
+                                                                            <input
+                                                                                type="number"
+                                                                                step="0.01"
+                                                                                className="w-28 text-right bg-gray-50 border border-gray-200 text-gray-800 text-xs rounded-lg p-1 outline-none font-mono focus:ring-2 focus:ring-indigo-100"
+                                                                                value={val}
+                                                                                onChange={e => setPayrollAdjustments(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                                                                placeholder={emp.base_salary.toString()}
+                                                                            />
+                                                                            <span className="text-[10px] text-gray-400 font-bold">MAD</span>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+
+                                            <button
+                                                type="submit"
+                                                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all text-sm shadow-md flex items-center justify-center gap-2"
+                                            >
+                                                <Save size={16} />
+                                                Générer la paie & Synchroniser avec les charges
+                                            </button>
+                                        </form>
                                     )}
-                                </tbody>
-                            </table>
+                                </div>
+
+                                {/* Liste globale des Salariés */}
+                                <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                                        <UserCog className="text-indigo-600" size={20} />
+                                        Registre du Personnel
+                                    </h3>
+
+                                    {employees.length === 0 ? (
+                                        <div className="text-center py-10 text-gray-400 text-sm font-medium">
+                                            Aucun salarié enregistré dans le registre.
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto max-h-[300px] overflow-y-auto pr-1">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-400 uppercase text-[9px] font-bold tracking-wider">
+                                                        <th className="px-4 py-2.5">Nom</th>
+                                                        <th className="px-4 py-2.5">Type</th>
+                                                        <th className="px-4 py-2.5 text-right">Salaire Standard</th>
+                                                        <th className="px-4 py-2.5 text-center">Statut</th>
+                                                        <th className="px-4 py-2.5 text-center">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50 font-medium text-xs text-gray-800">
+                                                    {employees.map(emp => (
+                                                        <tr key={emp.id} className="hover:bg-slate-50/30">
+                                                            <td className="px-4 py-2.5 font-bold text-gray-900">{emp.name}</td>
+                                                            <td className="px-4 py-2.5">
+                                                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                                                    emp.contract_type === 'FIXE' 
+                                                                        ? 'bg-purple-50 text-purple-700 border-purple-100' 
+                                                                        : 'bg-rose-50 text-rose-700 border-rose-100'
+                                                                }`}>
+                                                                    {emp.contract_type === 'FIXE' ? 'Fixe' : 'Intérimaire'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-mono text-gray-600">{formatPrice(emp.base_salary)}</td>
+                                                            <td className="px-4 py-2.5 text-center">
+                                                                <button
+                                                                    onClick={() => handleToggleEmployeeStatus(emp.id, emp.is_active)}
+                                                                    className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                                                                        emp.is_active 
+                                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100' 
+                                                                            : 'bg-gray-50 text-gray-500 border-gray-150 hover:bg-gray-150'
+                                                                    }`}
+                                                                    title={emp.is_active ? 'Désactiver' : 'Activer'}
+                                                                >
+                                                                    {emp.is_active ? 'Actif' : 'Inactif'}
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-center">
+                                                                <button
+                                                                    onClick={() => handleDeleteEmployee(emp.id)}
+                                                                    className="p-1 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                                                                    title="Supprimer"
+                                                                >
+                                                                    <Trash2 size={15} />
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </>
             )}
 
