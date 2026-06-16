@@ -96,15 +96,25 @@ DROP POLICY IF EXISTS "Enable all access for authenticated users on monthly_stoc
 CREATE POLICY "Enable all access for authenticated users on monthly_stock_costs" 
     ON public.monthly_stock_costs FOR ALL USING (true) WITH CHECK (true);
 
--- 5. Table des employés pour la gestion de la masse salariale
+-- 5. Table des employés pour la gestion de la masse salariale (ou mise à jour si elle existe déjà)
 CREATE TABLE IF NOT EXISTS public.employees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    contract_type TEXT NOT NULL CHECK (contract_type IN ('FIXE', 'INTERIM')),
-    base_salary NUMERIC(12, 2) NOT NULL CHECK (base_salary >= 0),
+    contract_type TEXT NOT NULL DEFAULT 'FIXE' CHECK (contract_type IN ('FIXE', 'INTERIM')),
+    base_salary NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (base_salary >= 0),
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Si la table existait déjà, on s'assure d'ajouter les colonnes indispensables
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS contract_type TEXT DEFAULT 'FIXE';
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS base_salary NUMERIC(12, 2) DEFAULT 0;
+ALTER TABLE public.employees ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+-- Mettre à jour les anciennes lignes pour éviter les valeurs NULL
+UPDATE public.employees SET contract_type = 'FIXE' WHERE contract_type IS NULL;
+UPDATE public.employees SET base_salary = 0 WHERE base_salary IS NULL;
+UPDATE public.employees SET is_active = true WHERE is_active IS NULL;
 
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all access for authenticated users on employees" ON public.employees;
@@ -298,10 +308,12 @@ export default function OperatingExpenses() {
         try {
             const { error: empError } = await supabase
                 .from('employees')
-                .select('id')
+                .select('id, base_salary, is_active')
                 .limit(1);
-            if (!empError || empError.code !== '42P01') {
+            if (!empError) {
                 employeesOk = true;
+            } else {
+                console.warn('Employees table check failed:', empError);
             }
         } catch (e) {
             console.error(e);
@@ -475,10 +487,11 @@ export default function OperatingExpenses() {
     };
 
     const handleToggleEmployeeStatus = async (id, currentStatus) => {
+        const statusToSet = currentStatus === undefined || currentStatus === null ? true : currentStatus;
         try {
             const { error } = await supabase
                 .from('employees')
-                .update({ is_active: !currentStatus })
+                .update({ is_active: !statusToSet })
                 .eq('id', id);
             if (error) throw error;
             fetchEmployees();
@@ -510,7 +523,7 @@ export default function OperatingExpenses() {
         let totalFixe = 0;
         let totalInterim = 0;
         
-        const activeEmployees = employees.filter(emp => emp.is_active);
+        const activeEmployees = employees.filter(emp => emp.is_active !== false);
         
         if (activeEmployees.length === 0) {
             alert('Aucun employé actif à rémunérer pour ce mois.');
@@ -519,8 +532,9 @@ export default function OperatingExpenses() {
         
         activeEmployees.forEach(emp => {
             const adjustment = payrollAdjustments[emp.id];
-            const salary = adjustment !== undefined && adjustment !== '' ? Number(adjustment) : emp.base_salary;
-            if (emp.contract_type === 'FIXE') {
+            const salary = adjustment !== undefined && adjustment !== '' ? Number(adjustment) : (emp.base_salary ?? 0);
+            const isFixe = emp.contract_type === 'FIXE' || emp.contract_type === 'CDI' || emp.contract_type === 'CDD' || emp.contract_type === 'Anapec';
+            if (isFixe) {
                 totalFixe += salary;
             } else {
                 totalInterim += salary;
@@ -1967,7 +1981,7 @@ export default function OperatingExpenses() {
                                         </div>
                                     </div>
 
-                                    {employees.filter(e => e.is_active).length === 0 ? (
+                                    {employees.filter(e => e.is_active !== false).length === 0 ? (
                                         <div className="text-center py-10 text-gray-400 text-sm font-medium">
                                             Aucun employé actif pour ce mois. Veuillez d'abord ajouter ou activer des salariés.
                                         </div>
@@ -1984,22 +1998,23 @@ export default function OperatingExpenses() {
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-50 font-medium text-xs text-gray-800">
-                                                        {employees.filter(e => e.is_active).map(emp => {
+                                                        {employees.filter(e => e.is_active !== false).map(emp => {
                                                             const adjustment = payrollAdjustments[emp.id];
-                                                            const val = adjustment !== undefined ? adjustment : emp.base_salary;
+                                                            const val = adjustment !== undefined ? adjustment : (emp.base_salary ?? 0);
+                                                            const isFixe = emp.contract_type === 'FIXE' || emp.contract_type === 'CDI' || emp.contract_type === 'CDD' || emp.contract_type === 'Anapec';
                                                             return (
                                                                 <tr key={emp.id} className="hover:bg-slate-50/30">
                                                                     <td className="px-4 py-2.5 font-bold text-gray-900">{emp.name}</td>
                                                                     <td className="px-4 py-2.5">
                                                                         <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                                                            emp.contract_type === 'FIXE' 
+                                                                            isFixe 
                                                                                 ? 'bg-purple-50 text-purple-700 border-purple-100' 
                                                                                 : 'bg-rose-50 text-rose-700 border-rose-100'
                                                                         }`}>
-                                                                            {emp.contract_type === 'FIXE' ? 'Fixe CDI/CDD' : 'Intérimaire'}
+                                                                            {isFixe ? 'Fixe CDI/CDD' : 'Intérimaire'}
                                                                         </span>
                                                                     </td>
-                                                                    <td className="px-4 py-2.5 text-right font-mono text-gray-500">{formatPrice(emp.base_salary)}</td>
+                                                                    <td className="px-4 py-2.5 text-right font-mono text-gray-500">{formatPrice(emp.base_salary ?? 0)}</td>
                                                                     <td className="px-4 py-2.5 text-right">
                                                                         <div className="flex items-center gap-1.5 justify-end">
                                                                             <input
@@ -2008,7 +2023,7 @@ export default function OperatingExpenses() {
                                                                                 className="w-28 text-right bg-gray-50 border border-gray-200 text-gray-800 text-xs rounded-lg p-1 outline-none font-mono focus:ring-2 focus:ring-indigo-100"
                                                                                 value={val}
                                                                                 onChange={e => setPayrollAdjustments(prev => ({ ...prev, [emp.id]: e.target.value }))}
-                                                                                placeholder={emp.base_salary.toString()}
+                                                                                placeholder={(emp.base_salary ?? 0).toString()}
                                                                             />
                                                                             <span className="text-[10px] text-gray-400 font-bold">MAD</span>
                                                                         </div>
@@ -2060,25 +2075,25 @@ export default function OperatingExpenses() {
                                                             <td className="px-4 py-2.5 font-bold text-gray-900">{emp.name}</td>
                                                             <td className="px-4 py-2.5">
                                                                 <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                                                    emp.contract_type === 'FIXE' 
+                                                                    (emp.contract_type === 'FIXE' || emp.contract_type === 'CDI' || emp.contract_type === 'CDD' || emp.contract_type === 'Anapec') 
                                                                         ? 'bg-purple-50 text-purple-700 border-purple-100' 
                                                                         : 'bg-rose-50 text-rose-700 border-rose-100'
                                                                 }`}>
-                                                                    {emp.contract_type === 'FIXE' ? 'Fixe' : 'Intérimaire'}
+                                                                    {(emp.contract_type === 'FIXE' || emp.contract_type === 'CDI' || emp.contract_type === 'CDD' || emp.contract_type === 'Anapec') ? 'Fixe' : 'Intérimaire'}
                                                                 </span>
                                                             </td>
-                                                            <td className="px-4 py-2.5 text-right font-mono text-gray-600">{formatPrice(emp.base_salary)}</td>
+                                                            <td className="px-4 py-2.5 text-right font-mono text-gray-600">{formatPrice(emp.base_salary ?? 0)}</td>
                                                             <td className="px-4 py-2.5 text-center">
                                                                 <button
-                                                                    onClick={() => handleToggleEmployeeStatus(emp.id, emp.is_active)}
+                                                                    onClick={() => handleToggleEmployeeStatus(emp.id, emp.is_active ?? true)}
                                                                     className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
-                                                                        emp.is_active 
+                                                                        (emp.is_active ?? true)
                                                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100' 
                                                                             : 'bg-gray-50 text-gray-500 border-gray-150 hover:bg-gray-150'
                                                                     }`}
-                                                                    title={emp.is_active ? 'Désactiver' : 'Activer'}
+                                                                    title={(emp.is_active ?? true) ? 'Désactiver' : 'Activer'}
                                                                 >
-                                                                    {emp.is_active ? 'Actif' : 'Inactif'}
+                                                                    {(emp.is_active ?? true) ? 'Actif' : 'Inactif'}
                                                                 </button>
                                                             </td>
                                                             <td className="px-4 py-2.5 text-center">
