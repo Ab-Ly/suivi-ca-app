@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2 } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { formatPrice, formatNumber } from '../utils/formatters';
@@ -44,6 +44,13 @@ export default function DailyCashTracking() {
     const [selectedEntityHistory, setSelectedEntityHistory] = useState(null);
     const [historyOperations, setHistoryOperations] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
+
+    // Edit and Deactivate Entity States
+    const [showInactive, setShowInactive] = useState(false);
+    const [isEditEntityModalOpen, setIsEditEntityModalOpen] = useState(false);
+    const [selectedEditEntity, setSelectedEditEntity] = useState(null);
+    const [editEntityName, setEditEntityName] = useState('');
+    const [editEntityActive, setEditEntityActive] = useState(true);
 
     const handleViewEntityHistory = async (entity) => {
         setSelectedEntityHistory(entity);
@@ -879,6 +886,37 @@ export default function DailyCashTracking() {
         }
     };
 
+    const handleOpenEditEntityModal = (e, entity) => {
+        e.stopPropagation();
+        setSelectedEditEntity(entity);
+        setEditEntityName(entity.name);
+        setEditEntityActive(entity.is_active !== false);
+        setIsEditEntityModalOpen(true);
+    };
+
+    const handleSaveEntity = async () => {
+        if (!selectedEditEntity || !editEntityName.trim()) return;
+
+        try {
+            const { error } = await supabase
+                .from('daily_cash_entities')
+                .update({
+                    name: editEntityName.trim(),
+                    is_active: editEntityActive
+                })
+                .eq('id', selectedEditEntity.id);
+
+            if (error) throw error;
+
+            setIsEditEntityModalOpen(false);
+            setSelectedEditEntity(null);
+            fetchData();
+        } catch (error) {
+            console.error('Error updating entity:', error);
+            alert('Erreur lors de la modification de la société');
+        }
+    };
+
     const handleResetData = () => {
         setDeleteConfig({ isOpen: true, type: 'RESET' });
     };
@@ -1029,9 +1067,20 @@ export default function DailyCashTracking() {
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between">
                                     <h3 className="font-bold text-xl text-gray-800">Solde des Sociétés</h3>
-                                    <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                                        {entities.length} Sociétés actives
-                                    </span>
+                                    <div className="flex items-center gap-4">
+                                        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={showInactive}
+                                                onChange={(e) => setShowInactive(e.target.checked)}
+                                                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                            />
+                                            Afficher les inactives
+                                        </label>
+                                        <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                                            {entities.filter(e => e.is_active !== false).length} Sociétés actives
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-sm bg-white">
                                     <div className="overflow-x-auto">
@@ -1047,10 +1096,12 @@ export default function DailyCashTracking() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-50">
-                                                {entities.map(entity => {
-                                                    const movement = getDailyEntityMovement(entity.id);
-                                                    const openingBalance = entityOpeningBalances[entity.id] || 0;
-                                                    const closingBalance = entityClosingBalances[entity.id] || 0;
+                                                {entities
+                                                    .filter(entity => showInactive || entity.is_active !== false)
+                                                    .map(entity => {
+                                                        const movement = getDailyEntityMovement(entity.id);
+                                                        const openingBalance = entityOpeningBalances[entity.id] || 0;
+                                                        const closingBalance = entityClosingBalances[entity.id] || 0;
 
                                                     return (
                                                         <tr 
@@ -1060,11 +1111,18 @@ export default function DailyCashTracking() {
                                                         >
                                                             <td className="px-6 py-4.5 whitespace-nowrap">
                                                                 <div className="flex items-center gap-3">
-                                                                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform duration-200">
+                                                                    <div className={`p-2 rounded-xl group-hover:scale-110 transition-transform duration-200 ${entity.is_active !== false ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
                                                                         <Building2 size={18} />
                                                                     </div>
-                                                                    <div className="font-bold text-gray-800 text-base" title={entity.name}>
-                                                                        {entity.name}
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className={`font-bold text-base ${entity.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through decoration-gray-300'}`} title={entity.name}>
+                                                                            {entity.name}
+                                                                        </div>
+                                                                        {entity.is_active === false && (
+                                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200 uppercase tracking-wider">
+                                                                                Inactive
+                                                                            </span>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </td>
@@ -1104,6 +1162,13 @@ export default function DailyCashTracking() {
                                                                         title="Voir l'historique"
                                                                     >
                                                                         <Table size={18} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => handleOpenEditEntityModal(e, entity)}
+                                                                        className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors"
+                                                                        title="Modifier la société"
+                                                                    >
+                                                                        <Pencil size={18} />
                                                                     </button>
                                                                     <button
                                                                         onClick={(e) => handleDeleteEntity(e, entity.id)}
@@ -1486,7 +1551,20 @@ export default function DailyCashTracking() {
                                     });
                                     creditItems.push(...negativeBalances);
 
-                                    const maxRows = Math.max(debitItems.length, creditItems.length, 1);
+                                    const isSte = (item) => {
+                                        if (!item) return false;
+                                        const nameUpper = item.name.toUpperCase();
+                                        return nameUpper.includes('STE') || nameUpper.includes('SOCIETE') || nameUpper.includes('S.T.E');
+                                    };
+
+                                    const debitOthers = debitItems.filter(item => !isSte(item));
+                                    const debitStes = debitItems.filter(item => isSte(item));
+                                    const creditOthers = creditItems.filter(item => !isSte(item));
+                                    const creditStes = creditItems.filter(item => isSte(item));
+
+                                    const maxOthers = Math.max(debitOthers.length, creditOthers.length);
+                                    const maxStes = Math.max(debitStes.length, creditStes.length);
+
                                     totalDebit = debitItems.reduce((sum, item) => sum + (item.amount || 0), 0);
                                     totalCredit = creditItems.reduce((sum, item) => sum + Math.abs(item.amount || 0), 0);
                                     ecart = totalDebit - totalCredit;
@@ -1507,22 +1585,48 @@ export default function DailyCashTracking() {
                                                         {debitItems.length === 0 ? (
                                                             <div className="p-4 text-center text-sm text-gray-500 italic">Aucune entrée</div>
                                                         ) : (
-                                                            debitItems.map((item, i) => (
-                                                                <div key={i} className="px-4 py-3 flex justify-between items-center text-sm"
-                                                                    onClick={() => {
-                                                                        if (item?.isBalance) {
-                                                                            if (item.isExpense) handleViewEntityHistory({ name: 'Caisse Dépense', isExpense: true });
-                                                                            else if (item.entityId) {
-                                                                                const entity = entities.find(e => e.id === item.entityId);
-                                                                                if (entity) handleViewEntityHistory(entity);
+                                                            <>
+                                                                {debitOthers.map((item, i) => (
+                                                                    <div key={`other-${i}`} className="px-4 py-3 flex justify-between items-center text-sm cursor-pointer hover:bg-emerald-50/30"
+                                                                        onClick={() => {
+                                                                            if (item?.isBalance) {
+                                                                                if (item.isExpense) handleViewEntityHistory({ name: 'Caisse Dépense', isExpense: true });
+                                                                                else if (item.entityId) {
+                                                                                    const entity = entities.find(e => e.id === item.entityId);
+                                                                                    if (entity) handleViewEntityHistory(entity);
+                                                                                }
                                                                             }
-                                                                        }
-                                                                    }}
-                                                                >
-                                                                    <span className={`font-medium ${item.isBalance ? 'underline decoration-dotted decoration-emerald-300' : ''}`}>{item.name}</span>
-                                                                    <span className="font-mono font-bold text-emerald-700">{formatPrice(Math.abs(item.amount))}</span>
-                                                                </div>
-                                                            ))
+                                                                        }}
+                                                                    >
+                                                                        <span className={`font-medium ${item.isBalance ? 'underline decoration-dotted decoration-emerald-300' : ''}`}>{item.name}</span>
+                                                                        <span className="font-mono font-bold text-emerald-700">{formatPrice(Math.abs(item.amount))}</span>
+                                                                    </div>
+                                                                ))}
+
+                                                                {debitStes.length > 0 && (
+                                                                    <>
+                                                                        <div className="bg-indigo-50/20 px-4 py-2 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider border-y border-indigo-100/50 flex items-center justify-center gap-1.5">
+                                                                            <Building2 size={14} /> Sociétés (STE)
+                                                                        </div>
+                                                                        {debitStes.map((item, i) => (
+                                                                            <div key={`ste-${i}`} className="px-4 py-3 flex justify-between items-center text-sm cursor-pointer hover:bg-emerald-50/30"
+                                                                                onClick={() => {
+                                                                                    if (item?.isBalance) {
+                                                                                        if (item.isExpense) handleViewEntityHistory({ name: 'Caisse Dépense', isExpense: true });
+                                                                                        else if (item.entityId) {
+                                                                                            const entity = entities.find(e => e.id === item.entityId);
+                                                                                            if (entity) handleViewEntityHistory(entity);
+                                                                                        }
+                                                                                    }
+                                                                                }}
+                                                                            >
+                                                                                <span className={`font-medium ${item.isBalance ? 'underline decoration-dotted decoration-emerald-300' : ''}`}>{item.name}</span>
+                                                                                <span className="font-mono font-bold text-emerald-700">{formatPrice(Math.abs(item.amount))}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1539,22 +1643,48 @@ export default function DailyCashTracking() {
                                                         {creditItems.length === 0 ? (
                                                             <div className="p-4 text-center text-sm text-gray-500 italic">Aucune sortie</div>
                                                         ) : (
-                                                            creditItems.map((item, i) => (
-                                                                <div key={i} className="px-4 py-3 flex justify-between items-center text-sm"
-                                                                    onClick={() => {
-                                                                        if (item?.isBalance) {
-                                                                            if (item.isExpense) handleViewEntityHistory({ name: 'Caisse Dépense', isExpense: true });
-                                                                            else if (item.entityId) {
-                                                                                const entity = entities.find(e => e.id === item.entityId);
-                                                                                if (entity) handleViewEntityHistory(entity);
+                                                            <>
+                                                                {creditOthers.map((item, i) => (
+                                                                    <div key={`other-${i}`} className="px-4 py-3 flex justify-between items-center text-sm cursor-pointer hover:bg-rose-50/30"
+                                                                        onClick={() => {
+                                                                            if (item?.isBalance) {
+                                                                                if (item.isExpense) handleViewEntityHistory({ name: 'Caisse Dépense', isExpense: true });
+                                                                                else if (item.entityId) {
+                                                                                    const entity = entities.find(e => e.id === item.entityId);
+                                                                                    if (entity) handleViewEntityHistory(entity);
+                                                                                }
                                                                             }
-                                                                        }
-                                                                    }}
-                                                                >
-                                                                    <span className={`font-medium ${item.isBalance ? 'underline decoration-dotted decoration-rose-300' : ''}`}>{item.name}</span>
-                                                                    <span className="font-mono font-bold text-rose-700">{formatPrice(Math.abs(item.amount))}</span>
-                                                                </div>
-                                                            ))
+                                                                        }}
+                                                                    >
+                                                                        <span className={`font-medium ${item.isBalance ? 'underline decoration-dotted decoration-rose-300' : ''}`}>{item.name}</span>
+                                                                        <span className="font-mono font-bold text-rose-700">{formatPrice(Math.abs(item.amount))}</span>
+                                                                    </div>
+                                                                ))}
+
+                                                                {creditStes.length > 0 && (
+                                                                    <>
+                                                                        <div className="bg-indigo-50/20 px-4 py-2 text-center text-xs font-bold text-indigo-600 uppercase tracking-wider border-y border-indigo-100/50 flex items-center justify-center gap-1.5">
+                                                                            <Building2 size={14} /> Sociétés (STE)
+                                                                        </div>
+                                                                        {creditStes.map((item, i) => (
+                                                                            <div key={`ste-${i}`} className="px-4 py-3 flex justify-between items-center text-sm cursor-pointer hover:bg-rose-50/30"
+                                                                                onClick={() => {
+                                                                                    if (item?.isBalance) {
+                                                                                        if (item.isExpense) handleViewEntityHistory({ name: 'Caisse Dépense', isExpense: true });
+                                                                                        else if (item.entityId) {
+                                                                                            const entity = entities.find(e => e.id === item.entityId);
+                                                                                            if (entity) handleViewEntityHistory(entity);
+                                                                                        }
+                                                                                    }
+                                                                                }}
+                                                                            >
+                                                                                <span className={`font-medium ${item.isBalance ? 'underline decoration-dotted decoration-rose-300' : ''}`}>{item.name}</span>
+                                                                                <span className="font-mono font-bold text-rose-700">{formatPrice(Math.abs(item.amount))}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1592,12 +1722,9 @@ export default function DailyCashTracking() {
                                                         </tr>
                                                     </thead>
                                                     <tbody className="text-sm divide-y divide-gray-100">
-                                                        {Array.from({ length: maxRows }).map((_, i) => {
-                                                            const debitItem = debitItems[i];
-                                                            const creditItem = creditItems[i];
-
-                                                            return (
-                                                                <tr key={i} className="group hover:bg-gray-50 transition-colors">
+                                                        {(() => {
+                                                            const renderItemRow = (debitItem, creditItem, key) => (
+                                                                <tr key={key} className="group hover:bg-gray-50 transition-colors">
                                                                     {/* ENTRÉE (DÉBIT) */}
                                                                     <td
                                                                         className={`py-3 px-4 border-r border-gray-100 truncate max-w-[200px] ${debitItem?.isBalance ? 'cursor-pointer hover:bg-gray-100 transition-colors' : ''}`}
@@ -1660,7 +1787,52 @@ export default function DailyCashTracking() {
                                                                     </td>
                                                                 </tr>
                                                             );
-                                                        })}
+
+                                                            const rows = [];
+                                                            
+                                                            // 1. Render Others
+                                                            for (let i = 0; i < maxOthers; i++) {
+                                                                rows.push(renderItemRow(debitOthers[i], creditOthers[i], `other-${i}`));
+                                                            }
+
+                                                            // 2. Render Divider
+                                                            if (maxStes > 0) {
+                                                                rows.push(
+                                                                    <tr key="divider-ste" className="bg-indigo-50/10 border-y border-indigo-100">
+                                                                        <td colSpan="2" className="py-2.5 px-4 text-center text-xs font-extrabold text-indigo-850 uppercase tracking-wider border-r border-gray-200 bg-indigo-50/30">
+                                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                                <Building2 size={14} className="text-indigo-600" />
+                                                                                Sociétés (STE)
+                                                                            </div>
+                                                                        </td>
+                                                                        <td colSpan="2" className="py-2.5 px-4 text-center text-xs font-extrabold text-indigo-850 uppercase tracking-wider bg-indigo-50/30">
+                                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                                <Building2 size={14} className="text-indigo-600" />
+                                                                                Sociétés (STE)
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                                
+                                                                // 3. Render STEs
+                                                                for (let i = 0; i < maxStes; i++) {
+                                                                    rows.push(renderItemRow(debitStes[i], creditStes[i], `ste-${i}`));
+                                                                }
+                                                            }
+
+                                                            // Fallback
+                                                            if (rows.length === 0) {
+                                                                rows.push(
+                                                                    <tr key="empty">
+                                                                        <td colSpan="4" className="py-8 text-center text-gray-500 italic">
+                                                                            Aucun mouvement à afficher
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            }
+
+                                                            return rows;
+                                                        })()}
 
                                                         {/* TOTAL Row */}
                                                         <tr className="bg-gray-50 border-t-2 border-gray-200">
@@ -1903,7 +2075,7 @@ export default function DailyCashTracking() {
                                             className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none bg-gray-50"
                                         >
                                             <option value="">Sélectionner une société</option>
-                                            {entities.map(e => (
+                                            {entities.filter(e => e.is_active !== false).map(e => (
                                                 <option key={e.id} value={e.id}>{e.name}</option>
                                             ))}
                                         </select>
@@ -2195,6 +2367,77 @@ export default function DailyCashTracking() {
                                         className="flex-1 py-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg hover:shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                                     >
                                         Créer la société
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )
+            }
+            {/* Edit Entity Modal */}
+            {
+                isEditEntityModalOpen && selectedEditEntity && createPortal(
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setIsEditEntityModalOpen(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-8">
+                                <div>
+                                    <h3 className="text-2xl font-bold text-gray-900">Modifier la Société</h3>
+                                    <p className="text-gray-500 text-sm mt-1">Modifier les informations de la société</p>
+                                </div>
+                                <button
+                                    onClick={() => setIsEditEntityModalOpen(false)}
+                                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                                >
+                                    <X size={24} className="text-gray-400 hover:text-gray-600" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Nom de la société</label>
+                                    <div className="relative">
+                                        <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                        <input
+                                            type="text"
+                                            value={editEntityName}
+                                            onChange={(e) => setEditEntityName(e.target.value)}
+                                            className="w-full p-4 pl-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-lg font-bold text-gray-800"
+                                            placeholder="Nom de la société"
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-gray-800">Statut de la société</span>
+                                        <span className="text-xs text-gray-400 mt-0.5">Désactiver pour la masquer des options de saisie</span>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={editEntityActive}
+                                            onChange={(e) => setEditEntityActive(e.target.checked)}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                    </label>
+                                </div>
+
+                                <div className="flex gap-4 pt-4">
+                                    <button
+                                        onClick={() => setIsEditEntityModalOpen(false)}
+                                        className="flex-1 py-3.5 text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors font-medium"
+                                    >
+                                        Annuler
+                                    </button>
+                                    <button
+                                        onClick={handleSaveEntity}
+                                        disabled={!editEntityName.trim()}
+                                        className="flex-1 py-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg hover:shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                                    >
+                                        Enregistrer
                                     </button>
                                 </div>
                             </div>

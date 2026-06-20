@@ -13,6 +13,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
     ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts';
+import { useToast } from './ui/Toast';
 
 const CATEGORIES = [
     { value: 'Loyer', label: 'Loyer / Redevance foncière', color: 'bg-blue-50 text-blue-700 border-blue-100', hex: '#3B82F6' },
@@ -159,6 +160,7 @@ const getMonthOverlapScale = (monthStr, startDateStr, endDateStr) => {
 };
 
 export default function OperatingExpenses() {
+    const { success, error, info } = useToast();
     // Tab state
     const [activeTab, setActiveTab] = useState('prices'); // 'prices' | 'monthly_cogs' | 'expenses' | 'margin' | 'ebit'
     const [priceSubTab, setPriceSubTab] = useState('fuel'); // 'fuel' | 'lubricants'
@@ -184,6 +186,13 @@ export default function OperatingExpenses() {
     const [expensesSubTab, setExpensesSubTab] = useState('list'); // 'list' | 'employees'
     const [payrollMonth, setPayrollMonth] = useState(new Date().toISOString().substring(0, 7)); // 'YYYY-MM'
     const [payrollAdjustments, setPayrollAdjustments] = useState({}); // id -> value
+    const [showPayrollConfirmModal, setShowPayrollConfirmModal] = useState(false);
+    const [payrollConfirmData, setPayrollConfirmData] = useState({
+        formattedMonth: '',
+        totalFixe: 0,
+        totalInterim: 0,
+        payrollDate: ''
+    });
 
     // Tab 1: Operating Expenses State
     const [expenses, setExpenses] = useState([]);
@@ -516,7 +525,7 @@ export default function OperatingExpenses() {
         }
     };
 
-    const handleGenerateMonthlyPayroll = async (e) => {
+    const handleGenerateMonthlyPayroll = (e) => {
         e.preventDefault();
         
         const payrollDate = `${payrollMonth}-01`;
@@ -547,10 +556,17 @@ export default function OperatingExpenses() {
         }
 
         const formattedMonth = payrollMonth.split('-').reverse().join('/');
-        if (!window.confirm(`Vous allez générer les écritures de paie pour le mois de ${formattedMonth} :\n- Salaires & CNSS (Fixe) : ${totalFixe.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD\n- Personnel Intérimaire : ${totalInterim.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD\n\nLes écritures générées précédemment pour ce mois seront écrasées. Voulez-vous continuer ?`)) {
-            return;
-        }
+        setPayrollConfirmData({
+            formattedMonth,
+            totalFixe,
+            totalInterim,
+            payrollDate
+        });
+        setShowPayrollConfirmModal(true);
+    };
 
+    const executePayrollGeneration = async () => {
+        setShowPayrollConfirmModal(false);
         try {
             const descriptions = [
                 `Génération Auto - Paie CDI (${payrollMonth})`,
@@ -563,20 +579,20 @@ export default function OperatingExpenses() {
                 .in('description', descriptions);
 
             const newExpenses = [];
-            if (totalFixe > 0) {
+            if (payrollConfirmData.totalFixe > 0) {
                 newExpenses.push({
-                    date: payrollDate,
+                    date: payrollConfirmData.payrollDate,
                     category: 'Salaires',
-                    amount: totalFixe,
+                    amount: payrollConfirmData.totalFixe,
                     description: `Génération Auto - Paie CDI (${payrollMonth})`,
                     payment_method: 'VIREMENT'
                 });
             }
-            if (totalInterim > 0) {
+            if (payrollConfirmData.totalInterim > 0) {
                 newExpenses.push({
-                    date: payrollDate,
+                    date: payrollConfirmData.payrollDate,
                     category: 'Interim',
-                    amount: totalInterim,
+                    amount: payrollConfirmData.totalInterim,
                     description: `Génération Auto - Paie Intérim (${payrollMonth})`,
                     payment_method: 'VIREMENT'
                 });
@@ -588,13 +604,13 @@ export default function OperatingExpenses() {
 
             if (error) throw error;
 
-            alert('Masse salariale générée et synchronisée avec succès !');
+            success('Masse salariale générée et synchronisée avec succès !');
             setPayrollAdjustments({});
             fetchExpenses();
             setExpensesSubTab('list');
         } catch (error) {
             console.error('Error generating payroll:', error);
-            alert('Erreur lors de la génération de la paie');
+            error('Erreur lors de la génération de la paie');
         }
     };
 
@@ -2916,6 +2932,82 @@ export default function OperatingExpenses() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* Custom Payroll Generation Confirmation Modal */}
+            {showPayrollConfirmModal && createPortal(
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowPayrollConfirmModal(false)}>
+                    <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl overflow-hidden flex flex-col transform transition-all duration-300 scale-100 animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="text-center mb-5">
+                            <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+                                <CreditCard size={28} />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900">Génération de la Paie</h3>
+                            <p className="text-xs text-gray-400 mt-1">Veuillez valider la masse salariale mensuelle</p>
+                        </div>
+
+                        {/* Details Card */}
+                        <div className="bg-gray-50/80 rounded-2xl p-4 border border-gray-100 space-y-3">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-gray-500 font-medium">Mois de facturation :</span>
+                                <span className="font-bold text-gray-900 bg-white px-2.5 py-1 rounded-lg shadow-sm border border-gray-150 capitalize">{payrollConfirmData.formattedMonth}</span>
+                            </div>
+                            <div className="h-px bg-gray-200/60 my-1"></div>
+                            
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                                        <span className="text-xs font-semibold text-gray-600">Salaires & CNSS (Fixe)</span>
+                                    </div>
+                                    <span className="font-mono text-sm font-bold text-gray-900">{formatPrice(payrollConfirmData.totalFixe)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                                        <span className="text-xs font-semibold text-gray-600">Personnel Intérimaire</span>
+                                    </div>
+                                    <span className="font-mono text-sm font-bold text-gray-900">{formatPrice(payrollConfirmData.totalInterim)}</span>
+                                </div>
+                            </div>
+                            
+                            <div className="h-px bg-gray-200/60 my-1"></div>
+                            <div className="flex justify-between items-center pt-1">
+                                <span className="text-xs font-bold text-gray-800">Total Masse Salariale</span>
+                                <span className="font-mono text-base font-black text-indigo-600">{formatPrice(payrollConfirmData.totalFixe + payrollConfirmData.totalInterim)}</span>
+                            </div>
+                        </div>
+
+                        {/* Warning Box */}
+                        <div className="bg-rose-50 border border-rose-100 text-rose-800 rounded-2xl p-3.5 text-xs font-medium flex gap-2.5 items-start mt-4">
+                            <AlertTriangle size={18} className="text-rose-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <p className="font-bold text-rose-950">Avertissement</p>
+                                <p className="text-rose-700/95 leading-relaxed mt-0.5">Les écritures de paie déjà enregistrées pour ce mois seront définitivement écrasées et remplacées.</p>
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                type="button"
+                                onClick={() => setShowPayrollConfirmModal(false)}
+                                className="flex-1 px-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 active:bg-gray-100 font-bold text-sm transition-all text-center"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="button"
+                                onClick={executePayrollGeneration}
+                                className="flex-1 px-4 py-3 bg-gradient-purple text-white rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all text-center"
+                            >
+                                Confirmer & Générer
+                            </button>
+                        </div>
                     </div>
                 </div>,
                 document.body
