@@ -105,7 +105,7 @@ export default function DailyCashTracking() {
         const entityOps = historyOperations;
         const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
         const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-        const netBalance = outAmount - inAmount;
+        const netBalance = inAmount - outAmount;
 
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
@@ -278,7 +278,7 @@ export default function DailyCashTracking() {
         const entityOps = historyOperations;
         const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
         const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-        const netBalance = outAmount - inAmount;
+        const netBalance = inAmount - outAmount;
 
         const doc = new jsPDF();
 
@@ -627,8 +627,8 @@ export default function DailyCashTracking() {
 
                 // --- Daily Logic (Strictly related to selectedDate) ---
                 if (op.category === 'ENTITY_TRANSACTION' && op.entity_id) {
-                    // For entity balances, OUT (caisse paid entity) increases the entity balance, IN (entity paid caisse) decreases it.
-                    const valEntity = isCredit ? -amount : amount;
+                    // For entity balances, IN (isCredit) increases the entity balance, OUT decreases it.
+                    const valEntity = isCredit ? amount : -amount;
                     if (opDate < selectedDate) newEntityOpeningBalances[op.entity_id] = (newEntityOpeningBalances[op.entity_id] || 0) + valEntity;
                     if (opDate <= selectedDate) newEntityClosingBalances[op.entity_id] = (newEntityClosingBalances[op.entity_id] || 0) + valEntity;
                 } else if (op.category === 'EXPENSE_FUND') {
@@ -1139,7 +1139,7 @@ export default function DailyCashTracking() {
                                                                 </div>
                                                             </td>
                                                             <td className="px-6 py-4.5 text-right whitespace-nowrap">
-                                                                <span className={`font-mono text-sm font-medium ${openingBalance >= 0 ? 'text-gray-600' : 'text-red-500'}`}>
+                                                                <span className={`font-mono text-sm font-bold ${openingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                                     {formatPrice(openingBalance)}
                                                                 </span>
                                                             </td>
@@ -1162,7 +1162,7 @@ export default function DailyCashTracking() {
                                                                 )}
                                                             </td>
                                                             <td className="px-6 py-4.5 text-right whitespace-nowrap">
-                                                                <span className={`font-mono text-base font-black ${closingBalance >= 0 ? 'text-indigo-600' : 'text-orange-600'}`}>
+                                                                <span className={`font-mono text-base font-black ${closingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                                     {formatPrice(closingBalance)}
                                                                 </span>
                                                             </td>
@@ -1555,10 +1555,10 @@ export default function DailyCashTracking() {
                                     Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
 
 
-                                        // Negative entity balance goes to DEBIT
+                                        // Positive entity balance goes to DEBIT
 
 
-                                        if (val < 0) debitBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: Math.abs(val), isBalance: true, entityId });
+                                        if (val > 0) debitBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
 
 
                                     });
@@ -1584,10 +1584,10 @@ export default function DailyCashTracking() {
                                     Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
 
 
-                                        // Positive entity balance goes to CREDIT
+                                        // Negative entity balance goes to CREDIT
 
 
-                                        if (val > 0) creditBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
+                                        if (val < 0) creditBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: Math.abs(val), isBalance: true, entityId });
 
 
                                     });
@@ -1914,57 +1914,71 @@ export default function DailyCashTracking() {
                                 })()}
 
                                 <div className="flex justify-end">
-                                    <div className="bg-white rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 min-w-[320px] transform hover:scale-105 transition-all duration-300 relative overflow-hidden group">
-                                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
-                                        <div className="absolute -right-6 -top-6 w-24 h-24 bg-gray-50 rounded-full group-hover:bg-gray-100 transition-colors z-0"></div>
+                                    {(() => {
+                                        const steBalances = Object.values(entityClosingBalances);
+                                        const totalStePositive = steBalances.filter(b => b > 0).reduce((a, b) => a + b, 0);
+                                        const totalSteNegative = steBalances.filter(b => b < 0).reduce((a, b) => a + b, 0);
+                                        const totalSteNet = totalStePositive + totalSteNegative;
+                                        
+                                        const isPositive = totalSteNet >= 0;
 
-                                        <div className="relative z-10">
-                                            <div className="flex items-center gap-3 mb-4">
-                                                <div className="p-2.5 bg-gray-50 rounded-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-gray-100">
-                                                    <Building2 size={22} className="text-gray-700" />
-                                                </div>
-                                                <span className="text-sm font-bold uppercase tracking-widest text-gray-500">Solde Sociétés</span>
-                                            </div>
+                                        return (
+                                            <div className="bg-white rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 min-w-[340px] transform hover:scale-102 transition-all duration-300 relative overflow-hidden group">
+                                                {/* Dynamic top gradient line */}
+                                                <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${isPositive ? 'from-emerald-500 via-teal-500 to-indigo-500' : 'from-rose-500 via-red-500 to-orange-500'}`}></div>
+                                                <div className="absolute -right-6 -top-6 w-24 h-24 bg-gray-50 rounded-full group-hover:bg-gray-100 transition-colors z-0"></div>
 
-                                            {(() => {
-                                                const steBalances = Object.values(entityClosingBalances);
-                                                const totalStePositive = steBalances.filter(b => b > 0).reduce((a, b) => a + b, 0);
-                                                const totalSteNegative = steBalances.filter(b => b < 0).reduce((a, b) => a + b, 0);
-                                                const totalSteNet = totalStePositive + totalSteNegative;
+                                                <div className="relative z-10">
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`p-2.5 rounded-xl transition-all border border-gray-100 ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                                                                <Building2 size={22} />
+                                                            </div>
+                                                            <span className="text-sm font-bold uppercase tracking-widest text-gray-500">Solde Sociétés</span>
+                                                        </div>
+                                                        {isPositive ? (
+                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                                CRÉANCIER
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-100">
+                                                                DÉBITEUR
+                                                            </span>
+                                                        )}
+                                                    </div>
 
-                                                return (
                                                     <div>
-                                                        <div className="flex items-baseline gap-2">
-                                                            <div className="text-4xl font-black tracking-tight text-gray-900">
-                                                                {formatPrice(totalSteNet)}
+                                                        <div className="flex items-baseline gap-2 mb-3">
+                                                            <div className={`text-3xl font-black tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                {isPositive ? '+' : ''}{formatPrice(totalSteNet)}
                                                             </div>
                                                         </div>
 
-                                                        <div className="mt-4 space-y-2">
+                                                        <div className="mt-4 space-y-2.5">
                                                             <div className="flex justify-between items-center text-sm">
                                                                 <span className="text-gray-500 font-medium flex items-center gap-1.5">
-                                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Solde Positif
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Solde Positif (Créances)
                                                                 </span>
                                                                 <span className="font-bold text-emerald-600 font-mono">+{formatPrice(totalStePositive)}</span>
                                                             </div>
                                                             <div className="flex justify-between items-center text-sm">
                                                                 <span className="text-gray-500 font-medium flex items-center gap-1.5">
-                                                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Solde Négatif
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Solde Négatif (Dettes)
                                                                 </span>
                                                                 <span className="font-bold text-rose-600 font-mono">{formatPrice(totalSteNegative)}</span>
                                                             </div>
-                                                            <div className="pt-2 mt-2 border-t border-gray-100 flex justify-between items-center text-sm">
+                                                            <div className="pt-2.5 mt-2 border-t border-gray-100 flex justify-between items-center text-sm">
                                                                 <span className="text-gray-400 font-bold uppercase text-xs">Écart Global</span>
-                                                                <span className={`font-black font-mono ${totalSteNet >= 0 ? 'text-indigo-600' : 'text-orange-600'}`}>
-                                                                    {totalSteNet > 0 ? '+' : ''}{formatPrice(totalSteNet)}
+                                                                <span className={`font-black font-mono ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                    {isPositive ? '+' : ''}{formatPrice(totalSteNet)}
                                                                 </span>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                );
-                                            })()}
-                                        </div>
-                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         )}
@@ -2542,10 +2556,10 @@ export default function DailyCashTracking() {
                                                 <div className="text-sm text-red-800 font-medium mb-1">Total Historique Sorties</div>
                                                 <div className="text-xl font-bold text-red-900">-{formatPrice(movement.out)}</div>
                                             </div>
-                                            <div className={`p-4 rounded-xl border ${movement.out - movement.in >= 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
-                                                <div className={`text-sm font-medium mb-1 ${movement.out - movement.in >= 0 ? 'text-indigo-800' : 'text-orange-800'}`}>Solde Global</div>
-                                                <div className={`text-xl font-bold ${movement.out - movement.in >= 0 ? 'text-indigo-900' : 'text-orange-900'}`}>
-                                                    {formatPrice(movement.out - movement.in)}
+                                            <div className={`p-4 rounded-xl border ${movement.in - movement.out >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                                                <div className={`text-sm font-medium mb-1 ${movement.in - movement.out >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>Solde Global</div>
+                                                <div className={`text-xl font-bold ${movement.in - movement.out >= 0 ? 'text-emerald-900' : 'text-rose-900'}`}>
+                                                    {formatPrice(movement.in - movement.out)}
                                                 </div>
                                             </div>
                                         </div>
