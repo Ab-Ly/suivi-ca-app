@@ -1,15 +1,15 @@
 # Tasks
 
-- [/] Project Setup
-    - [/] Initialize Vite + React + Tailwind project <!-- id: 0 -->
+- [x] Project Setup
+    - [x] Initialize Vite + React + Tailwind project <!-- id: 0 -->
     - [x] Configure Tailwind for "Notion-like" design <!-- id: 1 -->
-    - [/] Setup Supabase client <!-- id: 2 -->
-- [/] Database Schema Design
+    - [x] Setup Supabase client <!-- id: 2 -->
+- [x] Database Schema Design
     - [x] Define Tables (Articles, Sales, StockMovements) <!-- id: 3 -->
     - [x] Create SQL migration script <!-- id: 4 -->
-- [/] Core Features Implementation
+- [x] Core Features Implementation
     - [x] Layout & Navigation (Mobile responsive) <!-- id: 5 -->
-    - [/] Dashboard (Turnover view) <!-- id: 6 -->
+    - [x] Dashboard (Turnover view) <!-- id: 6 -->
     - [x] Sales Entry (Popup, suggestions) <!-- id: 7 -->
     - [x] Sales History (List view) <!-- id: 7b -->
     - [x] Stock Management (Lubricants) <!-- id: 8 -->
@@ -20,14 +20,14 @@
     - [x] Connect Frontend to Supabase (Replace mock data) <!-- id: 11 -->
     - [x] Implement Real Sales Submission <!-- id: 12 -->
     - [x] Implement Real Stock Updates <!-- id: 13 -->
-- [/] Category & Service Updates
+- [x] Category & Service Updates
     - [x] Migrate existing articles to 'Lubrifiants' <!-- id: 14 -->
     - [x] Add Service items (Shop, Cafe, etc.) <!-- id: 15 -->
     - [x] Allow variable price for Services in SalesEntry <!-- id: 16 -->
     - [x] Add 'sales_location' (Piste/Bosch) for Lubricants <!-- id: 17 -->
     - [x] Allow custom date selection for Sales <!-- id: 18 -->
     - [x] Add Filters to Sales History <!-- id: 19 -->
-- [ ] UI Redesign (Modern/Gradient)
+- [x] UI Redesign (Modern/Gradient)
     - [x] Update Global Styles (Colors, Fonts) <!-- id: 20 -->
     - [x] Redesign Layout (Sidebar, Header) <!-- id: 21 -->
     - [x] Redesign Dashboard (Gradient Cards, Charts) <!-- id: 22 -->
