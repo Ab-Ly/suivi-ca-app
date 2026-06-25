@@ -55,36 +55,47 @@ export default function Sales() {
     const fetchSales = async () => {
         setLoading(true);
         try {
-            let query = supabase
-                .from('sales')
-                .select(`
-                    *,
-                    articles!inner (
-                        name,
-                        category
-                    )
-                `)
-                .order('sale_date', { ascending: false });
+            let allData = [];
+            let page = 0;
+            const pageSize = 1000;
+            while (true) {
+                let query = supabase
+                    .from('sales')
+                    .select(`
+                        *,
+                        articles!inner (
+                            name,
+                            category
+                        )
+                    `)
+                    .order('sale_date', { ascending: false });
 
-            if (startDate) {
-                query = query.gte('sale_date', startDate);
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                query = query.lte('sale_date', end.toISOString());
-            }
-            if (category) {
-                query = query.eq('articles.category', category);
-            }
-            if (searchTerm) {
-                query = query.ilike('articles.name', `%${searchTerm}%`);
-            }
+                if (startDate) {
+                    query = query.gte('sale_date', startDate);
+                }
+                if (endDate) {
+                    const end = new Date(endDate);
+                    end.setHours(23, 59, 59, 999);
+                    query = query.lte('sale_date', end.toISOString());
+                }
+                if (category) {
+                    query = query.eq('articles.category', category);
+                }
+                if (searchTerm) {
+                    query = query.ilike('articles.name', `%${searchTerm}%`);
+                }
 
-            const { data, error } = await query;
+                query = query.range(page * pageSize, (page + 1) * pageSize - 1);
 
-            if (error) throw error;
-            setSales(data || []);
+                const { data, error } = await query;
+
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                allData.push(...data);
+                if (data.length < pageSize) break;
+                page++;
+            }
+            setSales(allData);
         } catch (error) {
             console.error('Error fetching sales:', error);
         } finally {
@@ -95,24 +106,35 @@ export default function Sales() {
     const fetchFuelSales = async () => {
         setLoading(true);
         try {
-            let query = supabase
-                .from('fuel_sales')
-                .select('*')
-                .order('sale_date', { ascending: false });
+            let allData = [];
+            let page = 0;
+            const pageSize = 1000;
+            while (true) {
+                let query = supabase
+                    .from('fuel_sales')
+                    .select('*')
+                    .order('sale_date', { ascending: false });
 
-            if (startDate) {
-                query = query.gte('sale_date', startDate);
+                if (startDate) {
+                    query = query.gte('sale_date', startDate);
+                }
+                if (endDate) {
+                    const end = new Date(endDate);
+                    end.setHours(23, 59, 59, 999);
+                    query = query.lte('sale_date', end.toISOString());
+                }
+
+                query = query.range(page * pageSize, (page + 1) * pageSize - 1);
+
+                const { data, error } = await query;
+
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                allData.push(...data);
+                if (data.length < pageSize) break;
+                page++;
             }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                query = query.lte('sale_date', end.toISOString());
-            }
-
-            const { data, error } = await query;
-
-            if (error) throw error;
-            setFuelSales(data || []);
+            setFuelSales(allData);
         } catch (error) {
             console.error('Error fetching fuel sales:', error);
         } finally {

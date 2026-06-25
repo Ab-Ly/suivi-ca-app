@@ -1,5 +1,24 @@
 import { supabase } from '../lib/supabase';
 
+const fetchTableAllRows = async (table) => {
+    let allData = [];
+    let page = 0;
+    const pageSize = 1000;
+    while (true) {
+        const { data, error } = await supabase
+            .from(table)
+            .select('*')
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData.push(...data);
+        if (data.length < pageSize) break;
+        page++;
+    }
+    return allData;
+};
+
 /**
  * Fetches all relevant data from the database.
  * @returns {Promise<Object>} An object containing arrays of data for each table.
@@ -25,10 +44,7 @@ export const fetchAllData = async () => {
 
     for (const table of tables) {
         try {
-            const { data, error } = await supabase.from(table).select('*');
-            if (error) {
-                throw error;
-            }
+            const data = await fetchTableAllRows(table);
             backupData[table] = data;
         } catch (err) {
             console.error(`Error fetching data for table ${table}:`, err);

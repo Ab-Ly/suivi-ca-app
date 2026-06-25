@@ -372,14 +372,24 @@ export default function OperatingExpenses() {
     const fetchExpenses = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('operating_expenses')
-                .select('*')
-                .order('date', { ascending: false })
-                .order('created_at', { ascending: false });
+            let allData = [];
+            let page = 0;
+            const pageSize = 1000;
+            while (true) {
+                const { data, error } = await supabase
+                    .from('operating_expenses')
+                    .select('*')
+                    .order('date', { ascending: false })
+                    .order('created_at', { ascending: false })
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
 
-            if (error) throw error;
-            setExpenses(data || []);
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                allData.push(...data);
+                if (data.length < pageSize) break;
+                page++;
+            }
+            setExpenses(allData);
         } catch (error) {
             console.error('Error fetching expenses:', error);
         } finally {
@@ -618,13 +628,24 @@ export default function OperatingExpenses() {
     const fetchFuelPrices = async () => {
         setFuelPricesLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('fuel_prices')
-                .select('*')
-                .order('date', { ascending: false })
-                .order('fuel_type', { ascending: true });
-            if (error) throw error;
-            setFuelPrices(data || []);
+            let allData = [];
+            let page = 0;
+            const pageSize = 1000;
+            while (true) {
+                const { data, error } = await supabase
+                    .from('fuel_prices')
+                    .select('*')
+                    .order('date', { ascending: false })
+                    .order('fuel_type', { ascending: true })
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
+
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                allData.push(...data);
+                if (data.length < pageSize) break;
+                page++;
+            }
+            setFuelPrices(allData);
         } catch (e) {
             console.error('Error fetching fuel prices:', e);
         } finally {
@@ -846,48 +867,76 @@ export default function OperatingExpenses() {
     const calculateMargins = async () => {
         setMarginData(prev => ({ ...prev, loading: true }));
         try {
-            // 1. Fetch fuel sales in date range
-            let fuelQuery = supabase
-                .from('fuel_sales')
-                .select('*')
-                .order('sale_date', { ascending: true });
-            
-            if (marginStartDate) {
-                fuelQuery = fuelQuery.gte('sale_date', marginStartDate);
-            }
-            if (marginEndDate) {
-                const end = new Date(marginEndDate);
-                end.setHours(23, 59, 59, 999);
-                fuelQuery = fuelQuery.lte('sale_date', end.toISOString());
-            }
-            
-            const { data: fuelSalesData, error: fuelError } = await fuelQuery;
-            if (fuelError) throw fuelError;
-
-            // 2. Fetch all fuel prices
-            const { data: fuelPricesData, error: pricesError } = await supabase
-                .from('fuel_prices')
-                .select('*')
-                .order('date', { ascending: true });
-            if (pricesError) throw pricesError;
-
-            // 3. Fetch all non-fuel sales in date range
-            let salesQuery = supabase
-                .from('sales')
-                .select('*, articles!inner(*)')
-                .order('sale_date', { ascending: true });
-
-            if (marginStartDate) {
-                salesQuery = salesQuery.gte('sale_date', marginStartDate);
-            }
-            if (marginEndDate) {
-                const end = new Date(marginEndDate);
-                end.setHours(23, 59, 59, 999);
-                salesQuery = salesQuery.lte('sale_date', end.toISOString());
+            // 1. Fetch fuel sales in date range (paginated)
+            let fuelSalesData = [];
+            let fuelPage = 0;
+            const pageSize = 1000;
+            while (true) {
+                let fuelQuery = supabase
+                    .from('fuel_sales')
+                    .select('*')
+                    .order('sale_date', { ascending: true });
+                
+                if (marginStartDate) {
+                    fuelQuery = fuelQuery.gte('sale_date', marginStartDate);
+                }
+                if (marginEndDate) {
+                    const end = new Date(marginEndDate);
+                    end.setHours(23, 59, 59, 999);
+                    fuelQuery = fuelQuery.lte('sale_date', end.toISOString());
+                }
+                
+                fuelQuery = fuelQuery.range(fuelPage * pageSize, (fuelPage + 1) * pageSize - 1);
+                const { data, error: fuelError } = await fuelQuery;
+                if (fuelError) throw fuelError;
+                if (!data || data.length === 0) break;
+                fuelSalesData.push(...data);
+                if (data.length < pageSize) break;
+                fuelPage++;
             }
 
-            const { data: nonFuelSales, error: salesError } = await salesQuery;
-            if (salesError) throw salesError;
+            // 2. Fetch all fuel prices (paginated)
+            let fuelPricesData = [];
+            let pricesPage = 0;
+            while (true) {
+                const { data, error: pricesError } = await supabase
+                    .from('fuel_prices')
+                    .select('*')
+                    .order('date', { ascending: true })
+                    .range(pricesPage * pageSize, (pricesPage + 1) * pageSize - 1);
+                if (pricesError) throw pricesError;
+                if (!data || data.length === 0) break;
+                fuelPricesData.push(...data);
+                if (data.length < pageSize) break;
+                pricesPage++;
+            }
+
+            // 3. Fetch all non-fuel sales in date range (paginated)
+            let nonFuelSales = [];
+            let salesPage = 0;
+            while (true) {
+                let salesQuery = supabase
+                    .from('sales')
+                    .select('*, articles!inner(*)')
+                    .order('sale_date', { ascending: true });
+
+                if (marginStartDate) {
+                    salesQuery = salesQuery.gte('sale_date', marginStartDate);
+                }
+                if (marginEndDate) {
+                    const end = new Date(marginEndDate);
+                    end.setHours(23, 59, 59, 999);
+                    salesQuery = salesQuery.lte('sale_date', end.toISOString());
+                }
+
+                salesQuery = salesQuery.range(salesPage * pageSize, (salesPage + 1) * pageSize - 1);
+                const { data, error: salesError } = await salesQuery;
+                if (salesError) throw salesError;
+                if (!data || data.length === 0) break;
+                nonFuelSales.push(...data);
+                if (data.length < pageSize) break;
+                salesPage++;
+            }
 
             // 4. Fetch monthly stock costs
             const { data: monthlyCogsData, error: monthlyCogsError } = await supabase
@@ -895,21 +944,30 @@ export default function OperatingExpenses() {
                 .select('*');
             if (monthlyCogsError) throw monthlyCogsError;
 
-            // 5. Fetch all operating expenses in range for EBIT
-            let expensesQuery = supabase
-                .from('operating_expenses')
-                .select('*')
-                .order('date', { ascending: true });
+            // 5. Fetch all operating expenses in range for EBIT (paginated)
+            let expensesData = [];
+            let expensesPage = 0;
+            while (true) {
+                let expensesQuery = supabase
+                    .from('operating_expenses')
+                    .select('*')
+                    .order('date', { ascending: true });
 
-            if (marginStartDate) {
-                expensesQuery = expensesQuery.gte('date', marginStartDate);
-            }
-            if (marginEndDate) {
-                expensesQuery = expensesQuery.lte('date', marginEndDate);
-            }
+                if (marginStartDate) {
+                    expensesQuery = expensesQuery.gte('date', marginStartDate);
+                }
+                if (marginEndDate) {
+                    expensesQuery = expensesQuery.lte('date', marginEndDate);
+                }
 
-            const { data: expensesData, error: expensesError } = await expensesQuery;
-            if (expensesError) throw expensesError;
+                expensesQuery = expensesQuery.range(expensesPage * pageSize, (expensesPage + 1) * pageSize - 1);
+                const { data, error: expensesError } = await expensesQuery;
+                if (expensesError) throw expensesError;
+                if (!data || data.length === 0) break;
+                expensesData.push(...data);
+                if (data.length < pageSize) break;
+                expensesPage++;
+            }
 
             const expensesTotal = (expensesData || []).reduce((sum, exp) => sum + Number(exp.amount), 0);
             const expensesByCategory = {};
