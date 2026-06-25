@@ -13,6 +13,27 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
+const fetchAllOperations = async () => {
+    let allData = [];
+    let page = 0;
+    const pageSize = 1000;
+    while (true) {
+        const { data, error } = await supabase
+            .from('daily_cash_operations')
+            .select('*')
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData.push(...data);
+        if (data.length < pageSize) break;
+        page++;
+    }
+    return allData;
+};
+
 export default function DailyCashTracking() {
     const [activeTab, setActiveTab] = useState('entities'); // entities, expense, operations, reconciliation
     const [entities, setEntities] = useState([]);
@@ -84,7 +105,7 @@ export default function DailyCashTracking() {
         const entityOps = historyOperations;
         const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
         const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-        const netBalance = inAmount - outAmount;
+        const netBalance = outAmount - inAmount;
 
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
@@ -257,7 +278,7 @@ export default function DailyCashTracking() {
         const entityOps = historyOperations;
         const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
         const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-        const netBalance = inAmount - outAmount;
+        const netBalance = outAmount - inAmount;
 
         const doc = new jsPDF();
 
@@ -332,13 +353,8 @@ export default function DailyCashTracking() {
                 .order('name');
             if (entError) throw entError;
 
-            // 2. Fetch all operations from Supabase
-            const { data: allOperations, error: opError } = await supabase
-                .from('daily_cash_operations')
-                .select('*')
-                .order('date', { ascending: false })
-                .order('created_at', { ascending: false });
-            if (opError) throw opError;
+            // 2. Fetch all operations from Supabase (using paginated fetch to bypass default 1000-row limit)
+            const allOperations = await fetchAllOperations();
 
             // 3. Lazy-load ExcelJS
             const ExcelJS = (await import('exceljs')).default;
@@ -581,14 +597,8 @@ export default function DailyCashTracking() {
             if (monthOpsError) throw monthOpsError;
             setMonthlyOperations(monthOps || []);
 
-            // 3. Fetch ALL operations to calculate global balances and history
-            const { data: allOps, error: allOpsError } = await supabase
-                .from('daily_cash_operations')
-                .select('*')
-                .order('date', { ascending: false })
-                .order('created_at', { ascending: false });
-
-            if (allOpsError) throw allOpsError;
+            // 3. Fetch ALL operations to calculate global balances and history (using paginated fetch to bypass default 1000-row limit)
+            const allOps = await fetchAllOperations();
 
             // --- CALCULATIONS ---
 
@@ -617,8 +627,10 @@ export default function DailyCashTracking() {
 
                 // --- Daily Logic (Strictly related to selectedDate) ---
                 if (op.category === 'ENTITY_TRANSACTION' && op.entity_id) {
-                    if (opDate < selectedDate) newEntityOpeningBalances[op.entity_id] = (newEntityOpeningBalances[op.entity_id] || 0) + val;
-                    if (opDate <= selectedDate) newEntityClosingBalances[op.entity_id] = (newEntityClosingBalances[op.entity_id] || 0) + val;
+                    // For entity balances, OUT (caisse paid entity) increases the entity balance, IN (entity paid caisse) decreases it.
+                    const valEntity = isCredit ? -amount : amount;
+                    if (opDate < selectedDate) newEntityOpeningBalances[op.entity_id] = (newEntityOpeningBalances[op.entity_id] || 0) + valEntity;
+                    if (opDate <= selectedDate) newEntityClosingBalances[op.entity_id] = (newEntityClosingBalances[op.entity_id] || 0) + valEntity;
                 } else if (op.category === 'EXPENSE_FUND') {
                     if (opDate < selectedDate) newExpenseOpeningBalance += val;
                     if (opDate <= selectedDate) newExpenseClosingBalance += val;
@@ -1534,25 +1546,58 @@ export default function DailyCashTracking() {
                                     // Build Debit List
                                     debitItems.push(...resteJ1Ops, ...recette8hOps, ...otherInOps);
 
-                                    const positiveBalances = [];
-                                    if (expenseClosingBalance > 0) positiveBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
+                                    const debitBalances = [];
+
+
+                                    if (expenseClosingBalance > 0) debitBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
+
+
                                     Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
-                                        if (val > 0) positiveBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
+
+
+                                        // Negative entity balance goes to DEBIT
+
+
+                                        if (val < 0) debitBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: Math.abs(val), isBalance: true, entityId });
+
+
                                     });
-                                    debitItems.push(...positiveBalances);
+
+
+                                    debitItems.push(...debitBalances);
+
+
 
                                     // Build Credit List
+
+
                                     creditItems.push(...comptageMatinOps, ...otherOutOps);
 
-                                    const negativeBalances = [];
-                                    if (expenseClosingBalance < 0) negativeBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
+
+
+                                    const creditBalances = [];
+
+
+                                    if (expenseClosingBalance < 0) creditBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: Math.abs(expenseClosingBalance), isBalance: true, isExpense: true });
+
+
                                     Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
-                                        if (val < 0) negativeBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
+
+
+                                        // Positive entity balance goes to CREDIT
+
+
+                                        if (val > 0) creditBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
+
+
                                     });
-                                    creditItems.push(...negativeBalances);
+
+
+                                    creditItems.push(...creditBalances);
 
                                     const isSte = (item) => {
                                         if (!item) return false;
+                                        if (item.entityId) return true;
                                         const nameUpper = item.name.toUpperCase();
                                         return nameUpper.includes('STE') || nameUpper.includes('SOCIETE') || nameUpper.includes('S.T.E');
                                     };
@@ -2497,10 +2542,10 @@ export default function DailyCashTracking() {
                                                 <div className="text-sm text-red-800 font-medium mb-1">Total Historique Sorties</div>
                                                 <div className="text-xl font-bold text-red-900">-{formatPrice(movement.out)}</div>
                                             </div>
-                                            <div className={`p-4 rounded-xl border ${movement.in - movement.out >= 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
-                                                <div className={`text-sm font-medium mb-1 ${movement.in - movement.out >= 0 ? 'text-indigo-800' : 'text-orange-800'}`}>Solde Global</div>
-                                                <div className={`text-xl font-bold ${movement.in - movement.out >= 0 ? 'text-indigo-900' : 'text-orange-900'}`}>
-                                                    {formatPrice(movement.in - movement.out)}
+                                            <div className={`p-4 rounded-xl border ${movement.out - movement.in >= 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
+                                                <div className={`text-sm font-medium mb-1 ${movement.out - movement.in >= 0 ? 'text-indigo-800' : 'text-orange-800'}`}>Solde Global</div>
+                                                <div className={`text-xl font-bold ${movement.out - movement.in >= 0 ? 'text-indigo-900' : 'text-orange-900'}`}>
+                                                    {formatPrice(movement.out - movement.in)}
                                                 </div>
                                             </div>
                                         </div>
