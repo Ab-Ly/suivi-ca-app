@@ -200,6 +200,7 @@ export default function OperatingExpenses() {
     const [submitting, setSubmitting] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
     const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
+    const [visibleExpensesCount, setVisibleExpensesCount] = useState(50);
     const [selectedMonthFilter, setSelectedMonthFilter] = useState('');
     const [formData, setFormData] = useState({
         date: new Date().toISOString().split('T')[0],
@@ -1939,7 +1940,7 @@ export default function OperatingExpenses() {
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                filteredExpenses.map(exp => {
+                                                filteredExpenses.slice(0, visibleExpensesCount).map(exp => {
                                                     const catInfo = getCategoryDetails(exp.category);
                                                     const pMethod = PAYMENT_METHODS.find(p => p.value === exp.payment_method) || { label: exp.payment_method };
                                                     
@@ -1970,6 +1971,18 @@ export default function OperatingExpenses() {
                                                         </tr>
                                                     );
                                                 })
+                                            )}
+                                            {filteredExpenses.length > visibleExpensesCount && (
+                                                <tr>
+                                                    <td colSpan="6" className="py-3 text-center bg-slate-50/40">
+                                                        <button
+                                                            onClick={() => setVisibleExpensesCount(prev => prev + 50)}
+                                                            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 focus:outline-none"
+                                                        >
+                                                            Charger plus de charges (+50)
+                                                        </button>
+                                                    </td>
+                                                </tr>
                                             )}
                                         </tbody>
                                     </table>

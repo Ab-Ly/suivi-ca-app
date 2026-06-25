@@ -18,6 +18,7 @@ export default function Sales() {
     // Edit Sale State
     const [editingSale, setEditingSale] = useState(null);
     const [expandedMonths, setExpandedMonths] = useState({});
+    const [visibleSalesPerMonth, setVisibleSalesPerMonth] = useState({});
 
     // Delete Confirmation State
     const [deleteConfig, setDeleteConfig] = useState({ isOpen: false, id: null });
@@ -342,7 +343,7 @@ export default function Sales() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100">
-                                                    {monthSales.map((sale) => (
+                                                    {monthSales.slice(0, visibleSalesPerMonth[month] || 30).map((sale) => (
                                                         <tr key={sale.id} className="group hover:bg-gray-50/50 transition-colors border-b border-gray-100 last:border-0">
                                                             <td className="py-4 px-6 text-xs font-bold text-gray-400 font-mono whitespace-nowrap">
                                                                 {new Date(sale.sale_date).toLocaleString('fr-FR')}
@@ -384,6 +385,24 @@ export default function Sales() {
                                                             </td>
                                                         </tr>
                                                     ))}
+                                                    {monthSales.length > (visibleSalesPerMonth[month] || 30) && (
+                                                        <tr>
+                                                            <td colSpan="6" className="py-3 text-center bg-slate-50/40">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setVisibleSalesPerMonth(prev => ({
+                                                                            ...prev,
+                                                                            [month]: (prev[month] || 30) + 50
+                                                                        }));
+                                                                    }}
+                                                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 focus:outline-none"
+                                                                >
+                                                                    Afficher les ventes plus anciennes (+50)
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    )}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -440,7 +459,7 @@ export default function Sales() {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100">
-                                                    {monthSales.map((sale) => (
+                                                    {monthSales.slice(0, visibleSalesPerMonth[month] || 30).map((sale) => (
                                                         <tr key={sale.id} className="group hover:bg-gray-50/50 transition-colors border-b border-gray-100 last:border-0">
                                                             <td className="py-4 px-6 text-xs font-bold text-gray-400 font-mono">
                                                                 {new Date(sale.sale_date).toLocaleDateString('fr-FR')}
@@ -467,6 +486,24 @@ export default function Sales() {
                                                             </td>
                                                         </tr>
                                                     ))}
+                                                    {monthSales.length > (visibleSalesPerMonth[month] || 30) && (
+                                                        <tr>
+                                                            <td colSpan="5" className="py-3 text-center bg-slate-50/40">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setVisibleSalesPerMonth(prev => ({
+                                                                            ...prev,
+                                                                            [month]: (prev[month] || 30) + 50
+                                                                        }));
+                                                                    }}
+                                                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 focus:outline-none"
+                                                                >
+                                                                    Afficher les ventes plus anciennes (+50)
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    )}
                                                 </tbody>
                                             </table>
                                         </div>
