@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { formatPrice, formatNumber } from '../utils/formatters';
+import { formatPrice } from '../utils/formatters';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 import MoneyCounting from './MoneyCounting';
 import jsPDF from 'jspdf';
@@ -72,6 +72,14 @@ export default function DailyCashTracking() {
     const [selectedEditEntity, setSelectedEditEntity] = useState(null);
     const [editEntityName, setEditEntityName] = useState('');
     const [editEntityActive, setEditEntityActive] = useState(true);
+
+    // Entity search and balance filter states
+    const [entitySearchQuery, setEntitySearchQuery] = useState('');
+    const [entityBalanceFilter, setEntityBalanceFilter] = useState('all'); // all, positive, negative, zero
+    const [isExportingHistoryExcel, setIsExportingHistoryExcel] = useState(false);
+    const [editingOperation, setEditingOperation] = useState(null);
+    const [isExportingCashFlow, setIsExportingCashFlow] = useState(false);
+    const [isBackingUp, setIsBackingUp] = useState(false);
 
     const handleViewEntityHistory = async (entity) => {
         setSelectedEntityHistory(entity);
@@ -338,10 +346,994 @@ export default function DailyCashTracking() {
             }
         });
 
-        doc.save(`Historique_${selectedEntityHistory.name.replace(/\\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+        doc.save(`Historique_${selectedEntityHistory.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
-    const [isBackingUp, setIsBackingUp] = useState(false);
+    const handleExportExcel = async () => {
+        if (!selectedEntityHistory) return;
+        setIsExportingHistoryExcel(true);
+        try {
+            const entityOps = historyOperations;
+            const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+            const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+            const netBalance = inAmount - outAmount;
+
+            const ExcelJS = (await import('exceljs')).default;
+            const workbook = new ExcelJS.Workbook();
+            // eslint-disable-next-line no-useless-escape
+            const sheetName = selectedEntityHistory.name.replace(/[\[\]\?\*\/\\:]/g, '').substring(0, 30) || 'Historique';
+            const sheet = workbook.addWorksheet(sheetName);
+
+            // Configure column widths
+            sheet.columns = [
+                { width: 22 },
+                { width: 45 },
+                { width: 16 },
+                { width: 24 }
+            ];
+
+            // 1. Header (Rows 1 & 2)
+            sheet.addRow([selectedEntityHistory.name.toUpperCase()]);
+            sheet.mergeCells('A1:D1');
+            const titleRow = sheet.getRow(1);
+            titleRow.height = 32;
+            titleRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 14, color: { argb: 'FF111827' } };
+            titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+            sheet.addRow([`Historique complet des opérations - Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`]);
+            sheet.mergeCells('A2:D2');
+            const subtitleRow = sheet.getRow(2);
+            subtitleRow.height = 20;
+            subtitleRow.getCell(1).font = { name: 'Segoe UI', italic: true, size: 9, color: { argb: 'FF6B7280' } };
+            subtitleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+            sheet.addRow([]); // Row 3 spacer
+
+            // Border styling helper for summary cards
+            const thinBorder = {
+                top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+            };
+
+            // 2. Summary Cards labels (Row 4)
+            sheet.addRow(['Total Entrées', 'Total Sorties', 'Solde Global', '']);
+            sheet.mergeCells('C4:D4');
+            const labelRow = sheet.getRow(4);
+            labelRow.height = 22;
+
+            // Green Card Label
+            labelRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+            labelRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF166534' } };
+            labelRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+            labelRow.getCell(1).border = thinBorder;
+
+            // Red Card Label
+            labelRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+            labelRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF991B1B' } };
+            labelRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+            labelRow.getCell(2).border = thinBorder;
+
+            // Balance Card Label
+            const balColorBg = netBalance >= 0 ? 'FFE0E7FF' : 'FFFFF7ED';
+            const balColorText = netBalance >= 0 ? 'FF3730A3' : 'FFC2410C';
+            labelRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
+            labelRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: balColorText } };
+            labelRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+            labelRow.getCell(3).border = thinBorder;
+            
+            // Apply border and fill to merged cell D4 as well
+            labelRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
+            labelRow.getCell(4).border = thinBorder;
+
+            // 3. Summary Cards values (Row 5)
+            sheet.addRow([inAmount, outAmount, netBalance, '']);
+            sheet.mergeCells('C5:D5');
+            const valueRow = sheet.getRow(5);
+            valueRow.height = 28;
+
+            // Green Card Value
+            valueRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+            valueRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF15803D' } };
+            valueRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+            valueRow.getCell(1).border = thinBorder;
+            valueRow.getCell(1).numFmt = '+#,##0.00 "MAD"';
+
+            // Red Card Value
+            valueRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+            valueRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FFB91C1C' } };
+            valueRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+            valueRow.getCell(2).border = thinBorder;
+            valueRow.getCell(2).numFmt = '-#,##0.00 "MAD"';
+
+            // Balance Card Value
+            const balColorValueText = netBalance >= 0 ? 'FF312E81' : 'FF7C2D12';
+            valueRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
+            valueRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: balColorValueText } };
+            valueRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+            valueRow.getCell(3).border = thinBorder;
+            valueRow.getCell(3).numFmt = '#,##0.00 "MAD"';
+
+            // Border and fill for merged cell D5
+            valueRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
+            valueRow.getCell(4).border = thinBorder;
+
+            sheet.addRow([]); // Row 6 spacer
+
+            // 4. Operations Detail Header (Row 7)
+            const detailHeaderRow = sheet.addRow(['Date & Heure', 'Description', 'Type', 'Montant (MAD)']);
+            detailHeaderRow.height = 26;
+            for (let i = 1; i <= 4; i++) {
+                const cell = detailHeaderRow.getCell(i);
+                cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }; // dark gray header
+                cell.alignment = { horizontal: i === 4 ? 'right' : (i === 2 ? 'left' : 'center'), vertical: 'middle' };
+                cell.border = {
+                    top: { style: 'medium', color: { argb: 'FF111827' } },
+                    bottom: { style: 'medium', color: { argb: 'FF111827' } }
+                };
+            }
+
+            // 5. Operations Detail Rows (Row 8+)
+            entityOps.forEach((op, index) => {
+                const formattedDate = `${format(new Date(op.date), 'dd/MM/yyyy')} ${format(new Date(op.created_at), 'HH:mm')}`;
+                const row = sheet.addRow([
+                    formattedDate,
+                    op.description || '',
+                    op.type === 'IN' ? 'Recette' : 'Dépense',
+                    Number(op.amount)
+                ]);
+                row.height = 22;
+
+                const isEven = index % 2 === 0;
+                const rowBgColor = isEven ? 'FFFFFFFF' : 'FFF9FAFB'; // alternating striped style
+
+                for (let i = 1; i <= 4; i++) {
+                    const cell = row.getCell(i);
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBgColor } };
+                    cell.border = {
+                        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+                    };
+                    cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF374151' } };
+
+                    if (i === 1) {
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.font = { name: 'Courier New', size: 10, color: { argb: 'FF6B7280' } };
+                    } else if (i === 2) {
+                        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                        cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF111827' } };
+                    } else if (i === 3) {
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: op.type === 'IN' ? 'FF15803D' : 'FFB91C1C' } };
+                    } else if (i === 4) {
+                        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                        cell.font = { name: 'Courier New', size: 10, bold: true, color: { argb: op.type === 'IN' ? 'FF16A34A' : 'FFDC2626' } };
+                        cell.numFmt = '#,##0.00';
+                    }
+                }
+            });
+
+            // Gridlines enabled
+            sheet.views = [{ showGridLines: true }];
+
+            // Generate file buffer and export
+            const buffer = await workbook.xlsx.writeBuffer();
+            const safeName = selectedEntityHistory.name.replace(/\s+/g, '_');
+            const fileName = `Historique_${safeName}_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+            if (Capacitor.isNativePlatform()) {
+                const base64Data = btoa(
+                    new Uint8Array(buffer)
+                        .reduce((data, byte) => data + String.fromCharCode(byte), '')
+                );
+                
+                const savedFile = await Filesystem.writeFile({
+                    path: fileName,
+                    data: base64Data,
+                    directory: Directory.Cache,
+                });
+
+                await Share.share({
+                    title: `Historique ${selectedEntityHistory.name}`,
+                    text: `Fichier historique Excel : ${fileName}`,
+                    url: savedFile.uri,
+                    dialogTitle: 'Partager ou enregistrer le fichier',
+                });
+            } else {
+                // Web download
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }
+        } catch (error) {
+            console.error('Error exporting Excel:', error);
+            alert("Erreur lors de l'exportation Excel");
+        } finally {
+            setIsExportingHistoryExcel(false);
+        }
+    };
+
+    const handleExportCashFlowExcel = async () => {
+        setIsExportingCashFlow(true);
+        try {
+            // 1. Fetch all entities and all operations from Supabase
+            const { data: allEntities, error: entError } = await supabase
+                .from('daily_cash_entities')
+                .select('*')
+                .order('name');
+            if (entError) throw entError;
+
+            const allOperations = await fetchAllOperations();
+
+            // 2. Prepare daily data for CashFlow Sheet
+            const recette8hOps = operations.filter(op => {
+                const desc = op.description?.toLowerCase() || '';
+                return desc.includes('recette a 8h') || desc.includes('recette à 8h');
+            }).map(op => ({ name: 'RECETTE A 8H', amount: Number(op.amount), isOp: true }));
+
+            const comptageMatinOps = operations.filter(op => {
+                const desc = op.description?.toLowerCase() || '';
+                return desc.includes('comptage matin');
+            }).map(op => ({ name: 'COMPTAGE MATIN', amount: Number(op.amount), isOp: true }));
+
+            const resteJ1Ops = operations.filter(op => {
+                const desc = op.description?.toLowerCase() || '';
+                return desc.includes('reste j-1');
+            }).map(op => ({ name: 'RESTE J-1', amount: Number(op.amount), isReste: true }));
+
+            const otherInOps = operations.filter(op => {
+                const desc = op.description?.toLowerCase() || '';
+                const isSpecial = desc.includes('recette a 8h') || desc.includes('recette à 8h') || desc.includes('comptage matin') || desc.includes('reste j-1');
+                return op.type === 'IN' && op.category === 'OTHER' && !isSpecial;
+            }).map(op => ({ name: op.description || 'Autre Entrée', amount: Number(op.amount), isOp: true }));
+
+            const otherOutOps = operations.filter(op => {
+                const desc = op.description?.toLowerCase() || '';
+                const isSpecial = desc.includes('recette a 8h') || desc.includes('recette à 8h') || desc.includes('comptage matin') || desc.includes('reste j-1');
+                return op.type === 'OUT' && op.category === 'OTHER' && !isSpecial;
+            }).map(op => ({ name: op.description || 'Autre Sortie', amount: Number(op.amount), isOp: true }));
+
+            const debitItems = [];
+            const creditItems = [];
+
+            // Build Debit List
+            debitItems.push(...resteJ1Ops, ...recette8hOps, ...otherInOps);
+            const debitBalances = [];
+            if (expenseClosingBalance > 0) debitBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
+            
+            Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
+                if (val > 0) debitBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
+            });
+            debitItems.push(...debitBalances);
+
+            // Build Credit List
+            creditItems.push(...comptageMatinOps, ...otherOutOps);
+            const creditBalances = [];
+            if (expenseClosingBalance < 0) creditBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: Math.abs(expenseClosingBalance), isBalance: true, isExpense: true });
+            
+            Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
+                if (val < 0) creditBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: Math.abs(val), isBalance: true, entityId });
+            });
+            creditItems.push(...creditBalances);
+
+            const isSte = (item) => {
+                if (!item) return false;
+                if (item.entityId) return true;
+                const nameUpper = item.name.toUpperCase();
+                return nameUpper.includes('STE') || nameUpper.includes('SOCIETE') || nameUpper.includes('S.T.E');
+            };
+
+            const debitOthers = debitItems.filter(item => !isSte(item));
+            const debitStes = debitItems.filter(item => isSte(item));
+            const creditOthers = creditItems.filter(item => !isSte(item));
+            const creditStes = creditItems.filter(item => isSte(item));
+
+            const maxOthers = Math.max(debitOthers.length, creditOthers.length);
+            const maxStes = Math.max(debitStes.length, creditStes.length);
+
+            const totalDebit = debitItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+            const totalCredit = creditItems.reduce((sum, item) => sum + Math.abs(item.amount || 0), 0);
+            const ecart = totalDebit - totalCredit;
+
+            const ExcelJS = (await import('exceljs')).default;
+            const workbook = new ExcelJS.Workbook();
+
+            const borderGray = { style: 'thin', color: { argb: 'FFD1D5DB' } };
+            const cellBorder = { top: borderGray, bottom: borderGray, left: borderGray, right: borderGray };
+            const thinBorder = {
+                top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+            };
+
+            // ----------------------------------------------------
+            // FEUILLE 1 : CASHFLOW JOURNALIER (UI du site)
+            // ----------------------------------------------------
+            const flowSheet = workbook.addWorksheet('CashFlow');
+            flowSheet.columns = [
+                { width: 35 }, // A: Designation Debit
+                { width: 22 }, // B: Montant Debit
+                { width: 22 }, // C: Montant Credit
+                { width: 35 }  // D: Designation Credit
+            ];
+
+            // Title block
+            flowSheet.addRow(['CASHFLOW JOURNALIER']);
+            flowSheet.mergeCells('A1:D1');
+            flowSheet.getRow(1).height = 32;
+            flowSheet.getCell('A1').font = { name: 'Segoe UI', bold: true, size: 14, color: { argb: 'FF1F2937' } };
+            flowSheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            flowSheet.addRow([`Date : ${format(new Date(selectedDate), 'dd MMMM yyyy', { locale: fr })}`]);
+            flowSheet.mergeCells('A2:D2');
+            flowSheet.getRow(2).height = 20;
+            flowSheet.getCell('A2').font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF6B7280' } };
+            flowSheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            flowSheet.addRow([]); // Spacer row 3
+
+            // Section Headers (Row 4)
+            flowSheet.addRow(['ENTRÉE (DÉBIT)', '', 'SORTIE (CRÉDIT)', '']);
+            flowSheet.mergeCells('A4:B4');
+            flowSheet.mergeCells('C4:D4');
+            const flowSectionHeader = flowSheet.getRow(4);
+            flowSectionHeader.height = 24;
+
+            // Debit Section Styling
+            flowSectionHeader.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6FDF5' } };
+            flowSectionHeader.getCell(1).font = { name: 'Segoe UI', bold: true, size: 11, color: { argb: 'FF065F46' } };
+            flowSectionHeader.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+            flowSectionHeader.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6FDF5' } };
+
+            // Credit Section Styling
+            flowSectionHeader.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+            flowSectionHeader.getCell(3).font = { name: 'Segoe UI', bold: true, size: 11, color: { argb: 'FF991B1B' } };
+            flowSectionHeader.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+            flowSectionHeader.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+
+            // Subheaders (Row 5)
+            flowSheet.addRow(['Désignation', 'Montant (MAD)', 'Montant (MAD)', 'Désignation']);
+            const flowSubHeader = flowSheet.getRow(5);
+            flowSubHeader.height = 20;
+
+            for (let i = 1; i <= 4; i++) {
+                const cell = flowSubHeader.getCell(i);
+                cell.font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF4B5563' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+                cell.alignment = { horizontal: i === 2 || i === 3 ? 'right' : 'left', vertical: 'middle' };
+                cell.border = cellBorder;
+            }
+
+            let currentRow = 6;
+
+            // Render Others items
+            for (let i = 0; i < maxOthers; i++) {
+                const dItem = debitOthers[i];
+                const cItem = creditOthers[i];
+
+                flowSheet.addRow([
+                    dItem ? dItem.name : '',
+                    dItem ? Number(dItem.amount) : '',
+                    cItem ? Number(cItem.amount) : '',
+                    cItem ? cItem.name : ''
+                ]);
+                const row = flowSheet.getRow(currentRow);
+                row.height = 22;
+
+                // Format Debit Cell
+                if (dItem) {
+                    const cellName = row.getCell(1);
+                    const cellVal = row.getCell(2);
+                    cellName.border = cellBorder;
+                    cellVal.border = cellBorder;
+                    cellVal.numFmt = '#,##0.00';
+                    cellVal.alignment = { horizontal: 'right', vertical: 'middle' };
+
+                    if (dItem.isReste) {
+                        cellName.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+                        cellName.font = { name: 'Segoe UI', bold: true, color: { argb: 'FF312E81' } };
+                        cellVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+                        cellVal.font = { name: 'Courier New', bold: true, color: { argb: 'FF312E81' } };
+                    } else if (dItem.isBalance) {
+                        cellName.font = { name: 'Segoe UI', underline: 'single', color: { argb: 'FF111827' } };
+                        cellVal.font = { name: 'Courier New', bold: true, color: { argb: 'FF047857' } };
+                    } else {
+                        cellName.font = { name: 'Segoe UI', color: { argb: 'FF4B5563' } };
+                        cellVal.font = { name: 'Courier New', color: { argb: 'FF047857' } };
+                    }
+                } else {
+                    row.getCell(1).border = cellBorder;
+                    row.getCell(2).border = cellBorder;
+                }
+
+                // Format Credit Cell
+                if (cItem) {
+                    const cellName = row.getCell(4);
+                    const cellVal = row.getCell(3);
+                    cellName.border = cellBorder;
+                    cellVal.border = cellBorder;
+                    cellVal.numFmt = '#,##0.00';
+                    cellVal.alignment = { horizontal: 'right', vertical: 'middle' };
+
+                    if (cItem.isBalance) {
+                        cellName.font = { name: 'Segoe UI', underline: 'single', color: { argb: 'FF111827' } };
+                        cellVal.font = { name: 'Courier New', bold: true, color: { argb: 'FFB91C1C' } };
+                    } else {
+                        cellName.font = { name: 'Segoe UI', color: { argb: 'FF4B5563' } };
+                        cellVal.font = { name: 'Courier New', color: { argb: 'FFB91C1C' } };
+                    }
+                } else {
+                    row.getCell(3).border = cellBorder;
+                    row.getCell(4).border = cellBorder;
+                }
+                currentRow++;
+            }
+
+            // Divider for STE
+            if (maxStes > 0) {
+                flowSheet.addRow(['SOCIÉTÉS (STE)', '', 'SOCIÉTÉS (STE)', '']);
+                flowSheet.mergeCells(`A${currentRow}:B${currentRow}`);
+                flowSheet.mergeCells(`C${currentRow}:D${currentRow}`);
+                const divRow = flowSheet.getRow(currentRow);
+                divRow.height = 24;
+
+                const divFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F3FF' } };
+                const divFont = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF4C1D95' } };
+
+                for (let i = 1; i <= 4; i++) {
+                    const cell = divRow.getCell(i);
+                    cell.fill = divFill;
+                    cell.font = divFont;
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cell.border = cellBorder;
+                }
+                currentRow++;
+
+                // Render STE items
+                for (let i = 0; i < maxStes; i++) {
+                    const dItem = debitStes[i];
+                    const cItem = creditStes[i];
+
+                    flowSheet.addRow([
+                        dItem ? dItem.name : '',
+                        dItem ? Number(dItem.amount) : '',
+                        cItem ? Number(cItem.amount) : '',
+                        cItem ? cItem.name : ''
+                    ]);
+                    const row = flowSheet.getRow(currentRow);
+                    row.height = 22;
+
+                    // Format STE Debit Cell
+                    if (dItem) {
+                        const cellName = row.getCell(1);
+                        const cellVal = row.getCell(2);
+                        cellName.border = cellBorder;
+                        cellVal.border = cellBorder;
+                        cellVal.numFmt = '#,##0.00';
+                        cellVal.alignment = { horizontal: 'right', vertical: 'middle' };
+                        
+                        cellName.font = { name: 'Segoe UI', underline: 'single', color: { argb: 'FF111827' } };
+                        cellVal.font = { name: 'Courier New', bold: true, color: { argb: 'FF047857' } };
+                    } else {
+                        row.getCell(1).border = cellBorder;
+                        row.getCell(2).border = cellBorder;
+                    }
+
+                    // Format STE Credit Cell
+                    if (cItem) {
+                        const cellName = row.getCell(4);
+                        const cellVal = row.getCell(3);
+                        cellName.border = cellBorder;
+                        cellVal.border = cellBorder;
+                        cellVal.numFmt = '#,##0.00';
+                        cellVal.alignment = { horizontal: 'right', vertical: 'middle' };
+                        
+                        cellName.font = { name: 'Segoe UI', underline: 'single', color: { argb: 'FF111827' } };
+                        cellVal.font = { name: 'Courier New', bold: true, color: { argb: 'FFB91C1C' } };
+                    } else {
+                        row.getCell(3).border = cellBorder;
+                        row.getCell(4).border = cellBorder;
+                    }
+                    currentRow++;
+                }
+            }
+
+            // TOTAL Row
+            flowSheet.addRow(['TOTAL', totalDebit, totalCredit, 'TOTAL']);
+            const totalRow = flowSheet.getRow(currentRow);
+            totalRow.height = 26;
+
+            const doubleBorder = {
+                top: { style: 'thin', color: { argb: 'FF9CA3AF' } },
+                bottom: { style: 'double', color: { argb: 'FF374151' } },
+                left: borderGray,
+                right: borderGray
+            };
+
+            for (let i = 1; i <= 4; i++) {
+                const cell = totalRow.getCell(i);
+                cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF374151' } };
+                cell.border = doubleBorder;
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+
+                if (i === 1) cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                if (i === 4) cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                if (i === 2) {
+                    cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                    cell.numFmt = '#,##0.00';
+                    cell.font = { name: 'Courier New', bold: true, size: 11, color: { argb: 'FF047857' } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6FDF5' } };
+                }
+                if (i === 3) {
+                    cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                    cell.numFmt = '#,##0.00';
+                    cell.font = { name: 'Courier New', bold: true, size: 11, color: { argb: 'FFB91C1C' } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                }
+            }
+            currentRow++;
+
+            // ECART Row
+            flowSheet.addRow(['ÉCART', '', '', 'ÉCART']);
+            flowSheet.mergeCells(`B${currentRow}:C${currentRow}`);
+            const ecartRow = flowSheet.getRow(currentRow);
+            ecartRow.height = 32;
+
+            const ecartBg = ecart === 0 ? 'FFE6FDF5' : 'FFFFF7ED';
+            const ecartText = ecart === 0 ? 'FF047857' : 'FFB45309';
+
+            for (let i = 1; i <= 4; i++) {
+                const cell = ecartRow.getCell(i);
+                cell.border = cellBorder;
+                
+                if (i === 1) {
+                    cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF6B7280' } };
+                    cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                } else if (i === 4) {
+                    cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF6B7280' } };
+                    cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                } else if (i === 2) {
+                    cell.value = ecart;
+                    cell.numFmt = '#,##0.00 "MAD"';
+                    cell.font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: ecartText } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ecartBg } };
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                }
+            }
+            // Fill cell C as it is merged
+            ecartRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ecartBg } };
+
+            flowSheet.views = [{ showGridLines: true }];
+
+            // ----------------------------------------------------
+            // FEUILLE 2 : BILAN DES SOLDES
+            // ----------------------------------------------------
+            const balanceSheet = workbook.addWorksheet('Bilan des Soldes');
+            balanceSheet.columns = [
+                { key: 'name', width: 35 },
+                { key: 'opening', width: 22 },
+                { key: 'in', width: 22 },
+                { key: 'out', width: 22 },
+                { key: 'closing', width: 22 }
+            ];
+
+            balanceSheet.addRow(['BILAN DES SOLDES DES SOCIÉTÉS']);
+            balanceSheet.mergeCells('A1:E1');
+            balanceSheet.getRow(1).height = 32;
+            balanceSheet.getCell('A1').font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF1F2937' } };
+            balanceSheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            balanceSheet.addRow([`Situation au : ${format(new Date(selectedDate), 'dd/MM/yyyy')}`]);
+            balanceSheet.mergeCells('A2:E2');
+            balanceSheet.getRow(2).height = 20;
+            balanceSheet.getCell('A2').font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF6B7280' } };
+            balanceSheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            balanceSheet.addRow([]); // Spacer
+
+            const balHeaderRow = balanceSheet.addRow(['Société', 'Solde J-1 (Veille)', 'Entrées (J)', 'Sorties (J)', 'Solde Actuel']);
+            balHeaderRow.height = 26;
+            for (let i = 1; i <= 5; i++) {
+                const cell = balHeaderRow.getCell(i);
+                cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+                cell.alignment = { horizontal: i === 1 ? 'left' : 'right', vertical: 'middle' };
+                cell.border = cellBorder;
+            }
+
+            let startRowBal = 5;
+            allEntities.forEach((ent, index) => {
+                const opBal = entityOpeningBalances[ent.id] || 0;
+                const clBal = entityClosingBalances[ent.id] || 0;
+                const dayOps = allOperations.filter(op => op.entity_id === ent.id && op.date === selectedDate);
+                const dayIn = dayOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+                const dayOut = dayOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+
+                const isEven = index % 2 === 0;
+                const rowBg = isEven ? 'FFFFFFFF' : 'FFF9FAFB';
+
+                balanceSheet.addRow({
+                    name: ent.name,
+                    opening: opBal,
+                    in: dayIn,
+                    out: dayOut,
+                    closing: clBal
+                });
+
+                const rIndex = startRowBal + index;
+                const row = balanceSheet.getRow(rIndex);
+                row.height = 22;
+
+                for (let i = 1; i <= 5; i++) {
+                    const cell = row.getCell(i);
+                    cell.border = cellBorder;
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                    cell.font = { name: 'Segoe UI', size: 10, color: { argb: ent.is_active !== false ? 'FF111827' : 'FF9CA3AF' } };
+
+                    if (i === 1) {
+                        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                        if (ent.is_active === false) {
+                            cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF9CA3AF' }, strike: true };
+                        }
+                    } else {
+                        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                        cell.numFmt = '#,##0.00';
+                        cell.font = { name: 'Courier New', size: 10 };
+
+                        if (i === 2) {
+                            cell.font = { name: 'Courier New', size: 10, color: { argb: opBal >= 0 ? 'FF065F46' : 'FFB91C1C' }, bold: true };
+                        } else if (i === 3) {
+                            if (dayIn > 0) cell.font = { name: 'Courier New', size: 10, color: { argb: 'FF16A34A' }, bold: true };
+                            else cell.value = ''; // clean look for empty
+                        } else if (i === 4) {
+                            if (dayOut > 0) cell.font = { name: 'Courier New', size: 10, color: { argb: 'FFDC2626' }, bold: true };
+                            else cell.value = '';
+                        } else if (i === 5) {
+                            cell.font = { name: 'Courier New', size: 10, color: { argb: clBal >= 0 ? 'FF047857' : 'FFB91C1C' }, bold: true };
+                        }
+                    }
+                }
+            });
+
+            const totalBalRowIndex = balanceSheet.rowCount + 1;
+            const totalBalRow = balanceSheet.addRow({
+                name: 'TOTAL GENERAL',
+                opening: { formula: `SUM(B5:B${totalBalRowIndex - 1})` },
+                in: { formula: `SUM(C5:C${totalBalRowIndex - 1})` },
+                out: { formula: `SUM(D5:D${totalBalRowIndex - 1})` },
+                closing: { formula: `SUM(E5:E${totalBalRowIndex - 1})` }
+            });
+            totalBalRow.height = 26;
+
+            for (let i = 1; i <= 5; i++) {
+                const cell = totalBalRow.getCell(i);
+                cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF1F2937' } };
+                cell.border = doubleBorder;
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+
+                if (i === 1) cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                else {
+                    cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                    cell.numFmt = '#,##0.00';
+                    cell.font = { name: 'Courier New', bold: true, size: 10, color: { argb: 'FF111827' } };
+                }
+            }
+
+            balanceSheet.views = [{ showGridLines: true }];
+
+            // ----------------------------------------------------
+            // FEUILLE 3 : JOURNAL DES OPÉRATIONS
+            // ----------------------------------------------------
+            const opsSheet = workbook.addWorksheet('Journal des Opérations');
+            opsSheet.columns = [
+                { width: 12 }, // A: Heure
+                { width: 45 }, // B: Description
+                { width: 22 }, // C: Catégorie
+                { width: 15 }, // D: Type
+                { width: 22 }, // E: Montant
+                { width: 22 }  // F: Moyen de Paiement
+            ];
+
+            opsSheet.addRow(['JOURNAL DES OPÉRATIONS DE LA JOURNÉE']);
+            opsSheet.mergeCells('A1:F1');
+            opsSheet.getRow(1).height = 32;
+            opsSheet.getCell('A1').font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF1F2937' } };
+            opsSheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            opsSheet.addRow([`Transactions du : ${format(new Date(selectedDate), 'dd/MM/yyyy')}`]);
+            opsSheet.mergeCells('A2:F2');
+            opsSheet.getRow(2).height = 20;
+            opsSheet.getCell('A2').font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF6B7280' } };
+            opsSheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            opsSheet.addRow([]); // Spacer
+
+            const opsHeaderRow = opsSheet.addRow(['Heure', 'Description', 'Catégorie', 'Type', 'Montant (MAD)', 'Mode de Paiement']);
+            opsHeaderRow.height = 26;
+            for (let i = 1; i <= 6; i++) {
+                const cell = opsHeaderRow.getCell(i);
+                cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } };
+                cell.alignment = { horizontal: i === 5 ? 'right' : (i === 2 ? 'left' : 'center'), vertical: 'middle' };
+                cell.border = cellBorder;
+            }
+
+            operations.forEach((op, index) => {
+                const displayTime = format(new Date(op.created_at), 'HH:mm');
+                let desc = op.description || '';
+                if (op.daily_cash_entities) desc += ` [${op.daily_cash_entities.name}]`;
+                
+                const catStr = op.category === 'ENTITY_TRANSACTION' ? 'Société' :
+                               op.category === 'EXPENSE_FUND' ? 'Caisse Dépense' : 'Autre';
+                
+                opsSheet.addRow([
+                    displayTime,
+                    desc,
+                    catStr,
+                    op.type === 'IN' ? 'Recette' : 'Dépense',
+                    Number(op.amount),
+                    op.payment_method ? op.payment_method.replace(/_/g, ' ').toLowerCase() : ''
+                ]);
+
+                const isEven = index % 2 === 0;
+                const rowBg = isEven ? 'FFFFFFFF' : 'FFF9FAFB';
+                const row = opsSheet.getRow(5 + index);
+                row.height = 22;
+
+                for (let i = 1; i <= 6; i++) {
+                    const cell = row.getCell(i);
+                    cell.border = cellBorder;
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                    cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF374151' } };
+
+                    if (i === 1) {
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.font = { name: 'Courier New', size: 10 };
+                    } else if (i === 2) {
+                        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                        cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF111827' } };
+                    } else if (i === 3 || i === 6) {
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    } else if (i === 4) {
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: op.type === 'IN' ? 'FF15803D' : 'FFB91C1C' } };
+                    } else if (i === 5) {
+                        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                        cell.numFmt = '#,##0.00';
+                        cell.font = { name: 'Courier New', size: 10, bold: true, color: { argb: op.type === 'IN' ? 'FF16A34A' : 'FFDC2626' } };
+                    }
+                }
+            });
+
+            opsSheet.views = [{ showGridLines: true }];
+
+            // ----------------------------------------------------
+            // FEUILLE 4 : HISTORIQUE SOCIÉTÉS
+            // ----------------------------------------------------
+            const histSheet = workbook.addWorksheet('Historique Sociétés');
+            histSheet.columns = [
+                { width: 22 }, // A: Date & Heure
+                { width: 45 }, // B: Description
+                { width: 16 }, // C: Type
+                { width: 24 }  // D: Montant (MAD)
+            ];
+
+            histSheet.addRow(['HISTORIQUE COMPLET DE CHAQUE SOCIÉTÉ']);
+            histSheet.mergeCells('A1:D1');
+            histSheet.getRow(1).height = 32;
+            histSheet.getCell('A1').font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF1F2937' } };
+            histSheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            histSheet.addRow([`Données globales de l'historique de caisse`]);
+            histSheet.mergeCells('A2:D2');
+            histSheet.getRow(2).height = 20;
+            histSheet.getCell('A2').font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF6B7280' } };
+            histSheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            histSheet.addRow([]); // Spacer
+            let hCurrentRow = 4;
+
+            // Loop through all active / inactive entities to create detailed blocks
+            const exportEntities = allEntities.filter(e => showInactive || e.is_active !== false);
+
+            exportEntities.forEach((ent) => {
+                const entityOps = allOperations.filter(op => op.entity_id === ent.id);
+                const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+                const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+                const netBalance = inAmount - outAmount;
+
+                // Title row for Entity
+                histSheet.addRow([ent.name.toUpperCase()]);
+                histSheet.mergeCells(`A${hCurrentRow}:D${hCurrentRow}`);
+                const entTitleRow = histSheet.getRow(hCurrentRow);
+                entTitleRow.height = 26;
+                const entTitleCell = entTitleRow.getCell(1);
+                entTitleCell.font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FF1F2937' } };
+                entTitleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }; // Light gray header
+                entTitleCell.alignment = { horizontal: 'left', vertical: 'middle' };
+                entTitleCell.border = { bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } } };
+                hCurrentRow++;
+
+                // Cards Label Row
+                histSheet.addRow(['Total Entrées', 'Total Sorties', 'Solde Global', '']);
+                histSheet.mergeCells(`C${hCurrentRow}:D${hCurrentRow}`);
+                const cLabelRow = histSheet.getRow(hCurrentRow);
+                cLabelRow.height = 20;
+
+                cLabelRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                cLabelRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: 'FF166534' } };
+                cLabelRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+                cLabelRow.getCell(1).border = thinBorder;
+
+                cLabelRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                cLabelRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: 'FF991B1B' } };
+                cLabelRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+                cLabelRow.getCell(2).border = thinBorder;
+
+                const entBalBg = netBalance >= 0 ? 'FFE0E7FF' : 'FFFFF7ED';
+                const entBalText = netBalance >= 0 ? 'FF3730A3' : 'FFC2410C';
+                cLabelRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
+                cLabelRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: entBalText } };
+                cLabelRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+                cLabelRow.getCell(3).border = thinBorder;
+                cLabelRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
+                cLabelRow.getCell(4).border = thinBorder;
+                hCurrentRow++;
+
+                // Cards Value Row
+                histSheet.addRow([inAmount, outAmount, netBalance, '']);
+                histSheet.mergeCells(`C${hCurrentRow}:D${hCurrentRow}`);
+                const cValueRow = histSheet.getRow(hCurrentRow);
+                cValueRow.height = 26;
+
+                cValueRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                cValueRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FF15803D' } };
+                cValueRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+                cValueRow.getCell(1).border = thinBorder;
+                cValueRow.getCell(1).numFmt = '+#,##0.00 "MAD"';
+
+                cValueRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                cValueRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FFB91C1C' } };
+                cValueRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+                cValueRow.getCell(2).border = thinBorder;
+                cValueRow.getCell(2).numFmt = '-#,##0.00 "MAD"';
+
+                const entBalValueText = netBalance >= 0 ? 'FF312E81' : 'FF7C2D12';
+                cValueRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
+                cValueRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: entBalValueText } };
+                cValueRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+                cValueRow.getCell(3).border = thinBorder;
+                cValueRow.getCell(3).numFmt = '#,##0.00 "MAD"';
+                cValueRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
+                cValueRow.getCell(4).border = thinBorder;
+                hCurrentRow++;
+
+                histSheet.addRow([]); // Spacer
+                hCurrentRow++;
+
+                // Table Header for Entity details
+                const tableHead = histSheet.addRow(['Date & Heure', 'Description', 'Type', 'Montant (MAD)']);
+                tableHead.height = 22;
+                for (let i = 1; i <= 4; i++) {
+                    const cell = tableHead.getCell(i);
+                    cell.font = { name: 'Segoe UI', bold: true, size: 9.5, color: { argb: 'FFFFFFFF' } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } };
+                    cell.alignment = { horizontal: i === 4 ? 'right' : (i === 2 ? 'left' : 'center'), vertical: 'middle' };
+                    cell.border = cellBorder;
+                }
+                hCurrentRow++;
+
+                // Transaction Rows
+                if (entityOps.length === 0) {
+                    histSheet.addRow(['Aucune transaction enregistrée dans l\'historique', '', '', '']);
+                    histSheet.mergeCells(`A${hCurrentRow}:D${hCurrentRow}`);
+                    const emptyRow = histSheet.getRow(hCurrentRow);
+                    emptyRow.height = 22;
+                    for (let i = 1; i <= 4; i++) {
+                        const cell = emptyRow.getCell(i);
+                        cell.font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF9CA3AF' } };
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell.border = cellBorder;
+                    }
+                    hCurrentRow++;
+                } else {
+                    entityOps.forEach((op, index) => {
+                        const formattedDate = `${format(new Date(op.date), 'dd/MM/yyyy')} ${format(new Date(op.created_at), 'HH:mm')}`;
+                        histSheet.addRow([
+                            formattedDate,
+                            op.description || '',
+                            op.type === 'IN' ? 'Recette' : 'Dépense',
+                            Number(op.amount)
+                        ]);
+
+                        const isEven = index % 2 === 0;
+                        const rowBg = isEven ? 'FFFFFFFF' : 'FFF9FAFB';
+                        const row = histSheet.getRow(hCurrentRow);
+                        row.height = 20;
+
+                        for (let i = 1; i <= 4; i++) {
+                            const cell = row.getCell(i);
+                            cell.border = cellBorder;
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                            cell.font = { name: 'Segoe UI', size: 9.5, color: { argb: 'FF374151' } };
+
+                            if (i === 1) {
+                                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                                cell.font = { name: 'Courier New', size: 9.5, color: { argb: 'FF6B7280' } };
+                            } else if (i === 2) {
+                                cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                                cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FF111827' } };
+                            } else if (i === 3) {
+                                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: op.type === 'IN' ? 'FF15803D' : 'FFB91C1C' } };
+                            } else if (i === 4) {
+                                cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                                cell.numFmt = '#,##0.00';
+                                cell.font = { name: 'Courier New', size: 9.5, bold: true, color: { argb: op.type === 'IN' ? 'FF16A34A' : 'FFDC2626' } };
+                            }
+                        }
+                        hCurrentRow++;
+                    });
+                }
+
+                // Add Spacers at the end of each company block (3 empty rows)
+                histSheet.addRow([]);
+                histSheet.addRow([]);
+                histSheet.addRow([]);
+                hCurrentRow += 3;
+            });
+
+            histSheet.views = [{ showGridLines: true }];
+
+            // ----------------------------------------------------
+            // COMPILING & DOWNLOADING THE WORKBOOK
+            // ----------------------------------------------------
+            const buffer = await workbook.xlsx.writeBuffer();
+            const fileName = `Rapport_Caisse_${format(new Date(selectedDate), 'dd-MM-yyyy')}.xlsx`;
+
+            if (Capacitor.isNativePlatform()) {
+                const base64Data = btoa(
+                    new Uint8Array(buffer)
+                        .reduce((data, byte) => data + String.fromCharCode(byte), '')
+                );
+                
+                const savedFile = await Filesystem.writeFile({
+                    path: fileName,
+                    data: base64Data,
+                    directory: Directory.Cache,
+                });
+
+                await Share.share({
+                    title: `Rapport de Caisse ${format(new Date(selectedDate), 'dd/MM/yyyy')}`,
+                    text: `Rapport de caisse et historiques : ${fileName}`,
+                    url: savedFile.uri,
+                    dialogTitle: 'Partager ou enregistrer le rapport',
+                });
+            } else {
+                // Web download
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }
+        } catch (error) {
+            console.error('Error exporting cashflow Excel:', error);
+            alert("Erreur lors de l'exportation du CashFlow");
+        } finally {
+            setIsExportingCashFlow(false);
+        }
+    };
 
     const handleBackupData = async () => {
         setIsBackingUp(true);
@@ -353,7 +1345,7 @@ export default function DailyCashTracking() {
                 .order('name');
             if (entError) throw entError;
 
-            // 2. Fetch all operations from Supabase (using paginated fetch to bypass default 1000-row limit)
+            // 2. Fetch all operations from Supabase
             const allOperations = await fetchAllOperations();
 
             // 3. Lazy-load ExcelJS
@@ -546,8 +1538,10 @@ export default function DailyCashTracking() {
 
     const [entityOpeningBalances, setEntityOpeningBalances] = useState({});
     const [entityClosingBalances, setEntityClosingBalances] = useState({});
+    // eslint-disable-next-line no-unused-vars
     const [expenseOpeningBalance, setExpenseOpeningBalance] = useState(0);
     const [expenseClosingBalance, setExpenseClosingBalance] = useState(0);
+    // eslint-disable-next-line no-unused-vars
     const [previousBalance, setPreviousBalance] = useState(0);
 
     // Delete Confirmation State
@@ -758,6 +1752,53 @@ export default function DailyCashTracking() {
         } catch (error) {
             console.error('Error adding transaction:', error);
             alert('Erreur lors de l\'ajout de la transaction');
+        }
+    };
+
+    const handleOpenEditOperationModal = (op) => {
+        setEditingOperation(op);
+        setCategory(op.category);
+        setTransactionType(op.type);
+        setPaymentMethod(op.payment_method || 'ESPECES');
+        setAmount(op.amount.toString());
+        setDescription(op.description || '');
+        setSelectedEntity(op.entity_id || '');
+    };
+
+    const handleCloseEditModal = () => {
+        setEditingOperation(null);
+        setAmount('');
+        setDescription('');
+        setPaymentMethod('ESPECES');
+        setSelectedEntity('');
+        setCategory('ENTITY_TRANSACTION');
+    };
+
+    const handleSaveEditTransaction = async (e) => {
+        e.preventDefault();
+        if (!editingOperation) return;
+        try {
+            const updatedOp = {
+                type: transactionType,
+                amount: parseFloat(amount),
+                description,
+                category,
+                payment_method: paymentMethod,
+                entity_id: category === 'ENTITY_TRANSACTION' ? selectedEntity : null
+            };
+
+            const { error } = await supabase
+                .from('daily_cash_operations')
+                .update(updatedOp)
+                .eq('id', editingOperation.id);
+
+            if (error) throw error;
+
+            handleCloseEditModal();
+            fetchData();
+        } catch (error) {
+            console.error('Error updating transaction:', error);
+            alert('Erreur lors de la modification de la transaction');
         }
     };
 
@@ -978,6 +2019,33 @@ export default function DailyCashTracking() {
         .filter(op => op.type === 'IN')
         .reduce((sum, op) => sum + Number(op.amount), 0);
 
+    // Filtered entities for "Solde des Sociétés"
+    const visibleEntities = entities.filter(entity => showInactive || entity.is_active !== false);
+    
+    const entityTotalCount = visibleEntities.length;
+    const entityPositiveCount = visibleEntities.filter(e => (entityClosingBalances[e.id] || 0) > 0.01).length;
+    const entityNegativeCount = visibleEntities.filter(e => (entityClosingBalances[e.id] || 0) < -0.01).length;
+    const entityZeroCount = visibleEntities.filter(e => Math.abs(entityClosingBalances[e.id] || 0) <= 0.01).length;
+
+    const normalizeString = (str) => {
+        return str ? str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : "";
+    };
+
+    const filteredEntities = visibleEntities.filter(entity => {
+        if (entitySearchQuery.trim() !== '') {
+            const normalizedSearch = normalizeString(entitySearchQuery);
+            const normalizedName = normalizeString(entity.name);
+            return normalizedName.includes(normalizedSearch);
+        }
+        return true;
+    }).filter(entity => {
+        const closingBalance = entityClosingBalances[entity.id] || 0;
+        if (entityBalanceFilter === 'positive') return closingBalance > 0.01;
+        if (entityBalanceFilter === 'negative') return closingBalance < -0.01;
+        if (entityBalanceFilter === 'zero') return Math.abs(closingBalance) <= 0.01;
+        return true;
+    });
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1077,9 +2145,9 @@ export default function DailyCashTracking() {
                     <>
                         {activeTab === 'entities' && (
                             <div className="space-y-6">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                     <h3 className="font-bold text-xl text-gray-800">Solde des Sociétés</h3>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex flex-wrap items-center gap-4">
                                         <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                                             <input
                                                 type="checkbox"
@@ -1094,6 +2162,69 @@ export default function DailyCashTracking() {
                                         </span>
                                     </div>
                                 </div>
+
+                                {/* Controls Bar */}
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+                                    {/* Search Bar */}
+                                    <div className="relative flex-1 max-w-md w-full">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                        <input
+                                            type="text"
+                                            placeholder="Rechercher une société..."
+                                            className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 outline-none transition-all placeholder:text-gray-400 font-medium"
+                                            value={entitySearchQuery}
+                                            onChange={(e) => setEntitySearchQuery(e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* Balance Filters */}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            onClick={() => setEntityBalanceFilter('all')}
+                                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 ${
+                                                entityBalanceFilter === 'all'
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-100'
+                                                    : 'bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-gray-200'
+                                            }`}
+                                        >
+                                            Tous ({entityTotalCount})
+                                        </button>
+                                        <button
+                                            onClick={() => setEntityBalanceFilter('positive')}
+                                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
+                                                entityBalanceFilter === 'positive'
+                                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-100'
+                                                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100/70 border-emerald-100'
+                                            }`}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full ${entityBalanceFilter === 'positive' ? 'bg-white' : 'bg-emerald-500'}`}></span>
+                                            Positif ({entityPositiveCount})
+                                        </button>
+                                        <button
+                                            onClick={() => setEntityBalanceFilter('negative')}
+                                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
+                                                entityBalanceFilter === 'negative'
+                                                    ? 'bg-rose-600 text-white border-rose-600 shadow-sm shadow-rose-100'
+                                                    : 'bg-rose-50 text-rose-700 hover:bg-rose-100/70 border-rose-100'
+                                            }`}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full ${entityBalanceFilter === 'negative' ? 'bg-white' : 'bg-rose-500'}`}></span>
+                                            Négatif ({entityNegativeCount})
+                                        </button>
+                                        <button
+                                            onClick={() => setEntityBalanceFilter('zero')}
+                                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
+                                                entityBalanceFilter === 'zero'
+                                                    ? 'bg-gray-600 text-white border-gray-600 shadow-sm shadow-gray-100'
+                                                    : 'bg-white text-gray-600 hover:bg-gray-50 border-gray-200'
+                                            }`}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full ${entityBalanceFilter === 'zero' ? 'bg-white' : 'bg-gray-400'}`}></span>
+                                            Nul ({entityZeroCount})
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-sm bg-white">
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left border-collapse">
@@ -1108,92 +2239,102 @@ export default function DailyCashTracking() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-50">
-                                                {entities
-                                                    .filter(entity => showInactive || entity.is_active !== false)
-                                                    .map(entity => {
+                                                {filteredEntities.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="6" className="text-center py-12 text-gray-500 bg-gray-50/10">
+                                                            <div className="flex flex-col items-center justify-center gap-2">
+                                                                <Building2 className="text-gray-300" size={36} />
+                                                                <p className="font-medium text-gray-600">Aucune société trouvée</p>
+                                                                <p className="text-xs text-gray-400">Essayez de modifier votre recherche ou vos filtres de solde</p>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredEntities.map(entity => {
                                                         const movement = getDailyEntityMovement(entity.id);
                                                         const openingBalance = entityOpeningBalances[entity.id] || 0;
                                                         const closingBalance = entityClosingBalances[entity.id] || 0;
 
-                                                    return (
-                                                        <tr 
-                                                            key={entity.id} 
-                                                            onClick={() => handleViewEntityHistory(entity)}
-                                                            className="group hover:bg-slate-50/60 cursor-pointer transition-colors"
-                                                        >
-                                                            <td className="px-6 py-4.5 whitespace-nowrap">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className={`p-2 rounded-xl group-hover:scale-110 transition-transform duration-200 ${entity.is_active !== false ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
-                                                                        <Building2 size={18} />
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className={`font-bold text-base ${entity.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through decoration-gray-300'}`} title={entity.name}>
-                                                                            {entity.name}
+                                                        return (
+                                                            <tr 
+                                                                key={entity.id} 
+                                                                onClick={() => handleViewEntityHistory(entity)}
+                                                                className="group hover:bg-slate-50/60 cursor-pointer transition-colors"
+                                                            >
+                                                                <td className="px-6 py-4.5 whitespace-nowrap">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`p-2 rounded-xl group-hover:scale-110 transition-transform duration-200 ${entity.is_active !== false ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
+                                                                            <Building2 size={18} />
                                                                         </div>
-                                                                        {entity.is_active === false && (
-                                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200 uppercase tracking-wider">
-                                                                                Inactive
-                                                                            </span>
-                                                                        )}
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className={`font-bold text-base ${entity.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through decoration-gray-300'}`} title={entity.name}>
+                                                                                {entity.name}
+                                                                            </div>
+                                                                            {entity.is_active === false && (
+                                                                                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200 uppercase tracking-wider">
+                                                                                    Inactive
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4.5 text-right whitespace-nowrap">
-                                                                <span className={`font-mono text-sm font-bold ${openingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                    {formatPrice(openingBalance)}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-6 py-4.5 text-right whitespace-nowrap">
-                                                                {movement.in > 0 ? (
-                                                                    <span className="font-mono text-sm font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-lg">
-                                                                        +{formatPrice(movement.in)}
+                                                                </td>
+                                                                <td className="px-6 py-4.5 text-right whitespace-nowrap">
+                                                                    <span className={`font-mono text-sm font-bold ${openingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                        {formatPrice(openingBalance)}
                                                                     </span>
-                                                                ) : (
-                                                                    <span className="font-mono text-sm text-gray-400">—</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4.5 text-right whitespace-nowrap">
-                                                                {movement.out > 0 ? (
-                                                                    <span className="font-mono text-sm font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg">
-                                                                        -{formatPrice(movement.out)}
+                                                                </td>
+                                                                <td className="px-6 py-4.5 text-right whitespace-nowrap">
+                                                                    {movement.in > 0 ? (
+                                                                        <span className="font-mono text-sm font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-lg">
+                                                                            +{formatPrice(movement.in)}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="font-mono text-sm text-gray-400">—</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-6 py-4.5 text-right whitespace-nowrap">
+                                                                    {movement.out > 0 ? (
+                                                                        <span className="font-mono text-sm font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg">
+                                                                            -{formatPrice(movement.out)}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="font-mono text-sm text-gray-400">—</span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-6 py-4.5 text-right whitespace-nowrap">
+                                                                    <span className={`font-mono text-base font-black ${closingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                        {formatPrice(closingBalance)}
                                                                     </span>
-                                                                ) : (
-                                                                    <span className="font-mono text-sm text-gray-400">—</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4.5 text-right whitespace-nowrap">
-                                                                <span className={`font-mono text-base font-black ${closingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                    {formatPrice(closingBalance)}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-6 py-4.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                                                <div className="flex items-center justify-center gap-1">
-                                                                    <button
-                                                                        onClick={() => handleViewEntityHistory(entity)}
-                                                                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
-                                                                        title="Voir l'historique"
-                                                                    >
-                                                                        <Table size={18} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => handleOpenEditEntityModal(e, entity)}
-                                                                        className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors"
-                                                                        title="Modifier la société"
-                                                                    >
-                                                                        <Pencil size={18} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => handleDeleteEntity(e, entity.id)}
-                                                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-                                                                        title="Supprimer la société"
-                                                                    >
-                                                                        <Trash2 size={18} />
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
+                                                                </td>
+                                                                <td className="px-6 py-4.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                                                    <div className="flex items-center justify-center gap-1">
+                                                                        <button
+                                                                            onClick={() => handleViewEntityHistory(entity)}
+                                                                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
+                                                                            title="Voir l'historique"
+                                                                        >
+                                                                            <Table size={18} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={(e) => handleOpenEditEntityModal(e, entity)}
+                                                                            className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors"
+                                                                            title="Modifier la société"
+                                                                        >
+                                                                            <Pencil size={18} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={(e) => handleDeleteEntity(e, entity.id)}
+                                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                                                            title="Supprimer la société"
+                                                                        >
+                                                                            <Trash2 size={18} />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                )}
                                             </tbody>
                                         </table>
                                     </div>
@@ -1286,6 +2427,7 @@ export default function DailyCashTracking() {
                                                         .sort((a, b) => b[0].localeCompare(a[0]))
                                                         .map(([monthKey, ops]) => {
                                                             const isExpanded = expandedMonths.has(monthKey);
+                                                            // eslint-disable-next-line no-unused-vars
                                                             const monthTotal = ops.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
                                                             const opsCount = ops.length;
                                                             const dateObj = new Date(monthKey + '-01');
@@ -1477,13 +2619,22 @@ export default function DailyCashTracking() {
                                                             {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
                                                         </td>
                                                         <td className="p-3 text-center">
-                                                            <button
-                                                                onClick={() => handleDeleteOperation(op.id)}
-                                                                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                                                                title="Supprimer"
-                                                            >
-                                                                <Trash2 size={18} />
-                                                            </button>
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <button
+                                                                    onClick={() => handleOpenEditOperationModal(op)}
+                                                                    className="p-1 text-gray-400 hover:text-indigo-600 transition-colors"
+                                                                    title="Modifier"
+                                                                >
+                                                                    <Pencil size={18} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteOperation(op.id)}
+                                                                    className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                                                    title="Supprimer"
+                                                                >
+                                                                    <Trash2 size={18} />
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))
@@ -1502,8 +2653,22 @@ export default function DailyCashTracking() {
                             <div className="space-y-8">
                                 <div className="flex items-center justify-between">
                                     <h3 className="font-bold text-2xl text-gray-800">CashFlow Journalier</h3>
-                                    <div className="px-4 py-1.5 bg-gray-100 rounded-full text-sm font-medium text-gray-600">
-                                        {format(new Date(selectedDate), 'dd MMMM yyyy')}
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={handleExportCashFlowExcel}
+                                            disabled={isExportingCashFlow}
+                                            className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2"
+                                        >
+                                            {isExportingCashFlow ? (
+                                                <Loader2 size={16} className="animate-spin" />
+                                            ) : (
+                                                <FileSpreadsheet size={16} />
+                                            )}
+                                            Exporter Excel
+                                        </button>
+                                        <div className="px-4 py-1.5 bg-gray-100 rounded-full text-sm font-medium text-gray-600">
+                                            {format(new Date(selectedDate), 'dd MMMM yyyy', { locale: fr })}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -2259,6 +3424,226 @@ export default function DailyCashTracking() {
                 )
             }
 
+            {/* Edit Transaction Modal */}
+            {
+                editingOperation && createPortal(
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={handleCloseEditModal}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold text-gray-900">Modifier l'Opération</h3>
+                                <button
+                                    onClick={handleCloseEditModal}
+                                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                                >
+                                    <X size={20} className="text-gray-500" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleSaveEditTransaction} className="space-y-5">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
+                                    <div className="relative">
+                                        <select
+                                            value={
+                                                category === 'ENTITY_TRANSACTION' ? 'ENTITY_TRANSACTION' :
+                                                    category === 'EXPENSE_FUND' ? 'EXPENSE_FUND' :
+                                                        description === 'Comptage Matin' ? 'Comptage Matin' :
+                                                            description === 'Reste J-1' ? 'Reste J-1' :
+                                                                description === 'Recette à 8H' ? 'Recette à 8H' :
+                                                                    description === 'Autre Entrée' && transactionType === 'IN' ? 'Autre Entrée' :
+                                                                        description === 'Autre Sortie' && transactionType === 'OUT' ? 'Autre Sortie' :
+                                                                            category
+                                            }
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setSelectedEntity('');
+                                                setDescription('');
+
+                                                if (val === 'ENTITY_TRANSACTION') {
+                                                    setCategory('ENTITY_TRANSACTION');
+                                                    setTransactionType('IN');
+                                                } else if (val === 'EXPENSE_FUND') {
+                                                    setCategory('EXPENSE_FUND');
+                                                    setTransactionType('OUT');
+                                                } else if (val === 'Comptage Matin') {
+                                                    setCategory('OTHER');
+                                                    setDescription('Comptage Matin');
+                                                    setTransactionType('OUT');
+                                                } else if (val === 'Reste J-1') {
+                                                    setCategory('OTHER');
+                                                    setDescription('Reste J-1');
+                                                    setTransactionType('IN');
+                                                } else if (val === 'Recette à 8H') {
+                                                    setCategory('OTHER');
+                                                    setDescription('Recette à 8H');
+                                                    setTransactionType('IN');
+                                                } else if (val === 'Autre Entrée') {
+                                                    setCategory('OTHER');
+                                                    setDescription('Autre Entrée');
+                                                    setTransactionType('IN');
+                                                } else if (val === 'Autre Sortie') {
+                                                    setCategory('OTHER');
+                                                    setDescription('Autre Sortie');
+                                                    setTransactionType('OUT');
+                                                } else {
+                                                    setCategory(val);
+                                                }
+                                            }}
+                                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black focus:border-black outline-none appearance-none bg-gray-50"
+                                        >
+                                            <option value="" disabled>Sélectionner le type</option>
+                                            <optgroup label="Opérations Courantes">
+                                                <option value="Comptage Matin">Comptage Matin</option>
+                                                <option value="Reste J-1">Reste J-1</option>
+                                                <option value="Recette à 8H">Recette à 8H</option>
+                                            </optgroup>
+                                            <optgroup label="Autres">
+                                                <option value="Autre Entrée">Autre Entrée</option>
+                                                <option value="Autre Sortie">Autre Sortie</option>
+                                            </optgroup>
+                                            <optgroup label="Spécifique">
+                                                <option value="ENTITY_TRANSACTION">Opération Société</option>
+                                                <option value="EXPENSE_FUND">Caisse Dépense</option>
+                                            </optgroup>
+                                        </select>
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                                            <ArrowDownLeft size={16} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {category === 'ENTITY_TRANSACTION' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Société</label>
+                                        <select
+                                            value={selectedEntity}
+                                            onChange={(e) => setSelectedEntity(e.target.value)}
+                                            required
+                                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none bg-gray-50"
+                                        >
+                                            <option value="">Sélectionner une société</option>
+                                            {entities.filter(e => e.is_active !== false || e.id === selectedEntity).map(e => (
+                                                <option key={e.id} value={e.id}>{e.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {(category === 'ENTITY_TRANSACTION' || category === 'EXPENSE_FUND') && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                                        <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+                                            <button
+                                                type="button"
+                                                onClick={() => setTransactionType('IN')}
+                                                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${transactionType === 'IN'
+                                                    ? 'bg-white text-green-700 shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-700'
+                                                    }`}
+                                            >
+                                                Recette
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setTransactionType('OUT')}
+                                                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${transactionType === 'OUT'
+                                                    ? 'bg-white text-red-700 shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-700'
+                                                    }`}
+                                            >
+                                                Dépense
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Mode de Paiement</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                            { id: 'ESPECES', label: 'Espèces', icon: Banknote },
+                                            { id: 'CHEQUE', label: 'Chèque', icon: Landmark },
+                                            { id: 'VIREMENT', label: 'Virement', icon: ArrowUpRight },
+                                            { id: 'CARTE_BANCAIRE', label: 'Carte Bancaire', icon: CreditCard },
+                                        ].map(method => (
+                                            <button
+                                                key={method.id}
+                                                type="button"
+                                                onClick={() => setPaymentMethod(method.id)}
+                                                className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${paymentMethod === method.id
+                                                    ? 'bg-black text-white border-black shadow-md'
+                                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                    }`}
+                                            >
+                                                <method.icon size={18} />
+                                                <span className="text-sm font-medium">{method.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Montant</label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            required
+                                            value={amount}
+                                            onChange={(e) => setAmount(e.target.value)}
+                                            className="w-full p-3 pl-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none font-mono text-lg"
+                                            placeholder="0.00"
+                                        />
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">MAD</div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                    <input
+                                        type="text"
+                                        list="description-suggestions"
+                                        value={description}
+                                        onChange={(e) => setDescription(e.target.value)}
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none"
+                                        placeholder="Libellé de l'opération"
+                                    />
+                                    <datalist id="description-suggestions">
+                                        <option value="Achat Materiel" />
+                                        <option value="Transport" />
+                                        <option value="Repas" />
+                                        <option value="Maintenance" />
+                                        <option value="Fourniture Bureau" />
+                                        <option value="Achat Ciment" />
+                                        <option value="Technicien" />
+                                        <option value="Frais de Géstion" />
+                                        <option value="Avance Salaire" />
+                                        <option value="Remboursement" />
+                                    </datalist>
+                                </div>
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleCloseEditModal}
+                                        className="flex-1 py-3 text-gray-600 hover:bg-gray-50 rounded-xl transition-colors font-medium"
+                                    >
+                                        Annuler
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="flex-1 py-3 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors font-medium shadow-lg shadow-gray-200"
+                                    >
+                                        Enregistrer les modifications
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>,
+                    document.body
+                )
+            }
+
             {/* Settlement / Reimbursement Modal */}
             {
                 showSettlementModal && createPortal(
@@ -2642,6 +4027,18 @@ export default function DailyCashTracking() {
                                             >
                                                 <FileDown size={16} />
                                                 Exporter PDF
+                                            </button>
+                                            <button
+                                                onClick={handleExportExcel}
+                                                disabled={isExportingHistoryExcel}
+                                                className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2"
+                                            >
+                                                {isExportingHistoryExcel ? (
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                ) : (
+                                                    <FileSpreadsheet size={16} />
+                                                )}
+                                                Exporter Excel
                                             </button>
                                         </>
                                     )}
