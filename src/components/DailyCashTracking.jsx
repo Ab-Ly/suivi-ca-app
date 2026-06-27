@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet, CloudUpload } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { formatPrice } from '../utils/formatters';
@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { useToast } from './ui/Toast';
 
 const fetchAllOperations = async () => {
     let allData = [];
@@ -35,6 +36,8 @@ const fetchAllOperations = async () => {
 };
 
 export default function DailyCashTracking() {
+    const { success: showSuccess, error: showError } = useToast();
+    const [isSyncingToDrive, setIsSyncingToDrive] = useState(false);
     const [activeTab, setActiveTab] = useState('entities'); // entities, expense, operations, reconciliation
     const [entities, setEntities] = useState([]);
     const [operations, setOperations] = useState([]);
@@ -76,6 +79,7 @@ export default function DailyCashTracking() {
     // Entity search and balance filter states
     const [entitySearchQuery, setEntitySearchQuery] = useState('');
     const [entityBalanceFilter, setEntityBalanceFilter] = useState('all'); // all, positive, negative, zero
+    const [exportBalanceFilter, setExportBalanceFilter] = useState('all'); // all, positive, negative, null
     const [isExportingHistoryExcel, setIsExportingHistoryExcel] = useState(false);
     const [editingOperation, setEditingOperation] = useState(null);
     const [isExportingCashFlow, setIsExportingCashFlow] = useState(false);
@@ -560,15 +564,21 @@ export default function DailyCashTracking() {
         }
     };
 
-    const handleExportCashFlowExcel = async () => {
-        setIsExportingCashFlow(true);
-        try {
+    const generateCashFlowWorkbook = async () => {
             // 1. Fetch all entities and all operations from Supabase
-            const { data: allEntities, error: entError } = await supabase
+            const { data: rawEntities, error: entError } = await supabase
                 .from('daily_cash_entities')
                 .select('*')
                 .order('name');
             if (entError) throw entError;
+
+            const allEntities = rawEntities.filter(ent => {
+                const balance = entityClosingBalances[ent.id] || 0;
+                if (exportBalanceFilter === 'positive') return balance > 0.01;
+                if (exportBalanceFilter === 'negative') return balance < -0.01;
+                if (exportBalanceFilter === 'null') return Math.abs(balance) <= 0.01;
+                return true;
+            });
 
             const allOperations = await fetchAllOperations();
 
@@ -609,7 +619,9 @@ export default function DailyCashTracking() {
             if (expenseClosingBalance > 0) debitBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: expenseClosingBalance, isBalance: true, isExpense: true });
             
             Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
-                if (val > 0) debitBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: val, isBalance: true, entityId });
+                const ent = allEntities.find(e => e.id === entityId);
+                if (!ent) return;
+                if (val > 0) debitBalances.push({ name: `SOLDE ${ent.name}`, amount: val, isBalance: true, entityId });
             });
             debitItems.push(...debitBalances);
 
@@ -619,7 +631,9 @@ export default function DailyCashTracking() {
             if (expenseClosingBalance < 0) creditBalances.push({ name: 'SOLDE CAISSE DÉPENSE', amount: Math.abs(expenseClosingBalance), isBalance: true, isExpense: true });
             
             Object.entries(entityClosingBalances).forEach(([entityId, val]) => {
-                if (val < 0) creditBalances.push({ name: `SOLDE ${entities.find(e => e.id === entityId)?.name || 'Inconnu'}`, amount: Math.abs(val), isBalance: true, entityId });
+                const ent = allEntities.find(e => e.id === entityId);
+                if (!ent) return;
+                if (val < 0) creditBalances.push({ name: `SOLDE ${ent.name}`, amount: Math.abs(val), isBalance: true, entityId });
             });
             creditItems.push(...creditBalances);
 
@@ -847,7 +861,7 @@ export default function DailyCashTracking() {
             }
 
             // TOTAL Row
-            flowSheet.addRow(['TOTAL', totalDebit, totalCredit, 'TOTAL']);
+            flowSheet.addRow(['TOTAL', { formula: `SUM(B6:B${currentRow - 1})` }, { formula: `SUM(C6:C${currentRow - 1})` }, 'TOTAL']);
             const totalRow = flowSheet.getRow(currentRow);
             totalRow.height = 26;
 
@@ -901,7 +915,7 @@ export default function DailyCashTracking() {
                     cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF6B7280' } };
                     cell.alignment = { horizontal: 'left', vertical: 'middle' };
                 } else if (i === 2) {
-                    cell.value = ecart;
+                    cell.value = { formula: `B${currentRow - 1}-C${currentRow - 1}` };
                     cell.numFmt = '#,##0.00 "MAD"';
                     cell.font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: ecartText } };
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ecartBg } };
@@ -965,7 +979,7 @@ export default function DailyCashTracking() {
                     opening: opBal,
                     in: dayIn,
                     out: dayOut,
-                    closing: clBal
+                    closing: { formula: `B${startRowBal + index}+C${startRowBal + index}-D${startRowBal + index}` }
                 });
 
                 const rIndex = startRowBal + index;
@@ -992,10 +1006,10 @@ export default function DailyCashTracking() {
                             cell.font = { name: 'Courier New', size: 10, color: { argb: opBal >= 0 ? 'FF065F46' : 'FFB91C1C' }, bold: true };
                         } else if (i === 3) {
                             if (dayIn > 0) cell.font = { name: 'Courier New', size: 10, color: { argb: 'FF16A34A' }, bold: true };
-                            else cell.value = ''; // clean look for empty
+                            else cell.value = null; // clean look for empty (true blank so Excel math works)
                         } else if (i === 4) {
                             if (dayOut > 0) cell.font = { name: 'Courier New', size: 10, color: { argb: 'FFDC2626' }, bold: true };
-                            else cell.value = '';
+                            else cell.value = null; // clean look for empty (true blank so Excel math works)
                         } else if (i === 5) {
                             cell.font = { name: 'Courier New', size: 10, color: { argb: clBal >= 0 ? 'FF047857' : 'FFB91C1C' }, bold: true };
                         }
@@ -1066,7 +1080,14 @@ export default function DailyCashTracking() {
                 cell.border = cellBorder;
             }
 
-            operations.forEach((op, index) => {
+            const filteredOps = operations.filter(op => {
+                if (op.entity_id) {
+                    return allEntities.some(ent => ent.id === op.entity_id);
+                }
+                return true;
+            });
+
+            filteredOps.forEach((op, index) => {
                 const displayTime = format(new Date(op.created_at), 'HH:mm');
                 let desc = op.description || '';
                 if (op.daily_cash_entities) desc += ` [${op.daily_cash_entities.name}]`;
@@ -1119,176 +1140,209 @@ export default function DailyCashTracking() {
             // FEUILLE 4 : HISTORIQUE SOCIÉTÉS
             // ----------------------------------------------------
             const histSheet = workbook.addWorksheet('Historique Sociétés');
-            histSheet.columns = [
-                { width: 22 }, // A: Date & Heure
-                { width: 45 }, // B: Description
-                { width: 16 }, // C: Type
-                { width: 24 }  // D: Montant (MAD)
-            ];
-
-            histSheet.addRow(['HISTORIQUE COMPLET DE CHAQUE SOCIÉTÉ']);
-            histSheet.mergeCells('A1:D1');
-            histSheet.getRow(1).height = 32;
-            histSheet.getCell('A1').font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF1F2937' } };
-            histSheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
-
-            histSheet.addRow([`Données globales de l'historique de caisse`]);
-            histSheet.mergeCells('A2:D2');
-            histSheet.getRow(2).height = 20;
-            histSheet.getCell('A2').font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF6B7280' } };
-            histSheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
-
-            histSheet.addRow([]); // Spacer
-            let hCurrentRow = 4;
+            
+            const getColLetter = (col) => {
+                let letter = '';
+                while (col > 0) {
+                    let temp = (col - 1) % 26;
+                    letter = String.fromCharCode(65 + temp) + letter;
+                    col = Math.floor((col - temp) / 26);
+                }
+                return letter;
+            };
 
             // Loop through all active / inactive entities to create detailed blocks
             const exportEntities = allEntities.filter(e => showInactive || e.is_active !== false);
 
-            exportEntities.forEach((ent) => {
+            // Configure columns dynamically: 4 columns for data + 1 empty spacer column per entity
+            const cols = [];
+            exportEntities.forEach(() => {
+                cols.push({ width: 22 }); // Date & Heure
+                cols.push({ width: 40 }); // Description
+                cols.push({ width: 12 }); // Type
+                cols.push({ width: 20 }); // Montant (MAD)
+                cols.push({ width: 4 });  // Spacer column
+            });
+            histSheet.columns = cols;
+
+            const totalCols = Math.max(4, exportEntities.length * 5 - 1);
+            const lastColLetter = getColLetter(totalCols);
+
+            // Header (Rows 1 & 2)
+            histSheet.getCell('A1').value = 'HISTORIQUE COMPLET DE CHAQUE SOCIÉTÉ';
+            histSheet.mergeCells(`A1:${lastColLetter}1`);
+            histSheet.getRow(1).height = 32;
+            histSheet.getCell('A1').font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF1F2937' } };
+            histSheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            histSheet.getCell('A2').value = `Données globales de l'historique de caisse`;
+            histSheet.mergeCells(`A2:${lastColLetter}2`);
+            histSheet.getRow(2).height = 20;
+            histSheet.getCell('A2').font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF6B7280' } };
+            histSheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            exportEntities.forEach((ent, entIdx) => {
+                const startCol = entIdx * 5 + 1;
+                const col1Letter = getColLetter(startCol);
+                const col2Letter = getColLetter(startCol + 1);
+                const col3Letter = getColLetter(startCol + 2);
+                const col4Letter = getColLetter(startCol + 3);
+
                 const entityOps = allOperations.filter(op => op.entity_id === ent.id);
                 const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
                 const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
                 const netBalance = inAmount - outAmount;
 
-                // Title row for Entity
-                histSheet.addRow([ent.name.toUpperCase()]);
-                histSheet.mergeCells(`A${hCurrentRow}:D${hCurrentRow}`);
-                const entTitleRow = histSheet.getRow(hCurrentRow);
-                entTitleRow.height = 26;
-                const entTitleCell = entTitleRow.getCell(1);
+                // Title row for Entity (Row 4)
+                histSheet.mergeCells(`${col1Letter}4:${col4Letter}4`);
+                const entTitleCell = histSheet.getCell(4, startCol);
+                entTitleCell.value = ent.name.toUpperCase();
                 entTitleCell.font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FF1F2937' } };
                 entTitleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }; // Light gray header
-                entTitleCell.alignment = { horizontal: 'left', vertical: 'middle' };
+                entTitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
                 entTitleCell.border = { bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } } };
-                hCurrentRow++;
+                histSheet.getRow(4).height = 26;
 
-                // Cards Label Row
-                histSheet.addRow(['Total Entrées', 'Total Sorties', 'Solde Global', '']);
-                histSheet.mergeCells(`C${hCurrentRow}:D${hCurrentRow}`);
-                const cLabelRow = histSheet.getRow(hCurrentRow);
-                cLabelRow.height = 20;
+                // Cards Label Row (Row 5)
+                histSheet.mergeCells(`${col3Letter}5:${col4Letter}5`);
 
-                cLabelRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
-                cLabelRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: 'FF166534' } };
-                cLabelRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-                cLabelRow.getCell(1).border = thinBorder;
+                const labelCell1 = histSheet.getCell(5, startCol);
+                labelCell1.value = 'Total Entrées';
+                labelCell1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                labelCell1.font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: 'FF166534' } };
+                labelCell1.alignment = { horizontal: 'center', vertical: 'middle' };
+                labelCell1.border = thinBorder;
 
-                cLabelRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
-                cLabelRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: 'FF991B1B' } };
-                cLabelRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
-                cLabelRow.getCell(2).border = thinBorder;
+                const labelCell2 = histSheet.getCell(5, startCol + 1);
+                labelCell2.value = 'Total Sorties';
+                labelCell2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                labelCell2.font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: 'FF991B1B' } };
+                labelCell2.alignment = { horizontal: 'center', vertical: 'middle' };
+                labelCell2.border = thinBorder;
 
                 const entBalBg = netBalance >= 0 ? 'FFE0E7FF' : 'FFFFF7ED';
                 const entBalText = netBalance >= 0 ? 'FF3730A3' : 'FFC2410C';
-                cLabelRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
-                cLabelRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: entBalText } };
-                cLabelRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
-                cLabelRow.getCell(3).border = thinBorder;
-                cLabelRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
-                cLabelRow.getCell(4).border = thinBorder;
-                hCurrentRow++;
 
-                // Cards Value Row
-                histSheet.addRow([inAmount, outAmount, netBalance, '']);
-                histSheet.mergeCells(`C${hCurrentRow}:D${hCurrentRow}`);
-                const cValueRow = histSheet.getRow(hCurrentRow);
-                cValueRow.height = 26;
+                const labelCell3 = histSheet.getCell(5, startCol + 2);
+                labelCell3.value = 'Solde Global';
+                labelCell3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
+                labelCell3.font = { name: 'Segoe UI', bold: true, size: 8.5, color: { argb: entBalText } };
+                labelCell3.alignment = { horizontal: 'center', vertical: 'middle' };
+                labelCell3.border = thinBorder;
 
-                cValueRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
-                cValueRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FF15803D' } };
-                cValueRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-                cValueRow.getCell(1).border = thinBorder;
-                cValueRow.getCell(1).numFmt = '+#,##0.00 "MAD"';
+                // Style the merged cell part too
+                const labelCell4 = histSheet.getCell(5, startCol + 3);
+                labelCell4.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
+                labelCell4.border = thinBorder;
 
-                cValueRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
-                cValueRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FFB91C1C' } };
-                cValueRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
-                cValueRow.getCell(2).border = thinBorder;
-                cValueRow.getCell(2).numFmt = '-#,##0.00 "MAD"';
+                histSheet.getRow(5).height = 20;
+
+                // Cards Value Row (Row 6)
+                histSheet.mergeCells(`${col3Letter}6:${col4Letter}6`);
+
+                const valCell1 = histSheet.getCell(6, startCol);
+                valCell1.value = inAmount;
+                valCell1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                valCell1.font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FF15803D' } };
+                valCell1.alignment = { horizontal: 'center', vertical: 'middle' };
+                valCell1.border = thinBorder;
+                valCell1.numFmt = '+#,##0.00 "MAD"';
+
+                const valCell2 = histSheet.getCell(6, startCol + 1);
+                valCell2.value = outAmount;
+                valCell2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                valCell2.font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FFB91C1C' } };
+                valCell2.alignment = { horizontal: 'center', vertical: 'middle' };
+                valCell2.border = thinBorder;
+                valCell2.numFmt = '-#,##0.00 "MAD"';
 
                 const entBalValueText = netBalance >= 0 ? 'FF312E81' : 'FF7C2D12';
-                cValueRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
-                cValueRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: entBalValueText } };
-                cValueRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
-                cValueRow.getCell(3).border = thinBorder;
-                cValueRow.getCell(3).numFmt = '#,##0.00 "MAD"';
-                cValueRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
-                cValueRow.getCell(4).border = thinBorder;
-                hCurrentRow++;
 
-                histSheet.addRow([]); // Spacer
-                hCurrentRow++;
+                const valCell3 = histSheet.getCell(6, startCol + 2);
+                valCell3.value = netBalance;
+                valCell3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
+                valCell3.font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: entBalValueText } };
+                valCell3.alignment = { horizontal: 'center', vertical: 'middle' };
+                valCell3.border = thinBorder;
+                valCell3.numFmt = '#,##0.00 "MAD"';
 
-                // Table Header for Entity details
-                const tableHead = histSheet.addRow(['Date & Heure', 'Description', 'Type', 'Montant (MAD)']);
-                tableHead.height = 22;
-                for (let i = 1; i <= 4; i++) {
-                    const cell = tableHead.getCell(i);
+                const valCell4 = histSheet.getCell(6, startCol + 3);
+                valCell4.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
+                valCell4.border = thinBorder;
+
+                histSheet.getRow(6).height = 26;
+
+                // Spacer Row 7 height
+                histSheet.getRow(7).height = 10;
+
+                // Table Header for Entity details (Row 8)
+                const headers = ['Date & Heure', 'Description', 'Type', 'Montant (MAD)'];
+                headers.forEach((h, i) => {
+                    const cell = histSheet.getCell(8, startCol + i);
+                    cell.value = h;
                     cell.font = { name: 'Segoe UI', bold: true, size: 9.5, color: { argb: 'FFFFFFFF' } };
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF374151' } };
-                    cell.alignment = { horizontal: i === 4 ? 'right' : (i === 2 ? 'left' : 'center'), vertical: 'middle' };
+                    cell.alignment = { horizontal: i === 3 ? 'right' : (i === 1 ? 'left' : 'center'), vertical: 'middle' };
                     cell.border = cellBorder;
-                }
-                hCurrentRow++;
+                });
+                histSheet.getRow(8).height = 22;
 
                 // Transaction Rows
+                let r = 9;
                 if (entityOps.length === 0) {
-                    histSheet.addRow(['Aucune transaction enregistrée dans l\'historique', '', '', '']);
-                    histSheet.mergeCells(`A${hCurrentRow}:D${hCurrentRow}`);
-                    const emptyRow = histSheet.getRow(hCurrentRow);
-                    emptyRow.height = 22;
-                    for (let i = 1; i <= 4; i++) {
-                        const cell = emptyRow.getCell(i);
+                    histSheet.mergeCells(`${col1Letter}${r}:${col4Letter}${r}`);
+                    const emptyCell = histSheet.getCell(r, startCol);
+                    emptyCell.value = "Aucune transaction enregistrée dans l'historique";
+                    for (let i = 0; i < 4; i++) {
+                        const cell = histSheet.getCell(r, startCol + i);
                         cell.font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF9CA3AF' } };
                         cell.alignment = { horizontal: 'center', vertical: 'middle' };
                         cell.border = cellBorder;
                     }
-                    hCurrentRow++;
+                    histSheet.getRow(r).height = 22;
                 } else {
                     entityOps.forEach((op, index) => {
                         const formattedDate = `${format(new Date(op.date), 'dd/MM/yyyy')} ${format(new Date(op.created_at), 'HH:mm')}`;
-                        histSheet.addRow([
-                            formattedDate,
-                            op.description || '',
-                            op.type === 'IN' ? 'Recette' : 'Dépense',
-                            Number(op.amount)
-                        ]);
+                        
+                        const cell1 = histSheet.getCell(r, startCol);
+                        cell1.value = formattedDate;
+                        cell1.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell1.font = { name: 'Courier New', size: 9.5, color: { argb: 'FF6B7280' } };
+
+                        const cell2 = histSheet.getCell(r, startCol + 1);
+                        cell2.value = op.description || '';
+                        cell2.alignment = { horizontal: 'left', vertical: 'middle' };
+                        cell2.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FF111827' } };
+
+                        const cell3 = histSheet.getCell(r, startCol + 2);
+                        cell3.value = op.type === 'IN' ? 'Recette' : 'Dépense';
+                        cell3.alignment = { horizontal: 'center', vertical: 'middle' };
+                        cell3.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: op.type === 'IN' ? 'FF15803D' : 'FFB91C1C' } };
+
+                        const cell4 = histSheet.getCell(r, startCol + 3);
+                        cell4.value = Number(op.amount);
+                        cell4.alignment = { horizontal: 'right', vertical: 'middle' };
+                        cell4.numFmt = '#,##0.00';
+                        cell4.font = { name: 'Courier New', size: 9.5, bold: true, color: { argb: op.type === 'IN' ? 'FF16A34A' : 'FFDC2626' } };
 
                         const isEven = index % 2 === 0;
                         const rowBg = isEven ? 'FFFFFFFF' : 'FFF9FAFB';
-                        const row = histSheet.getRow(hCurrentRow);
-                        row.height = 20;
 
-                        for (let i = 1; i <= 4; i++) {
-                            const cell = row.getCell(i);
+                        for (let i = 0; i < 4; i++) {
+                            const cell = histSheet.getCell(r, startCol + i);
                             cell.border = cellBorder;
                             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
-                            cell.font = { name: 'Segoe UI', size: 9.5, color: { argb: 'FF374151' } };
-
-                            if (i === 1) {
-                                cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                                cell.font = { name: 'Courier New', size: 9.5, color: { argb: 'FF6B7280' } };
-                            } else if (i === 2) {
-                                cell.alignment = { horizontal: 'left', vertical: 'middle' };
-                                cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FF111827' } };
-                            } else if (i === 3) {
-                                cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: op.type === 'IN' ? 'FF15803D' : 'FFB91C1C' } };
-                            } else if (i === 4) {
-                                cell.alignment = { horizontal: 'right', vertical: 'middle' };
-                                cell.numFmt = '#,##0.00';
-                                cell.font = { name: 'Courier New', size: 9.5, bold: true, color: { argb: op.type === 'IN' ? 'FF16A34A' : 'FFDC2626' } };
-                            }
                         }
-                        hCurrentRow++;
+                        histSheet.getRow(r).height = 20;
+                        r++;
                     });
                 }
 
-                // Add Spacers at the end of each company block (3 empty rows)
-                histSheet.addRow([]);
-                histSheet.addRow([]);
-                histSheet.addRow([]);
-                hCurrentRow += 3;
+                // Apply formulas to summary cards (Row 6) once we know the end row (r - 1)
+                const endRow = Math.max(9, r - 1);
+                valCell1.value = { formula: `SUMIF(${col3Letter}9:${col3Letter}${endRow}, "Recette", ${col4Letter}9:${col4Letter}${endRow})` };
+                valCell2.value = { formula: `SUMIF(${col3Letter}9:${col3Letter}${endRow}, "Dépense", ${col4Letter}9:${col4Letter}${endRow})` };
+                valCell3.value = { formula: `${col1Letter}6-${col2Letter}6` };
             });
 
             histSheet.views = [{ showGridLines: true }];
@@ -1296,8 +1350,15 @@ export default function DailyCashTracking() {
             // ----------------------------------------------------
             // COMPILING & DOWNLOADING THE WORKBOOK
             // ----------------------------------------------------
-            const buffer = await workbook.xlsx.writeBuffer();
             const fileName = `Rapport_Caisse_${format(new Date(selectedDate), 'dd-MM-yyyy')}.xlsx`;
+            return { workbook, fileName };
+    };
+
+    const handleExportCashFlowExcel = async () => {
+        setIsExportingCashFlow(true);
+        try {
+            const { workbook, fileName } = await generateCashFlowWorkbook();
+            const buffer = await workbook.xlsx.writeBuffer();
 
             if (Capacitor.isNativePlatform()) {
                 const base64Data = btoa(
@@ -1533,6 +1594,59 @@ export default function DailyCashTracking() {
             alert("Erreur lors de la génération de la sauvegarde : " + error.message);
         } finally {
             setIsBackingUp(false);
+        }
+    };
+
+    const handleSyncToGoogleDrive = async () => {
+        setIsSyncingToDrive(true);
+        try {
+            const { workbook, fileName } = await generateCashFlowWorkbook();
+            const buffer = await workbook.xlsx.writeBuffer();
+
+            // Convert buffer to base64
+            const base64Data = btoa(
+                new Uint8Array(buffer)
+                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
+            );
+
+            // Invoke Supabase Edge Function
+            const { data, error } = await supabase.functions.invoke('upload-to-drive', {
+                body: {
+                    name: fileName,
+                    fileBase64: base64Data,
+                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                }
+            });
+
+            if (error) {
+                let detailedError = error.message;
+                if (error.context) {
+                    try {
+                        const errData = await error.context.json();
+                        if (errData && errData.error) {
+                            detailedError = errData.error;
+                        }
+                    } catch (jsonErr) {
+                        try {
+                            const errText = await error.context.text();
+                            if (errText) detailedError = errText;
+                        } catch (textErr) {
+                            // Ignore
+                        }
+                    }
+                }
+                throw new Error(detailedError);
+            }
+            if (data && data.success === false) {
+                throw new Error(data.error || 'Erreur inconnue lors du téléversement');
+            }
+
+            showSuccess('Rapport de Caisse envoyé avec succès sur Google Drive !');
+        } catch (error) {
+            console.error('Google Drive backup failed:', error);
+            showError("Erreur lors de la sauvegarde sur Google Drive : " + (error.message || error));
+        } finally {
+            setIsSyncingToDrive(false);
         }
     };
 
@@ -2654,6 +2768,16 @@ export default function DailyCashTracking() {
                                 <div className="flex items-center justify-between">
                                     <h3 className="font-bold text-2xl text-gray-800">CashFlow Journalier</h3>
                                     <div className="flex items-center gap-3">
+                                        <select
+                                            value={exportBalanceFilter}
+                                            onChange={(e) => setExportBalanceFilter(e.target.value)}
+                                            className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer"
+                                        >
+                                            <option value="all">Toutes les Sociétés</option>
+                                            <option value="positive">Solde Positif (&gt; 0)</option>
+                                            <option value="negative">Solde Négatif (&lt; 0)</option>
+                                            <option value="null">Solde Nul (= 0)</option>
+                                        </select>
                                         <button
                                             onClick={handleExportCashFlowExcel}
                                             disabled={isExportingCashFlow}
@@ -2665,6 +2789,19 @@ export default function DailyCashTracking() {
                                                 <FileSpreadsheet size={16} />
                                             )}
                                             Exporter Excel
+                                        </button>
+                                        <button
+                                            onClick={handleSyncToGoogleDrive}
+                                            disabled={isSyncingToDrive}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2"
+                                            title="Sauvegarder directement sur Google Drive"
+                                        >
+                                            {isSyncingToDrive ? (
+                                                <Loader2 size={16} className="animate-spin" />
+                                            ) : (
+                                                <CloudUpload size={16} />
+                                            )}
+                                            Sauvegarder sur Drive
                                         </button>
                                         <div className="px-4 py-1.5 bg-gray-100 rounded-full text-sm font-medium text-gray-600">
                                             {format(new Date(selectedDate), 'dd MMMM yyyy', { locale: fr })}
