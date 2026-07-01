@@ -8,7 +8,7 @@ function cn(...inputs) {
 
 export function Card({ children, className, ...props }) {
     return (
-        <div className={cn("bg-white border border-notion-border rounded-md shadow-sm p-4", className)} {...props}>
+        <div className={cn("bg-white/70 backdrop-blur-md border border-white/50 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300 p-5", className)} {...props}>
             {children}
         </div>
     );

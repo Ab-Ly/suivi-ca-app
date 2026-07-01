@@ -85,7 +85,7 @@ export default function EditArticleModal({ isOpen, onClose, article, onSuccess }
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-notion-gray mb-1">Prix (MAD)</label>
+                    <label className="block text-sm font-medium text-notion-gray mb-1">Prix (DH)</label>
                     <input
                         type="number"
                         name="price"

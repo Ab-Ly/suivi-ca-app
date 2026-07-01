@@ -158,7 +158,7 @@ export default function UpdateNotification() {
 
     const MetricCard = ({ label, value, previous, change, format = 'number', icon: Icon, colorClass }) => {
         const isPositive = change >= 0;
-        const formattedValue = format === 'currency' ? `${formatNumber(value)} MAD` : `${formatNumber(value)} L`;
+        const formattedValue = format === 'currency' ? `${formatNumber(value)} DH` : `${formatNumber(value)} L`;
 
         return (
             <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col gap-1 transition-all hover:shadow-md hover:border-gray-200">
@@ -256,7 +256,7 @@ export default function UpdateNotification() {
                             Perf. Journalière (Hier vs J-2)
                         </span>
                         <div className="flex items-center gap-2">
-                            <span className="text-gray-900 font-bold">{formatNumber(stats.dailyTrend.value)} <span className="text-[9px] font-normal text-gray-400">MAD</span></span>
+                            <span className="text-gray-900 font-bold">{formatNumber(stats.dailyTrend.value)} <span className="text-[9px] font-normal text-gray-400">DH</span></span>
                             <span className={`px-2 py-0.5 rounded-full font-bold ${stats.dailyTrend.growth >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                                 {stats.dailyTrend.growth > 0 ? '+' : ''}{stats.dailyTrend.growth.toFixed(1)}%
                             </span>

@@ -4,6 +4,9 @@ import { formatPrice } from '../utils/formatters';
 import { Save, History, Calculator, AlertCircle, CheckCircle2, FileEdit, RotateCcw, Trash2, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import DatePicker, { registerLocale } from 'react-datepicker';
+
+registerLocale('fr', fr);
 
 import { createPortal } from 'react-dom';
 
@@ -595,19 +598,32 @@ export default function MoneyCounting() {
                                 </div>
                                 Comptage Monétaire
                             </h2>
-                            <div className="flex items-center gap-2 group/date cursor-pointer w-fit relative pl-1">
-                                <div className="absolute inset-0 bg-gray-100/50 rounded-lg -z-10 scale-90 opacity-0 group-hover/date:opacity-100 group-hover/date:scale-105 transition-all duration-300"></div>
-                                <Calendar size={14} className="text-indigo-400 group-hover/date:text-indigo-600 transition-colors" />
-                                <span className="text-sm font-semibold text-gray-500 group-hover/date:text-gray-700 transition-colors tracking-wide">
-                                    {format(new Date(selectedDate), 'dd MMMM yyyy', { locale: fr })}
-                                </span>
-                                <input
-                                    type="date"
-                                    value={selectedDate}
-                                    onChange={(e) => setSelectedDate(e.target.value)}
-                                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                                />
-                            </div>
+                            <DatePicker
+                                selected={selectedDate ? new Date(selectedDate) : null}
+                                onChange={(date) => {
+                                    if (date) {
+                                        const offset = date.getTimezoneOffset();
+                                        const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+                                        setSelectedDate(adjustedDate.toISOString().split('T')[0]);
+                                    }
+                                }}
+                                dateFormat="dd/MM/yyyy"
+                                locale="fr"
+                                customInput={
+                                    <div className="flex items-center gap-2 group/date cursor-pointer w-fit relative pl-1">
+                                        <div className="absolute inset-0 bg-gray-100/50 rounded-lg -z-10 scale-90 opacity-0 group-hover/date:opacity-100 group-hover/date:scale-105 transition-all duration-300"></div>
+                                        <Calendar size={14} className="text-indigo-400 group-hover/date:text-indigo-600 transition-colors" />
+                                        <span className="text-sm font-semibold text-gray-500 group-hover/date:text-gray-700 transition-colors tracking-wide">
+                                            {format(new Date(selectedDate), 'dd MMMM yyyy', { locale: fr })}
+                                        </span>
+                                    </div>
+                                }
+                                showPopperArrow={false}
+                                calendarClassName="shadow-xl border-0 rounded-xl font-sans overflow-hidden"
+                                dayClassName={() => "rounded-lg hover:bg-gray-100"}
+                                popperClassName="!z-[9999]"
+                                portalId="datepicker-portal"
+                            />
                         </div>
 
                         <div className="flex items-center gap-3 z-10">
@@ -656,7 +672,7 @@ export default function MoneyCounting() {
                                     onBlur={handleBlur} // Auto-save trigger
                                     className="w-full bg-transparent border-none p-0 text-xl font-bold text-orange-900 font-mono tracking-tight focus:ring-0 placeholder-orange-200"
                                 />
-                                <span className="text-xl font-bold text-orange-900 font-mono tracking-tight">MAD</span>
+                                <span className="text-xl font-bold text-orange-900 font-mono tracking-tight">DH</span>
                             </div>
                         </div>
 

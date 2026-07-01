@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet, CloudUpload } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { formatPrice } from '../utils/formatters';
+import { formatPrice, formatNumber } from '../utils/formatters';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 import MoneyCounting from './MoneyCounting';
 import jsPDF from 'jspdf';
@@ -13,6 +13,7 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { useToast } from './ui/Toast';
+import { DateInput } from './ui/DateInput';
 
 const fetchAllOperations = async () => {
     let allData = [];
@@ -319,7 +320,7 @@ export default function DailyCashTracking() {
 
         autoTable(doc, {
             startY: startY,
-            head: [['Récapitulatif Financier', 'Montant (MAD)']],
+            head: [['Récapitulatif Financier', 'Montant (DH)']],
             body: summaryBody,
             theme: 'grid',
             headStyles: { fillColor: [79, 70, 229], textColor: 255 },
@@ -442,14 +443,14 @@ export default function DailyCashTracking() {
             valueRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF15803D' } };
             valueRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
             valueRow.getCell(1).border = thinBorder;
-            valueRow.getCell(1).numFmt = '+#,##0.00 "MAD"';
+            valueRow.getCell(1).numFmt = '+#,##0.00 "DH"';
 
             // Red Card Value
             valueRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
             valueRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FFB91C1C' } };
             valueRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
             valueRow.getCell(2).border = thinBorder;
-            valueRow.getCell(2).numFmt = '-#,##0.00 "MAD"';
+            valueRow.getCell(2).numFmt = '-#,##0.00 "DH"';
 
             // Balance Card Value
             const balColorValueText = netBalance >= 0 ? 'FF312E81' : 'FF7C2D12';
@@ -457,7 +458,7 @@ export default function DailyCashTracking() {
             valueRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: balColorValueText } };
             valueRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
             valueRow.getCell(3).border = thinBorder;
-            valueRow.getCell(3).numFmt = '#,##0.00 "MAD"';
+            valueRow.getCell(3).numFmt = '#,##0.00 "DH"';
 
             // Border and fill for merged cell D5
             valueRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
@@ -466,7 +467,7 @@ export default function DailyCashTracking() {
             sheet.addRow([]); // Row 6 spacer
 
             // 4. Operations Detail Header (Row 7)
-            const detailHeaderRow = sheet.addRow(['Date & Heure', 'Description', 'Type', 'Montant (MAD)']);
+            const detailHeaderRow = sheet.addRow(['Date & Heure', 'Description', 'Type', 'Montant (DH)']);
             detailHeaderRow.height = 26;
             for (let i = 1; i <= 4; i++) {
                 const cell = detailHeaderRow.getCell(i);
@@ -714,7 +715,7 @@ export default function DailyCashTracking() {
             flowSectionHeader.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
 
             // Subheaders (Row 5)
-            flowSheet.addRow(['Désignation', 'Montant (MAD)', 'Montant (MAD)', 'Désignation']);
+            flowSheet.addRow(['Désignation', 'Montant (DH)', 'Montant (DH)', 'Désignation']);
             const flowSubHeader = flowSheet.getRow(5);
             flowSubHeader.height = 20;
 
@@ -916,7 +917,7 @@ export default function DailyCashTracking() {
                     cell.alignment = { horizontal: 'left', vertical: 'middle' };
                 } else if (i === 2) {
                     cell.value = { formula: `B${currentRow - 1}-C${currentRow - 1}` };
-                    cell.numFmt = '#,##0.00 "MAD"';
+                    cell.numFmt = '#,##0.00 "DH"';
                     cell.font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: ecartText } };
                     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ecartBg } };
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1070,7 +1071,7 @@ export default function DailyCashTracking() {
 
             opsSheet.addRow([]); // Spacer
 
-            const opsHeaderRow = opsSheet.addRow(['Heure', 'Description', 'Catégorie', 'Type', 'Montant (MAD)', 'Mode de Paiement']);
+            const opsHeaderRow = opsSheet.addRow(['Heure', 'Description', 'Catégorie', 'Type', 'Montant (DH)', 'Mode de Paiement']);
             opsHeaderRow.height = 26;
             for (let i = 1; i <= 6; i++) {
                 const cell = opsHeaderRow.getCell(i);
@@ -1160,7 +1161,7 @@ export default function DailyCashTracking() {
                 cols.push({ width: 22 }); // Date & Heure
                 cols.push({ width: 40 }); // Description
                 cols.push({ width: 12 }); // Type
-                cols.push({ width: 20 }); // Montant (MAD)
+                cols.push({ width: 20 }); // Montant (DH)
                 cols.push({ width: 4 });  // Spacer column
             });
             histSheet.columns = cols;
@@ -1246,7 +1247,7 @@ export default function DailyCashTracking() {
                 valCell1.font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FF15803D' } };
                 valCell1.alignment = { horizontal: 'center', vertical: 'middle' };
                 valCell1.border = thinBorder;
-                valCell1.numFmt = '+#,##0.00 "MAD"';
+                valCell1.numFmt = '+#,##0.00 "DH"';
 
                 const valCell2 = histSheet.getCell(6, startCol + 1);
                 valCell2.value = outAmount;
@@ -1254,7 +1255,7 @@ export default function DailyCashTracking() {
                 valCell2.font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FFB91C1C' } };
                 valCell2.alignment = { horizontal: 'center', vertical: 'middle' };
                 valCell2.border = thinBorder;
-                valCell2.numFmt = '-#,##0.00 "MAD"';
+                valCell2.numFmt = '-#,##0.00 "DH"';
 
                 const entBalValueText = netBalance >= 0 ? 'FF312E81' : 'FF7C2D12';
 
@@ -1264,7 +1265,7 @@ export default function DailyCashTracking() {
                 valCell3.font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: entBalValueText } };
                 valCell3.alignment = { horizontal: 'center', vertical: 'middle' };
                 valCell3.border = thinBorder;
-                valCell3.numFmt = '#,##0.00 "MAD"';
+                valCell3.numFmt = '#,##0.00 "DH"';
 
                 const valCell4 = histSheet.getCell(6, startCol + 3);
                 valCell4.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: entBalBg } };
@@ -1276,7 +1277,7 @@ export default function DailyCashTracking() {
                 histSheet.getRow(7).height = 10;
 
                 // Table Header for Entity details (Row 8)
-                const headers = ['Date & Heure', 'Description', 'Type', 'Montant (MAD)'];
+                const headers = ['Date & Heure', 'Description', 'Type', 'Montant (DH)'];
                 headers.forEach((h, i) => {
                     const cell = histSheet.getCell(8, startCol + i);
                     cell.value = h;
@@ -1444,7 +1445,7 @@ export default function DailyCashTracking() {
                 { header: 'Date', key: 'date', width: 15 },
                 { header: 'Société', key: 'entity_name', width: 35 },
                 { header: 'Type', key: 'type', width: 12 },
-                { header: 'Montant (MAD)', key: 'amount', width: 18 },
+                { header: 'Montant (DH)', key: 'amount', width: 18 },
                 { header: 'Description', key: 'description', width: 45 },
                 { header: 'Catégorie', key: 'category', width: 25 },
                 { header: 'Moyen de Paiement', key: 'payment_method', width: 20 },
@@ -2169,11 +2170,10 @@ export default function DailyCashTracking() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <input
-                        type="date"
+                    <DateInput
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
-                        className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                        className="w-40"
                     />
                     <button
                         onClick={() => setIsAddEntityModalOpen(true)}
@@ -2479,7 +2479,7 @@ export default function DailyCashTracking() {
                                         <div className="relative z-10">
                                             <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Report (M-1)</div>
                                             <div className={`text-3xl font-bold ${monthExpenseOpening < 0 ? 'text-red-500' : 'text-gray-900'}`}>
-                                                {formatPrice(monthExpenseOpening)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                                {formatNumber(monthExpenseOpening, 2)} <span className="text-sm font-medium text-gray-400">DH</span>
                                             </div>
                                         </div>
                                         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-orange-400 to-orange-100"></div>
@@ -2493,7 +2493,7 @@ export default function DailyCashTracking() {
                                         <div className="relative z-10">
                                             <div className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Dépenses du Mois</div>
                                             <div className="text-3xl font-bold text-gray-900">
-                                                {formatPrice(monthExpenseClosing - monthExpenseOpening)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                                {formatNumber(monthExpenseClosing - monthExpenseOpening, 2)} <span className="text-sm font-medium text-gray-400">DH</span>
                                             </div>
                                         </div>
                                         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-purple-200"></div>
@@ -2507,7 +2507,7 @@ export default function DailyCashTracking() {
                                         <div className="relative z-10">
                                             <div className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">Solde Fin de Mois</div>
                                             <div className={`text-3xl font-bold ${monthExpenseClosing < 0 ? 'text-red-400' : 'text-white'}`}>
-                                                {formatPrice(monthExpenseClosing)} <span className="text-sm font-medium text-gray-400">MAD</span>
+                                                {formatNumber(monthExpenseClosing, 2)} <span className="text-sm font-medium text-gray-400">DH</span>
                                             </div>
                                         </div>
                                     </div>
@@ -2624,7 +2624,7 @@ export default function DailyCashTracking() {
                                                                                     </div>
                                                                                 </td>
                                                                                 <td className={`p-4 text-right font-bold font-mono ${isSettled ? 'text-gray-400 line-through decoration-gray-400' : 'text-gray-900'}`}>
-                                                                                    {formatPrice(Math.abs(op.amount))} <span className="text-xs text-gray-400 font-sans">MAD</span>
+                                                                                    {formatNumber(Math.abs(op.amount), 2)} <span className="text-xs text-gray-400 font-sans">DH</span>
                                                                                 </td>
                                                                                 <td className="p-4 text-center">
                                                                                     {!isSettled && (
@@ -3337,9 +3337,9 @@ export default function DailyCashTracking() {
             {/* Add Transaction Modal */}
             {
                 showAddModal && createPortal(
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setShowAddModal(false)}>
-                        <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-between items-center mb-6">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 transition-opacity" onClick={() => setShowAddModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg max-h-[95vh] sm:max-h-[90vh] flex flex-col p-4 sm:p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-4 sm:mb-6 shrink-0">
                                 <h3 className="text-xl font-bold text-gray-900">Nouvelle Opération</h3>
                                 <button
                                     onClick={() => setShowAddModal(false)}
@@ -3349,7 +3349,7 @@ export default function DailyCashTracking() {
                                 </button>
                             </div>
 
-                            <form onSubmit={handleAddTransaction} className="space-y-5">
+                            <form onSubmit={handleAddTransaction} className="space-y-4 sm:space-y-5 overflow-y-auto flex-1 pr-1">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
                                     <div className="relative">
@@ -3511,7 +3511,7 @@ export default function DailyCashTracking() {
                                             className="w-full p-3 pl-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none font-mono text-lg"
                                             placeholder="0.00"
                                         />
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">MAD</div>
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">DH</div>
                                     </div>
                                 </div>
 
@@ -3564,9 +3564,9 @@ export default function DailyCashTracking() {
             {/* Edit Transaction Modal */}
             {
                 editingOperation && createPortal(
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={handleCloseEditModal}>
-                        <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-between items-center mb-6">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 transition-opacity" onClick={handleCloseEditModal}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg max-h-[95vh] sm:max-h-[90vh] flex flex-col p-4 sm:p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-4 sm:mb-6 shrink-0">
                                 <h3 className="text-xl font-bold text-gray-900">Modifier l'Opération</h3>
                                 <button
                                     onClick={handleCloseEditModal}
@@ -3576,7 +3576,7 @@ export default function DailyCashTracking() {
                                 </button>
                             </div>
 
-                            <form onSubmit={handleSaveEditTransaction} className="space-y-5">
+                            <form onSubmit={handleSaveEditTransaction} className="space-y-4 sm:space-y-5 overflow-y-auto flex-1 pr-1">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
                                     <div className="relative">
@@ -3731,7 +3731,7 @@ export default function DailyCashTracking() {
                                             className="w-full p-3 pl-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none font-mono text-lg"
                                             placeholder="0.00"
                                         />
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">MAD</div>
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">DH</div>
                                     </div>
                                 </div>
 
@@ -3784,9 +3784,9 @@ export default function DailyCashTracking() {
             {/* Settlement / Reimbursement Modal */}
             {
                 showSettlementModal && createPortal(
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setShowSettlementModal(false)}>
-                        <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-between items-center mb-6">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 transition-opacity" onClick={() => setShowSettlementModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] flex flex-col p-4 sm:p-6 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-4 sm:mb-6 shrink-0">
                                 <h3 className="text-xl font-bold text-gray-900">Remboursement Caisse</h3>
                                 <button
                                     onClick={() => setShowSettlementModal(false)}
@@ -3796,67 +3796,69 @@ export default function DailyCashTracking() {
                                 </button>
                             </div>
 
-                            <div className="mb-6">
-                                <div className="text-sm text-gray-500 mb-1">Total à rembourser</div>
-                                <div className="text-4xl font-black text-gray-900 tracking-tight">
-                                    {formatPrice(monthlyOperations
-                                        .filter(op => selectedOps.has(op.id))
-                                        .reduce((sum, op) => sum + Math.abs(Number(op.amount)), 0)
-                                    )} <span className="text-lg text-gray-400 font-normal">MAD</span>
-                                </div>
-                                <div className="mt-2 text-sm text-gray-500 flex items-center gap-2">
-                                    <CheckSquare size={16} className="text-green-600" />
-                                    {selectedOps.size} opérations sélectionnées
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
+                            <div className="overflow-y-auto flex-1 pr-1 space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Moyen de Paiement du Remboursement</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {[
-                                            { id: 'ESPECES', label: 'Espèces', icon: Banknote },
-                                            { id: 'CHEQUE', label: 'Chèque', icon: Landmark },
-                                            { id: 'VIREMENT', label: 'Virement', icon: ArrowUpRight },
-                                            { id: 'CARTE_BANCAIRE', label: 'Carte', icon: CreditCard },
-                                        ].map(method => (
-                                            <button
-                                                key={method.id}
-                                                type="button"
-                                                onClick={() => setSettlementMethod(method.id)}
-                                                className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${settlementMethod === method.id
-                                                    ? 'bg-black text-white border-black shadow-md'
-                                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                                                    }`}
-                                            >
-                                                <method.icon size={18} />
-                                                <span className="text-sm font-medium">{method.label}</span>
-                                            </button>
-                                        ))}
+                                    <div className="text-sm text-gray-500 mb-1">Total à rembourser</div>
+                                    <div className="text-4xl font-black text-gray-900 tracking-tight">
+                                        {formatNumber(monthlyOperations
+                                            .filter(op => selectedOps.has(op.id))
+                                            .reduce((sum, op) => sum + Math.abs(Number(op.amount)), 0)
+                                        , 2)} <span className="text-lg text-gray-400 font-normal">DH</span>
+                                    </div>
+                                    <div className="mt-2 text-sm text-gray-500 flex items-center gap-2">
+                                        <CheckSquare size={16} className="text-green-600" />
+                                        {selectedOps.size} opérations sélectionnées
                                     </div>
                                 </div>
 
-                                <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                    Cette action va créer une entrée (Recette) du montant total et marquer les dépenses sélectionnées comme remboursées.
-                                </p>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Moyen de Paiement du Remboursement</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[
+                                                { id: 'ESPECES', label: 'Espèces', icon: Banknote },
+                                                { id: 'CHEQUE', label: 'Chèque', icon: Landmark },
+                                                { id: 'VIREMENT', label: 'Virement', icon: ArrowUpRight },
+                                                { id: 'CARTE_BANCAIRE', label: 'Carte', icon: CreditCard },
+                                            ].map(method => (
+                                                <button
+                                                    key={method.id}
+                                                    type="button"
+                                                    onClick={() => setSettlementMethod(method.id)}
+                                                    className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${settlementMethod === method.id
+                                                        ? 'bg-black text-white border-black shadow-md'
+                                                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                        }`}
+                                                >
+                                                    <method.icon size={18} />
+                                                    <span className="text-sm font-medium">{method.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
 
-                                <button
-                                    onClick={handleSettleOperations}
-                                    disabled={isSettling}
-                                    className="w-full py-3.5 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors font-bold shadow-lg shadow-gray-200 flex justify-center items-center gap-2"
-                                >
-                                    {isSettling ? (
-                                        <>
-                                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                                            Traitement...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Check size={20} />
-                                            Confirmer le Remboursement
-                                        </>
-                                    )}
-                                </button>
+                                    <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                        Cette action va créer une entrée (Recette) du montant total et marquer les dépenses sélectionnées comme remboursées.
+                                    </p>
+
+                                    <button
+                                        onClick={handleSettleOperations}
+                                        disabled={isSettling}
+                                        className="w-full py-3.5 bg-black text-white rounded-xl hover:bg-gray-800 transition-colors font-bold shadow-lg shadow-gray-200 flex justify-center items-center gap-2"
+                                    >
+                                        {isSettling ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                                Traitement...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Check size={20} />
+                                                Confirmer le Remboursement
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>,
@@ -3876,10 +3878,10 @@ export default function DailyCashTracking() {
                                 <span className="text-sm font-medium text-gray-300">opérations sélectionnées</span>
                                 <div className="h-6 w-px bg-white/20"></div>
                                 <span className="font-mono font-bold text-lg">
-                                    {formatPrice(monthlyOperations
+                                    {formatNumber(monthlyOperations
                                         .filter(op => selectedOps.has(op.id))
                                         .reduce((sum, op) => sum + Math.abs(Number(op.amount)), 0)
-                                    )} <span className="text-xs text-gray-400">MAD</span>
+                                    , 2)} <span className="text-xs text-gray-400">DH</span>
                                 </span>
                             </div>
                             <button
@@ -3904,9 +3906,9 @@ export default function DailyCashTracking() {
             {/* Add Entity Modal */}
             {
                 isAddEntityModalOpen && createPortal(
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setIsAddEntityModalOpen(false)}>
-                        <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-between items-center mb-8">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 transition-opacity" onClick={() => setIsAddEntityModalOpen(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] flex flex-col p-5 sm:p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-6 sm:mb-8 shrink-0">
                                 <div>
                                     <h3 className="text-2xl font-bold text-gray-900">Nouvelle Société</h3>
                                     <p className="text-gray-500 text-sm mt-1">Ajouter une nouvelle entité au suivi</p>
@@ -3919,7 +3921,7 @@ export default function DailyCashTracking() {
                                 </button>
                             </div>
 
-                            <div className="space-y-6">
+                            <div className="space-y-6 overflow-y-auto flex-1 pr-1">
                                 <div>
                                     <label className="block text-sm font-semibold text-gray-700 mb-2">Nom de la société</label>
                                     <div className="relative">
@@ -3959,9 +3961,9 @@ export default function DailyCashTracking() {
             {/* Edit Entity Modal */}
             {
                 isEditEntityModalOpen && selectedEditEntity && createPortal(
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setIsEditEntityModalOpen(false)}>
-                        <div className="bg-white rounded-2xl w-full max-w-md p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-between items-center mb-8">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 transition-opacity" onClick={() => setIsEditEntityModalOpen(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] flex flex-col p-5 sm:p-8 shadow-2xl transform transition-all scale-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between items-center mb-6 sm:mb-8 shrink-0">
                                 <div>
                                     <h3 className="text-2xl font-bold text-gray-900">Modifier la Société</h3>
                                     <p className="text-gray-500 text-sm mt-1">Modifier les informations de la société</p>
@@ -3974,7 +3976,7 @@ export default function DailyCashTracking() {
                                 </button>
                             </div>
 
-                            <div className="space-y-6">
+                            <div className="space-y-6 overflow-y-auto flex-1 pr-1">
                                 <div>
                                     <label className="block text-sm font-semibold text-gray-700 mb-2">Nom de la société</label>
                                     <div className="relative">
@@ -4030,10 +4032,10 @@ export default function DailyCashTracking() {
             {/* Entity History Modal */}
             {
                 selectedEntityHistory && createPortal(
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity" onClick={() => setSelectedEntityHistory(null)}>
-                        <div className="bg-white rounded-2xl w-full max-w-2xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 transition-opacity" onClick={() => setSelectedEntityHistory(null)}>
+                        <div className="bg-white rounded-2xl w-full max-w-2xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
                             {/* Header */}
-                            <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
                                 <div>
                                     <h3 className="text-xl font-bold text-gray-900">{selectedEntityHistory.name}</h3>
                                     <p className="text-gray-500 text-sm mt-1">

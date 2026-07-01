@@ -231,7 +231,7 @@ export default function CloseMonthModal({ isOpen, onClose, onClosed }) {
                                         <tr key={key} className="hover:bg-white">
                                             <td className="px-4 py-2 font-medium text-gray-700">{key}</td>
                                             <td className="px-4 py-2 text-right font-mono">
-                                                {key.includes('Volume') ? val.toLocaleString() + ' L' : val.toLocaleString() + ' MAD'}
+                                                {key.includes('Volume') ? val.toLocaleString() + ' L' : val.toLocaleString() + ' DH'}
                                             </td>
                                         </tr>
                                     ))}

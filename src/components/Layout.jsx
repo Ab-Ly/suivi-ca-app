@@ -143,7 +143,7 @@ export default function Layout() {
         <ToastProvider>
             <div className="min-h-screen bg-bg-main text-text-main flex flex-col md:flex-row font-sans">
                 {/* Mobile Header */}
-                <div className="md:hidden flex items-center justify-between p-4 bg-white shadow-sm sticky top-0 z-30">
+                <div className="md:hidden flex items-center justify-between p-4 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm sticky top-0 z-30">
                     <button
                         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                         className="p-2 -ml-2 text-text-muted hover:bg-gray-50 rounded-lg transition-colors"
@@ -189,7 +189,7 @@ export default function Layout() {
                 )}
 
                 {/* Desktop Sidebar */}
-                <aside className="hidden md:flex flex-col w-72 h-screen sticky top-0 p-4 bg-sidebar-bg shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10 overflow-hidden">
+                <aside className="hidden md:flex flex-col w-72 h-screen sticky top-0 p-4 bg-white/60 backdrop-blur-xl border-r border-white/40 shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10 overflow-hidden">
                     <div className="mb-6 px-1 flex flex-col gap-4">
                         <div className="flex items-center justify-center py-1">
                             <img src="/logo.png" alt="Petrom Logo" className="h-16 w-auto object-contain drop-shadow-sm" />

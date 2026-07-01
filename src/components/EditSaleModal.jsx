@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from './ui/Modal';
+import { DateInput } from './ui/DateInput';
 import { Loader2, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatPrice } from '../utils/formatters';
@@ -157,12 +158,10 @@ export default function EditSaleModal({ isOpen, onClose, sale, onSuccess }) {
                 )}
 
                 <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Date de vente</label>
-                    <input
-                        type="date"
+                    <DateInput
+                        label="Date de vente"
                         value={saleDate}
                         onChange={(e) => setSaleDate(e.target.value)}
-                        className="w-full px-4 py-2 border border-border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                 </div>
 

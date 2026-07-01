@@ -92,7 +92,7 @@ export default function ArticleManager({ isOpen, onClose }) {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-sm font-medium text-notion-gray mb-1">Prix (MAD)</label>
+                        <label className="block text-sm font-medium text-notion-gray mb-1">Prix (DH)</label>
                         <input
                             type="number"
                             name="price"

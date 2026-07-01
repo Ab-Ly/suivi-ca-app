@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from './ui/Modal';
+import { DateInput } from './ui/DateInput';
 import { supabase } from '../lib/supabase';
 import { Loader2, Plus, Trash2, Save, FileText, Truck, Calendar } from 'lucide-react';
 
@@ -134,15 +135,11 @@ export default function LubricantDeliveryModal({ isOpen, onClose, onSuccess }) {
                 {/* Header Info */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1">
-                            <Calendar size={12} /> Date Réception
-                        </label>
-                        <input
-                            type="date"
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white text-sm"
+                        <DateInput
+                            label="Date Réception"
                             value={formData.date}
                             onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                            required
                         />
                     </div>
                     <div>
@@ -187,7 +184,7 @@ export default function LubricantDeliveryModal({ isOpen, onClose, onSuccess }) {
 
                     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                         {items.map((item, index) => (
-                            <div key={item.id} className="flex gap-2 items-start bg-white p-2 rounded-lg border border-gray-200 shadow-sm animate-fade-in">
+                            <div key={item.id} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end bg-white p-3 rounded-lg border border-gray-200 shadow-sm animate-fade-in">
                                 <div className="flex-1">
                                     <label className="text-[10px] text-gray-400 font-bold uppercase mb-0.5 block">Article</label>
                                     <select
@@ -204,26 +201,28 @@ export default function LubricantDeliveryModal({ isOpen, onClose, onSuccess }) {
                                         ))}
                                     </select>
                                 </div>
-                                <div className="w-24">
-                                    <label className="text-[10px] text-gray-400 font-bold uppercase mb-0.5 block">Qté Reçue</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        required
-                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-indigo-500 outline-none font-mono"
-                                        value={item.quantity}
-                                        onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
-                                    />
-                                </div>
-                                <div className="pt-5">
-                                    <button
-                                        type="button"
-                                        onClick={() => removeItem(item.id)}
-                                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                        disabled={items.length === 1}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                <div className="flex gap-2 items-end">
+                                    <div className="flex-1 sm:w-24">
+                                        <label className="text-[10px] text-gray-400 font-bold uppercase mb-0.5 block">Qté Reçue</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            required
+                                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-indigo-500 outline-none font-mono"
+                                            value={item.quantity}
+                                            onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="pb-1 sm:pb-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => removeItem(item.id)}
+                                            className="text-gray-400 hover:text-red-500 transition-colors p-1.5 border border-gray-200 rounded-md sm:border-0"
+                                            disabled={items.length === 1}
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}

@@ -35,6 +35,7 @@ export const DateInput = ({ value, onChange, label, className = '', ...props }) 
                 calendarClassName="shadow-xl border-0 rounded-xl font-sans overflow-hidden"
                 dayClassName={() => "rounded-lg hover:bg-gray-100"}
                 popperClassName="!z-[9999]"
+                portalId="datepicker-portal"
                 {...props}
             />
         </div>

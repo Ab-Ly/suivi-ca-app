@@ -13,6 +13,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
     ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts';
+import { DateInput } from './ui/DateInput';
 import { useToast } from './ui/Toast';
 
 const CATEGORIES = [
@@ -562,7 +563,7 @@ export default function OperatingExpenses() {
         });
 
         if (totalFixe === 0 && totalInterim === 0) {
-            alert('Le montant total de la paie est de 0 MAD.');
+            alert('Le montant total de la paie est de 0 DH.');
             return;
         }
 
@@ -1355,13 +1356,11 @@ export default function OperatingExpenses() {
 
                                 <form onSubmit={handleSaveFuelPrice} className="space-y-4 pt-2">
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase">Date d'effet</label>
-                                        <input
-                                            type="date"
-                                            required
-                                            className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                        <DateInput
+                                            label="Date d'effet"
                                             value={fuelPriceForm.date}
                                             onChange={e => setFuelPriceForm({ ...fuelPriceForm, date: e.target.value })}
+                                            required
                                         />
                                     </div>
 
@@ -1553,8 +1552,8 @@ export default function OperatingExpenses() {
                                             <th className="px-4 py-3">Nom de l'article</th>
                                             <th className="px-4 py-3">Catégorie</th>
                                             <th className="px-4 py-3 text-center">Stock Actuel</th>
-                                            <th className="px-4 py-3 w-36 text-center">Prix Achat (MAD)</th>
-                                            <th className="px-4 py-3 w-36 text-center">Prix Vente (MAD)</th>
+                                            <th className="px-4 py-3 w-36 text-center">Prix Achat (DH)</th>
+                                            <th className="px-4 py-3 w-36 text-center">Prix Vente (DH)</th>
                                             <th className="px-4 py-3 text-right">Marge Unitaire</th>
                                             <th className="px-4 py-3 text-center">Action</th>
                                         </tr>
@@ -1671,7 +1670,7 @@ export default function OperatingExpenses() {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Boutique / Shop (MAD)</label>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Boutique / Shop (DH)</label>
                                 <input
                                     type="number"
                                     min="0"
@@ -1684,7 +1683,7 @@ export default function OperatingExpenses() {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Café / Restauration (MAD)</label>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Café / Restauration (DH)</label>
                                 <input
                                     type="number"
                                     min="0"
@@ -1697,7 +1696,7 @@ export default function OperatingExpenses() {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">Bosch Car Service (MAD)</label>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Bosch Car Service (DH)</label>
                                 <input
                                     type="number"
                                     min="0"
@@ -1918,7 +1917,7 @@ export default function OperatingExpenses() {
                                                 <th className="px-6 py-4">Catégorie</th>
                                                 <th className="px-6 py-4">Libellé / Description</th>
                                                 <th className="px-6 py-4">Mode de Règlement</th>
-                                                <th className="px-6 py-4 text-right">Montant (MAD)</th>
+                                                <th className="px-6 py-4 text-right">Montant (DH)</th>
                                                 <th className="px-6 py-4 text-center">Actions</th>
                                             </tr>
                                         </thead>
@@ -2024,7 +2023,7 @@ export default function OperatingExpenses() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Salaire de Base Mensuel (MAD)</label>
+                                        <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Salaire de Base Mensuel (DH)</label>
                                         <input
                                             type="number"
                                             step="0.01"
@@ -2080,7 +2079,7 @@ export default function OperatingExpenses() {
                                                         <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-400 uppercase text-[9px] font-bold tracking-wider">
                                                             <th className="px-4 py-2.5">Nom</th>
                                                             <th className="px-4 py-2.5">Type</th>
-                                                            <th className="px-4 py-2.5 text-right">Base (MAD)</th>
+                                                            <th className="px-4 py-2.5 text-right">Base (DH)</th>
                                                             <th className="px-4 py-2.5 text-right w-[180px]">Net Versé / Coût réel</th>
                                                         </tr>
                                                     </thead>
@@ -2112,7 +2111,7 @@ export default function OperatingExpenses() {
                                                                                 onChange={e => setPayrollAdjustments(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                                                                 placeholder={(emp.base_salary ?? 0).toString()}
                                                                             />
-                                                                            <span className="text-[10px] text-gray-400 font-bold">MAD</span>
+                                                                            <span className="text-[10px] text-gray-400 font-bold">DH</span>
                                                                         </div>
                                                                     </td>
                                                                 </tr>
@@ -2213,18 +2212,16 @@ export default function OperatingExpenses() {
                         <div className="flex items-center gap-3">
                             <span className="text-xs font-bold text-gray-400 uppercase">Période d'analyse :</span>
                             <div className="flex items-center gap-2">
-                                <input
-                                    type="date"
-                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                <DateInput
                                     value={marginStartDate}
                                     onChange={e => setMarginStartDate(e.target.value)}
+                                    className="w-36"
                                 />
                                 <span className="text-gray-400 font-bold">-</span>
-                                <input
-                                    type="date"
-                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                <DateInput
                                     value={marginEndDate}
                                     onChange={e => setMarginEndDate(e.target.value)}
+                                    className="w-36"
                                 />
                             </div>
                         </div>
@@ -2278,7 +2275,7 @@ export default function OperatingExpenses() {
                             {(marginData.total.revenue > 0 && marginData.total.cost === 0) && (
                                 <div className="bg-orange-50 border border-orange-200 text-orange-800 rounded-2xl p-4 text-xs font-semibold flex items-center gap-2">
                                     <Info size={16} />
-                                    <span>Attention : Le coût d'achat calculé est de 0 MAD. Veuillez vous assurer que vous avez configuré des prix d'achat dans l'onglet <strong>Configuration des Prix</strong>.</span>
+                                    <span>Attention : Le coût d'achat calculé est de 0 DH. Veuillez vous assurer que vous avez configuré des prix d'achat dans l'onglet <strong>Configuration des Prix</strong>.</span>
                                 </div>
                             )}
 
@@ -2518,18 +2515,16 @@ export default function OperatingExpenses() {
                         <div className="flex items-center gap-3">
                             <span className="text-xs font-bold text-gray-400 uppercase">Période d'analyse :</span>
                             <div className="flex items-center gap-2">
-                                <input
-                                    type="date"
-                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                <DateInput
                                     value={marginStartDate}
                                     onChange={e => setMarginStartDate(e.target.value)}
+                                    className="w-36"
                                 />
                                 <span className="text-gray-400 font-bold">-</span>
-                                <input
-                                    type="date"
-                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-xl p-2 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                <DateInput
                                     value={marginEndDate}
                                     onChange={e => setMarginEndDate(e.target.value)}
+                                    className="w-36"
                                 />
                             </div>
                         </div>
@@ -2594,7 +2589,7 @@ export default function OperatingExpenses() {
                                             <thead>
                                                 <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
                                                     <th className="px-4 py-3">Poste</th>
-                                                    <th className="px-4 py-3 text-right">Montant (MAD)</th>
+                                                    <th className="px-4 py-3 text-right">Montant (DH)</th>
                                                     <th className="px-4 py-3 text-right">% du Chiffre d'Affaires</th>
                                                 </tr>
                                             </thead>
@@ -2929,17 +2924,15 @@ export default function OperatingExpenses() {
                         <form onSubmit={handleSubmitExpense} className="space-y-4 py-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Date de Paiement</label>
-                                    <input
-                                        type="date"
-                                        required
-                                        className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl p-3 outline-none font-medium focus:ring-2 focus:ring-indigo-100"
+                                    <DateInput
+                                        label="Date de Paiement"
                                         value={formData.date}
                                         onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                        required
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Montant (MAD)</label>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Montant (DH)</label>
                                     <input
                                         type="number"
                                         required

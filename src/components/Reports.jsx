@@ -130,7 +130,7 @@ export default function Reports() {
 
             // Helper functions for formatting (if needed for comparison text)
             const formatNumber = (num) => new Intl.NumberFormat('fr-FR').format(num);
-            const formatPrice = (num) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'MAD' }).format(num);
+            const formatPrice = (num) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num) + ' DH';
 
             const workbook = new ExcelJS.Workbook();
             workbook.creator = 'Suivi CA App';
@@ -148,7 +148,7 @@ export default function Reports() {
                 alignment: { vertical: 'middle' }
             };
 
-            const currencyFormat = '#,##0.00 "MAD"';
+            const currencyFormat = '#,##0.00 "DH"';
             const numberFormat = '#,##0.00 "L"';
 
             const applyHeaderStyle = (sheet) => {
@@ -204,7 +204,7 @@ export default function Reports() {
                 // Value N
                 const valCell = summarySheet.getCell(r + 1, c);
                 valCell.value = valueN;
-                valCell.numFmt = label.includes('Volume') ? '#,##0 "L"' : '#,##0 "MAD"';
+                valCell.numFmt = label.includes('Volume') ? '#,##0 "L"' : '#,##0 "DH"';
                 valCell.font = { name: 'Segoe UI', size: 18, bold: true, color: { argb: 'FF111827' } };
                 valCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
@@ -377,8 +377,8 @@ export default function Reports() {
                 "Catégorie": item.category,
                 "Emplacement": item.location,
                 "Quantité": item.quantity,
-                "Total (MAD)": item.total,
-                "Total Journée (MAD)": item.dailyTotal
+                "Total (DH)": item.total,
+                "Total Journée (DH)": item.dailyTotal
             }));
 
             const ws = XLSX.utils.json_to_sheet(excelData);
@@ -696,7 +696,7 @@ export default function Reports() {
                                             <td className="py-4 px-6 text-text-main font-medium">{row.date}</td>
                                             <td className="py-4 px-6 text-text-main">{row.article}</td>
                                             <td className="py-4 px-6 text-right text-text-main">{row.quantity}</td>
-                                            <td className="py-4 px-6 text-right font-bold text-primary">{row.total} MAD</td>
+                                            <td className="py-4 px-6 text-right font-bold text-primary">{row.total} DH</td>
                                         </tr>
                                     ))
                                 )}

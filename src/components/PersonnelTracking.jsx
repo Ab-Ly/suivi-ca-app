@@ -8,6 +8,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from './ui/Toast';
+import { DateInput } from './ui/DateInput';
 
 export default function PersonnelTracking() {
     const [employees, setEmployees] = useState([]);
@@ -400,9 +401,7 @@ const InfoTab = ({ employee, onUpdate }) => {
                                 {formData.contract_type === 'Interim' ? (
                                     <>
                                         <InputGroup label="Renouvellement 1">
-                                            <input
-                                                type="date"
-                                                className="input-field"
+                                            <DateInput
                                                 value={formData.contract_renewal_date || ''}
                                                 onChange={e => handleChange('contract_renewal_date', e.target.value)}
                                             />
@@ -410,9 +409,7 @@ const InfoTab = ({ employee, onUpdate }) => {
                                         {/* New row for 2nd date to maintain grid structure */}
                                         <div className="col-span-2 md:col-span-1 md:col-start-2">
                                             <InputGroup label="Renouvellement 2">
-                                                <input
-                                                    type="date"
-                                                    className="input-field"
+                                                <DateInput
                                                     value={formData.contract_renewal_date_2 || ''}
                                                     onChange={e => handleChange('contract_renewal_date_2', e.target.value)}
                                                 />
@@ -423,9 +420,7 @@ const InfoTab = ({ employee, onUpdate }) => {
                                     null
                                 ) : (
                                     <InputGroup label="Renouvellement">
-                                        <input
-                                            type="date"
-                                            className="input-field"
+                                        <DateInput
                                             value={formData.contract_renewal_date || ''}
                                             onChange={e => handleChange('contract_renewal_date', e.target.value)}
                                         />
@@ -587,10 +582,10 @@ const AbsencesTab = ({ employee, absences, refresh }) => {
                             </select>
                         </InputGroup>
                         <InputGroup label="Du">
-                            <input type="date" className="input-field w-full" value={newAbs.start} onChange={e => setNewAbs({ ...newAbs, start: e.target.value })} />
+                            <DateInput value={newAbs.start} onChange={e => setNewAbs({ ...newAbs, start: e.target.value })} />
                         </InputGroup>
                         <InputGroup label="Au">
-                            <input type="date" className="input-field w-full" value={newAbs.end} onChange={e => setNewAbs({ ...newAbs, end: e.target.value })} />
+                            <DateInput value={newAbs.end} onChange={e => setNewAbs({ ...newAbs, end: e.target.value })} />
                         </InputGroup>
                         <InputGroup label="Motif (Optionnel)">
                             <input className="input-field w-full" placeholder="..." value={newAbs.reason} onChange={e => setNewAbs({ ...newAbs, reason: e.target.value })} />
@@ -661,7 +656,7 @@ const MedicalTab = ({ employee, events, refresh }) => {
                 <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm animate-slide-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <InputGroup label="Date">
-                            <input type="date" className="input-field w-full" value={newEvent.date} onChange={e => setNewEvent({ ...newEvent, date: e.target.value })} />
+                            <DateInput value={newEvent.date} onChange={e => setNewEvent({ ...newEvent, date: e.target.value })} />
                         </InputGroup>
                         <InputGroup label="Type Action">
                             <select className="input-field w-full" value={newEvent.type} onChange={e => setNewEvent({ ...newEvent, type: e.target.value })}>

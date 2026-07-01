@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { DateInput } from './ui/DateInput';
 import { Droplet, Save, History, AlertCircle, CheckCircle, Truck, FileDown, Plus, Trash2, ChevronDown, ChevronUp, RefreshCw, Loader2, ChevronRight } from 'lucide-react';
 import { formatNumber } from '../utils/formatters';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
@@ -490,8 +491,12 @@ export default function FuelDeliveryTracking() {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Date Réception</label>
-                                    <input type="date" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-indigo-500 focus:border-indigo-500 block p-3 font-medium outline-none transition-shadow" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} />
+                                    <DateInput
+                                        label="Date Réception"
+                                        value={formData.date}
+                                        onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                        required
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-indigo-600 uppercase">Total Facturé (L)</label>

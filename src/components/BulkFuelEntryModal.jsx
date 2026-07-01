@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal } from './ui/Modal';
+import { DateInput } from './ui/DateInput';
 import { Plus, Trash2, Save, Loader2, Calendar } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatNumber } from '../utils/formatters';
@@ -94,7 +95,8 @@ export default function BulkFuelEntryModal({ isOpen, onClose, onSuccess }) {
                     Saisissez les volumes vendus (en Litres) pour chaque date. Les lignes vides seront ignorées.
                 </div>
 
-                <div className="overflow-hidden border border-gray-200 rounded-xl shadow-sm">
+                {/* Desktop view: Table */}
+                <div className="hidden md:block overflow-hidden border border-gray-200 rounded-xl shadow-sm bg-white">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 text-gray-600 font-medium text-sm">
                             <tr>
@@ -108,15 +110,11 @@ export default function BulkFuelEntryModal({ isOpen, onClose, onSuccess }) {
                             {rows.map((row, index) => (
                                 <tr key={index} className="group hover:bg-gray-50 transition-colors">
                                     <td className="p-2">
-                                        <div className="relative">
-                                            <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                            <input
-                                                type="date"
-                                                value={row.date}
-                                                onChange={(e) => handleChange(index, 'date', e.target.value)}
-                                                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                                            />
-                                        </div>
+                                        <DateInput
+                                            value={row.date}
+                                            onChange={(e) => handleChange(index, 'date', e.target.value)}
+                                            className="w-full"
+                                        />
                                     </td>
                                     <td className="p-2">
                                         <input
@@ -159,6 +157,68 @@ export default function BulkFuelEntryModal({ isOpen, onClose, onSuccess }) {
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+
+                {/* Mobile view: Stacked list */}
+                <div className="md:hidden space-y-4 max-h-[50vh] overflow-y-auto pr-1">
+                    {rows.map((row, index) => (
+                        <div key={index} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3 relative">
+                            {rows.length > 1 && (
+                                <button
+                                    onClick={() => handleRemoveRow(index)}
+                                    className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
+                            )}
+                            <div className="font-semibold text-xs text-gray-500 uppercase">Saisie #{index + 1}</div>
+                            
+                            <div>
+                                <label className="block text-[10px] text-gray-400 font-bold uppercase mb-1">Date</label>
+                                <DateInput
+                                    value={row.date}
+                                    onChange={(e) => handleChange(index, 'date', e.target.value)}
+                                    className="w-full"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="block text-[10px] text-gray-400 font-bold uppercase mb-1 text-orange-600">Gasoil (L)</label>
+                                    <input
+                                        type="number"
+                                        value={row.gasoil}
+                                        onChange={(e) => handleChange(index, 'gasoil', e.target.value)}
+                                        placeholder="0"
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] text-gray-400 font-bold uppercase mb-1 text-green-600">Sans Plomb (L)</label>
+                                    <input
+                                        type="number"
+                                        value={row.ssp}
+                                        onChange={(e) => handleChange(index, 'ssp', e.target.value)}
+                                        placeholder="0"
+                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-sm font-mono"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    
+                    {/* Mobile Totals Preview */}
+                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 space-y-1">
+                        <div className="uppercase text-gray-400 text-[10px] mb-1">Résumé des totaux</div>
+                        <div className="flex justify-between">
+                            <span>Total Gasoil :</span>
+                            <span className="font-mono text-orange-700">{formatNumber(totalGasoil)} L</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span>Total Sans Plomb :</span>
+                            <span className="font-mono text-green-700">{formatNumber(totalSSP)} L</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">
