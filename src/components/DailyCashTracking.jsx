@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet, CloudUpload } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet, CloudUpload, AlertTriangle, CheckCircle2, RefreshCw, Save, Scale } from 'lucide-react';
+import PrepaidReloadModal from './PrepaidReloadModal';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { formatPrice, formatNumber } from '../utils/formatters';
@@ -36,6 +37,28 @@ const fetchAllOperations = async () => {
     return allData;
 };
 
+const fetchAllExpenseOperations = async () => {
+    let allData = [];
+    let page = 0;
+    const pageSize = 1000;
+    while (true) {
+        const { data, error } = await supabase
+            .from('daily_cash_operations')
+            .select('*')
+            .eq('category', 'EXPENSE_FUND')
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allData.push(...data);
+        if (data.length < pageSize) break;
+        page++;
+    }
+    return allData;
+};
+
 export default function DailyCashTracking() {
     const { success: showSuccess, error: showError } = useToast();
     const [isSyncingToDrive, setIsSyncingToDrive] = useState(false);
@@ -44,6 +67,39 @@ export default function DailyCashTracking() {
     const [operations, setOperations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+    // Prepaid Card Reloads State
+    const [prepaidReloads, setPrepaidReloads] = useState([]);
+    const [loadingPrepaid, setLoadingPrepaid] = useState(false);
+    const [prepaidMonth, setPrepaidMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [prepaidSearch, setPrepaidSearch] = useState('');
+    const [isPrepaidModalOpen, setIsPrepaidModalOpen] = useState(false);
+    const [editingPrepaidReload, setEditingPrepaidReload] = useState(null);
+    const [alertCount, setAlertCount] = useState(0);
+    const [currentMonthCumul, setCurrentMonthCumul] = useState(0);
+    const [prepaidTableError, setPrepaidTableError] = useState(false);
+
+    // Daily Cash Closing State
+    const [closingData, setClosingData] = useState({
+        recette_8h_j_prev: 0,
+        recette_8h_j: 0,
+        total_rendement_j_prev: 0,
+        tpe: 0,
+        petrom_card: 0,
+        bon_sntl: 0,
+        bon_ste: 0,
+        shop_cafe: 0,
+        sce_bosch: 0,
+        lubrifiant: 0,
+        comptage_espece_total: 0,
+        notes: ''
+    });
+    const [savingClosing, setSavingClosing] = useState(false);
+    const [loadingClosing, setLoadingClosing] = useState(false);
+    const [closingTableError, setClosingTableError] = useState(false);
+    const [closingsHistory, setClosingsHistory] = useState([]);
+    const [loadingHistoryClosings, setLoadingHistoryClosings] = useState(false);
+    const [loadingExpenseHistory, setLoadingExpenseHistory] = useState(false);
 
     // Form states
     const [showAddModal, setShowAddModal] = useState(false);
@@ -1694,118 +1750,149 @@ export default function DailyCashTracking() {
             if (opsError) throw opsError;
             setOperations(opsData || []);
 
-            // 2. Fetch MONTHLY operations (for Expense Tab history)
-            const { data: monthOps, error: monthOpsError } = await supabase
-                .from('daily_cash_operations')
-                .select('*, daily_cash_entities(name)')
-                .gte('date', startOfMonthStr)
-                .lte('date', endOfMonthStr)
-                .order('date', { ascending: false })
-                .order('created_at', { ascending: false });
+            // 2. Fetch MONTHLY operations (for Expense Tab history) - paginated to bypass 1000 limit
+            let monthOps = [];
+            let monthPage = 0;
+            const monthPageSize = 1000;
+            while (true) {
+                const { data, error } = await supabase
+                    .from('daily_cash_operations')
+                    .select('*, daily_cash_entities(name)')
+                    .gte('date', startOfMonthStr)
+                    .lte('date', endOfMonthStr)
+                    .order('date', { ascending: false })
+                    .order('created_at', { ascending: false })
+                    .range(monthPage * monthPageSize, (monthPage + 1) * monthPageSize - 1);
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                monthOps.push(...data);
+                if (data.length < monthPageSize) break;
+                monthPage++;
+            }
+            setMonthlyOperations(monthOps);
 
-            if (monthOpsError) throw monthOpsError;
-            setMonthlyOperations(monthOps || []);
+            // 3. Try fetching stats using RPC first
+            let rpcSuccess = false;
+            try {
+                const currentYear = currentSelectedDate.getFullYear();
+                const { data: stats, error: rpcError } = await supabase
+                    .rpc('get_daily_cash_stats', {
+                        p_selected_date: selectedDate,
+                        p_start_of_month: startOfMonthStr,
+                        p_end_of_month: endOfMonthStr,
+                        p_year: currentYear
+                    });
 
-            // 3. Fetch ALL operations to calculate global balances and history (using paginated fetch to bypass default 1000-row limit)
-            const allOps = await fetchAllOperations();
+                if (!rpcError && stats) {
+                    setPreviousBalance(Number(stats.prev_balance) || 0);
+                    setExpenseOpeningBalance(Number(stats.expense_opening_balance) || 0);
+                    setExpenseClosingBalance(Number(stats.expense_closing_balance) || 0);
+                    setMonthExpenseOpening(Number(stats.month_expense_opening) || 0);
+                    setMonthExpenseClosing(Number(stats.month_expense_closing) || 0);
 
-            // --- CALCULATIONS ---
+                    const entityBals = stats.entity_balances || {};
+                    const newEntityOpeningBalances = {};
+                    const newEntityClosingBalances = {};
+                    (entitiesData || []).forEach(e => {
+                        const eb = entityBals[e.id] || { opening: 0, closing: 0 };
+                        newEntityOpeningBalances[e.id] = Number(eb.opening) || 0;
+                        newEntityClosingBalances[e.id] = Number(eb.closing) || 0;
+                    });
+                    setEntityOpeningBalances(newEntityOpeningBalances);
+                    setEntityClosingBalances(newEntityClosingBalances);
 
-            // A. Daily Context Balances (Existing Logic)
-            const newEntityOpeningBalances = {};
-            const newEntityClosingBalances = {};
-            let newExpenseOpeningBalance = 0;
-            let newExpenseClosingBalance = 0;
-            let prevBal = 0; // For daily cashflow spreadsheet
-
-            // B. Monthly Context Balances (New Logic)
-            let mExpOpen = 0;
-            let mExpClose = 0;
-
-            // Initialize entities
-            (entitiesData || []).forEach(e => {
-                newEntityOpeningBalances[e.id] = 0;
-                newEntityClosingBalances[e.id] = 0;
-            });
-
-            allOps.forEach(op => {
-                const amount = Number(op.amount);
-                const isCredit = op.type === 'IN';
-                const val = isCredit ? amount : -amount;
-                const opDate = op.date;
-
-                // --- Daily Logic (Strictly related to selectedDate) ---
-                if (op.category === 'ENTITY_TRANSACTION' && op.entity_id) {
-                    // For entity balances, IN (isCredit) increases the entity balance, OUT decreases it.
-                    const valEntity = isCredit ? amount : -amount;
-                    if (opDate < selectedDate) newEntityOpeningBalances[op.entity_id] = (newEntityOpeningBalances[op.entity_id] || 0) + valEntity;
-                    if (opDate <= selectedDate) newEntityClosingBalances[op.entity_id] = (newEntityClosingBalances[op.entity_id] || 0) + valEntity;
-                } else if (op.category === 'EXPENSE_FUND') {
-                    if (opDate < selectedDate) newExpenseOpeningBalance += val;
-                    if (opDate <= selectedDate) newExpenseClosingBalance += val;
-                }
-
-                // Cashflow "Report J-1" logic
-                if (opDate < selectedDate) prevBal += val;
-
-                // --- Monthly Logic (Related to startOfMonth) ---
-                // We only care about Expense Fund for the monthly tab view currently
-                if (op.category === 'EXPENSE_FUND') {
-                    // Opening Balance: All time BEFORE start of current month
-                    if (opDate < startOfMonthStr) {
-                        mExpOpen += val;
+                    const recap = Array.from({ length: 12 }, (_, i) => ({
+                        month: i,
+                        label: format(new Date(currentYear, i, 1), 'MMMM', { locale: fr }),
+                        amount: 0
+                    }));
+                    if (stats.annual_recap && Array.isArray(stats.annual_recap)) {
+                        stats.annual_recap.forEach(r => {
+                            if (recap[r.month]) recap[r.month].amount = Number(r.amount) || 0;
+                        });
                     }
-                    // Closing Balance: All time UP TO end of current month (or current date if we want 'current' state? User said 'history for a month', implies full month view)
-                    // Let's settle on: Closing = Opening + Month Movements
-                    // Since we iterate allOps, checking <= endOfMonthStr is safer for historical checks
-                    if (opDate <= endOfMonthStr) { // OR <= selectedDate if we want "running month"? Usually "Monthly Statement" shows full month if available.
-                        mExpClose += val;
+                    setMonthlyRecap(recap);
+                    rpcSuccess = true;
+                }
+            } catch (rpcErr) {
+                console.warn('RPC stats function not available, falling back to local processing:', rpcErr);
+            }
+
+            if (!rpcSuccess) {
+                // Fallback calculations: Fetch all operations to do calculations locally
+                const allOps = await fetchAllOperations();
+
+                const newEntityOpeningBalances = {};
+                const newEntityClosingBalances = {};
+                let newExpenseOpeningBalance = 0;
+                let newExpenseClosingBalance = 0;
+                let prevBal = 0;
+                let mExpOpen = 0;
+                let mExpClose = 0;
+
+                (entitiesData || []).forEach(e => {
+                    newEntityOpeningBalances[e.id] = 0;
+                    newEntityClosingBalances[e.id] = 0;
+                });
+
+                allOps.forEach(op => {
+                    const amount = Number(op.amount);
+                    const isCredit = op.type === 'IN';
+                    const val = isCredit ? amount : -amount;
+                    const opDate = op.date;
+
+                    if (op.category === 'ENTITY_TRANSACTION' && op.entity_id) {
+                        const valEntity = isCredit ? amount : -amount;
+                        if (opDate < selectedDate) newEntityOpeningBalances[op.entity_id] = (newEntityOpeningBalances[op.entity_id] || 0) + valEntity;
+                        if (opDate <= selectedDate) newEntityClosingBalances[op.entity_id] = (newEntityClosingBalances[op.entity_id] || 0) + valEntity;
+                    } else if (op.category === 'EXPENSE_FUND') {
+                        if (opDate < selectedDate) newExpenseOpeningBalance += val;
+                        if (opDate <= selectedDate) newExpenseClosingBalance += val;
                     }
-                }
-            });
 
-            // If we want "Current Month State" (i.e. up to today if looking at current month?), usually accounting shows the whole month if selected.
-            // Let's stick to "Month View".
+                    if (opDate < selectedDate) prevBal += val;
 
-            setEntityOpeningBalances(newEntityOpeningBalances);
-            setEntityClosingBalances(newEntityClosingBalances);
-            setExpenseOpeningBalance(newExpenseOpeningBalance); // Daily
-            setExpenseClosingBalance(newExpenseClosingBalance); // Daily
-            setPreviousBalance(prevBal);
-
-            setMonthExpenseOpening(mExpOpen);
-            setMonthExpenseClosing(mExpClose);
-
-            // C. Annual Recap Calculation
-            const currentYear = new Date().getFullYear();
-            const recap = Array.from({ length: 12 }, (_, i) => ({
-                month: i,
-                label: format(new Date(currentYear, i, 1), 'MMMM', { locale: fr }),
-                amount: 0
-            }));
-
-            allOps.forEach(op => {
-                if (op.category === 'EXPENSE_FUND' && op.type === 'OUT') {
-                    const d = new Date(op.date);
-                    if (d.getFullYear() === currentYear) {
-                        recap[d.getMonth()].amount += Number(op.amount);
+                    if (op.category === 'EXPENSE_FUND') {
+                        if (opDate < startOfMonthStr) mExpOpen += val;
+                        if (opDate <= endOfMonthStr) mExpClose += val;
                     }
-                }
-            });
-            // D. Grouping Logic for History View
-            const grouped = {};
-            allOps.forEach(op => {
-                if (op.category === 'EXPENSE_FUND') { // Filter for Expense Fund
-                    const monthKey = format(new Date(op.date), 'yyyy-MM');
-                    if (!grouped[monthKey]) grouped[monthKey] = [];
-                    grouped[monthKey].push(op);
-                }
-            });
-            // Sort keys descending (though allOps is already sorted, explicit sort for keys is good practice if iterating via Object.entries)
-            setGroupedExpenseOperations(grouped);
+                });
 
-            setMonthlyRecap(recap);
+                setEntityOpeningBalances(newEntityOpeningBalances);
+                setEntityClosingBalances(newEntityClosingBalances);
+                setExpenseOpeningBalance(newExpenseOpeningBalance);
+                setExpenseClosingBalance(newExpenseClosingBalance);
+                setPreviousBalance(prevBal);
+                setMonthExpenseOpening(mExpOpen);
+                setMonthExpenseClosing(mExpClose);
 
+                const currentYear = new Date().getFullYear();
+                const recap = Array.from({ length: 12 }, (_, i) => ({
+                    month: i,
+                    label: format(new Date(currentYear, i, 1), 'MMMM', { locale: fr }),
+                    amount: 0
+                }));
+
+                allOps.forEach(op => {
+                    if (op.category === 'EXPENSE_FUND' && op.type === 'OUT') {
+                        const d = new Date(op.date);
+                        if (d.getFullYear() === currentYear) {
+                            recap[d.getMonth()].amount += Number(op.amount);
+                        }
+                    }
+                });
+                setMonthlyRecap(recap);
+
+                const grouped = {};
+                allOps.forEach(op => {
+                    if (op.category === 'EXPENSE_FUND') {
+                        const monthKey = format(new Date(op.date), 'yyyy-MM');
+                        if (!grouped[monthKey]) grouped[monthKey] = [];
+                        grouped[monthKey].push(op);
+                    }
+                });
+                setGroupedExpenseOperations(grouped);
+            }
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {
@@ -1816,6 +1903,299 @@ export default function DailyCashTracking() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const fetchPrepaidStats = async () => {
+        try {
+            const currentMonthStr = new Date().toISOString().slice(0, 7);
+            const startOfMonth = `${currentMonthStr}-01`;
+            
+            const { data: monthData, error: errorMonth } = await supabase
+                .from('prepaid_card_reloads')
+                .select('amount')
+                .gte('reload_date', startOfMonth);
+                
+            if (!errorMonth && monthData) {
+                const cumul = monthData.reduce((sum, r) => sum + Number(r.amount), 0);
+                setCurrentMonthCumul(cumul);
+            }
+            
+            const date48hAgo = new Date();
+            date48hAgo.setDate(date48hAgo.getDate() - 2);
+            const date48hAgoStr = date48hAgo.toISOString().split('T')[0];
+            
+            const { data: overdueData, error: errorOverdue } = await supabase
+                .from('prepaid_card_reloads')
+                .select('id')
+                .eq('payment_status', false)
+                .lte('reload_date', date48hAgoStr);
+                
+            if (!errorOverdue && overdueData) {
+                setAlertCount(overdueData.length);
+            }
+        } catch (err) {
+            console.error('Error fetching prepaid stats:', err);
+        }
+    };
+
+    const fetchPrepaidReloads = async () => {
+        setLoadingPrepaid(true);
+        try {
+            let query = supabase
+                .from('prepaid_card_reloads')
+                .select('*')
+                .order('reload_date', { ascending: false });
+
+            if (prepaidMonth) {
+                const startDate = `${prepaidMonth}-01`;
+                const [year, month] = prepaidMonth.split('-').map(Number);
+                const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+                query = query.gte('reload_date', startDate).lte('reload_date', endDate);
+            }
+
+            const { data, error } = await query;
+            
+            if (error) {
+                if (error.message?.includes('relation "public.prepaid_card_reloads" does not exist') || error.message?.includes('schema cache')) {
+                    setPrepaidTableError(true);
+                }
+                throw error;
+            }
+            
+            setPrepaidTableError(false);
+            setPrepaidReloads(data || []);
+            await fetchPrepaidStats();
+        } catch (error) {
+            console.error('Error fetching prepaid reloads:', error);
+        } finally {
+            setLoadingPrepaid(false);
+        }
+    };
+
+    const handleDeletePrepaidReload = async (id) => {
+        if (!window.confirm("Êtes-vous sûr de vouloir supprimer cette recharge ?")) {
+            return;
+        }
+        try {
+            const { error } = await supabase
+                .from('prepaid_card_reloads')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+            showSuccess('Recharge supprimée avec succès');
+            fetchPrepaidReloads();
+        } catch (err) {
+            console.error('Error deleting reload:', err);
+            showError('Erreur lors de la suppression de la recharge');
+        }
+    };
+
+    const isReloadOverdue = (reloadDateStr) => {
+        if (!reloadDateStr) return false;
+        const [year, month, day] = reloadDateStr.split('-').map(Number);
+        const reloadDate = new Date(year, month - 1, day);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffTime = today.getTime() - reloadDate.getTime();
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        return diffDays >= 2;
+    };
+
+    const getMonthOptions = () => {
+        const options = [];
+        const today = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const value = d.toISOString().slice(0, 7); // YYYY-MM
+            const label = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            options.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
+        }
+        return options;
+    };
+
+    useEffect(() => {
+        if (activeTab === 'prepaid_reloads') {
+            fetchPrepaidReloads();
+        }
+    }, [activeTab, prepaidMonth]);
+
+    const fetchClosingData = async () => {
+        setLoadingClosing(true);
+        try {
+            const { data: closing, error } = await supabase
+                .from('daily_cash_closings')
+                .select('*')
+                .eq('date', selectedDate)
+                .maybeSingle();
+
+            if (error) {
+                if (error.message?.includes('relation "public.daily_cash_closings" does not exist') || error.message?.includes('schema cache')) {
+                    setClosingTableError(true);
+                }
+                throw error;
+            }
+
+            setClosingTableError(false);
+
+            if (closing) {
+                setClosingData({
+                    recette_8h_j_prev: Number(closing.recette_8h_j_prev) || 0,
+                    recette_8h_j: Number(closing.recette_8h_j) || 0,
+                    total_rendement_j_prev: Number(closing.total_rendement_j_prev) || 0,
+                    tpe: Number(closing.tpe) || 0,
+                    petrom_card: Number(closing.petrom_card) || 0,
+                    bon_sntl: Number(closing.bon_sntl) || 0,
+                    bon_ste: Number(closing.bon_ste) || 0,
+                    shop_cafe: Number(closing.shop_cafe) || 0,
+                    sce_bosch: Number(closing.sce_bosch) || 0,
+                    lubrifiant: Number(closing.lubrifiant) || 0,
+                    comptage_espece_total: Number(closing.comptage_espece_total) || 0,
+                    notes: closing.notes || ''
+                });
+            } else {
+                const defaults = {
+                    recette_8h_j_prev: 0,
+                    recette_8h_j: 0,
+                    total_rendement_j_prev: 0,
+                    tpe: 0,
+                    petrom_card: 0,
+                    bon_sntl: 0,
+                    bon_ste: 0,
+                    shop_cafe: 0,
+                    sce_bosch: 0,
+                    lubrifiant: 0,
+                    comptage_espece_total: 0,
+                    notes: ''
+                };
+
+                const { data: todayRecette, error: todayRecetteErr } = await supabase
+                    .from('daily_cash_operations')
+                    .select('amount')
+                    .eq('date', selectedDate)
+                    .ilike('description', '%recette%8h%');
+                if (!todayRecetteErr && todayRecette && todayRecette.length > 0) {
+                    defaults.recette_8h_j = todayRecette.reduce((sum, r) => sum + Number(r.amount), 0);
+                }
+
+                const prevDate = new Date(selectedDate);
+                prevDate.setDate(prevDate.getDate() - 1);
+                const prevDateStr = prevDate.toISOString().split('T')[0];
+                const { data: yesterdayRecette, error: yesterdayRecetteErr } = await supabase
+                    .from('daily_cash_operations')
+                    .select('amount')
+                    .eq('date', prevDateStr)
+                    .ilike('description', '%recette%8h%');
+                if (!yesterdayRecetteErr && yesterdayRecette && yesterdayRecette.length > 0) {
+                    defaults.recette_8h_j_prev = yesterdayRecette.reduce((sum, r) => sum + Number(r.amount), 0);
+                }
+
+                const startOfDay = `${selectedDate}T00:00:00`;
+                const endOfDay = `${selectedDate}T23:59:59`;
+                const { data: counting, error: countingErr } = await supabase
+                    .from('money_countings')
+                    .select('total_calc')
+                    .gte('created_at', startOfDay)
+                    .lte('created_at', endOfDay)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (!countingErr && counting) {
+                    defaults.comptage_espece_total = Number(counting.total_calc) || 0;
+                }
+
+                setClosingData(defaults);
+            }
+        } catch (err) {
+            console.error('Error fetching closing data:', err);
+        } finally {
+            setLoadingClosing(false);
+        }
+    };
+
+    const handleSaveClosing = async (e) => {
+        e.preventDefault();
+        setSavingClosing(true);
+        try {
+            const dataToSave = {
+                date: selectedDate,
+                recette_8h_j_prev: Number(closingData.recette_8h_j_prev) || 0,
+                recette_8h_j: Number(closingData.recette_8h_j) || 0,
+                total_rendement_j_prev: Number(closingData.total_rendement_j_prev) || 0,
+                tpe: Number(closingData.tpe) || 0,
+                petrom_card: Number(closingData.petrom_card) || 0,
+                bon_sntl: Number(closingData.bon_sntl) || 0,
+                bon_ste: Number(closingData.bon_ste) || 0,
+                shop_cafe: Number(closingData.shop_cafe) || 0,
+                sce_bosch: Number(closingData.sce_bosch) || 0,
+                lubrifiant: Number(closingData.lubrifiant) || 0,
+                comptage_espece_total: Number(closingData.comptage_espece_total) || 0,
+                notes: closingData.notes?.trim() || null
+            };
+
+            const { error } = await supabase
+                .from('daily_cash_closings')
+                .upsert(dataToSave, { onConflict: 'date' });
+
+            if (error) throw error;
+            showSuccess('Arrêté de caisse enregistré avec succès');
+            fetchClosingData();
+            fetchClosingsHistory();
+        } catch (err) {
+            console.error('Error saving closing:', err);
+            showError('Erreur lors de l\'enregistrement de l\'arrêté de caisse');
+        } finally {
+            setSavingClosing(false);
+        }
+    };
+
+    const fetchClosingsHistory = async () => {
+        setLoadingHistoryClosings(true);
+        try {
+            const { data, error } = await supabase
+                .from('daily_cash_closings')
+                .select('*')
+                .order('date', { ascending: false })
+                .limit(30);
+
+            if (!error && data) {
+                setClosingsHistory(data);
+            }
+        } catch (err) {
+            console.error('Error fetching closings history:', err);
+        } finally {
+            setLoadingHistoryClosings(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'reconciliation') {
+            fetchClosingData();
+            fetchClosingsHistory();
+        }
+    }, [activeTab, selectedDate]);
+
+    const fetchExpenseHistory = async () => {
+        setLoadingExpenseHistory(true);
+        try {
+            const expenseOps = await fetchAllExpenseOperations();
+            const grouped = {};
+            expenseOps.forEach(op => {
+                const monthKey = format(new Date(op.date), 'yyyy-MM');
+                if (!grouped[monthKey]) grouped[monthKey] = [];
+                grouped[monthKey].push(op);
+            });
+            setGroupedExpenseOperations(grouped);
+        } catch (err) {
+            console.error('Error fetching expense history:', err);
+        } finally {
+            setLoadingExpenseHistory(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'expense') {
+            fetchExpenseHistory();
+        }
+    }, [activeTab]);
 
 
 
@@ -2231,6 +2611,8 @@ export default function DailyCashTracking() {
                     { id: 'operations', label: 'Opérations', icon: Calendar, activeColor: 'text-amber-600', iconColor: 'text-amber-500' },
                     { id: 'counting', label: 'Comptage', icon: Table, activeColor: 'text-indigo-600', iconColor: 'text-indigo-500' },
                     { id: 'spreadsheet', label: 'CashFlow', icon: Table, activeColor: 'text-emerald-600', iconColor: 'text-emerald-500' },
+                    { id: 'prepaid_reloads', label: 'Cartes Prépayées', icon: CreditCard, activeColor: 'text-rose-600', iconColor: 'text-rose-500' },
+                    { id: 'reconciliation', label: 'Arrêté Caisse', icon: Scale, activeColor: 'text-cyan-600', iconColor: 'text-cyan-500' },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -2527,7 +2909,16 @@ export default function DailyCashTracking() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-50">
-                                                {Object.keys(groupedExpenseOperations).length === 0 ? (
+                                                {loadingExpenseHistory ? (
+                                                    <tr>
+                                                        <td colSpan="5" className="p-12 text-center">
+                                                            <div className="flex flex-col items-center justify-center text-gray-400">
+                                                                <Loader2 size={32} className="animate-spin mb-4 text-indigo-600" />
+                                                                <p className="font-medium">Chargement de l'historique des dépenses...</p>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ) : Object.keys(groupedExpenseOperations).length === 0 ? (
                                                     <tr>
                                                         <td colSpan="5" className="p-12 text-center">
                                                             <div className="flex flex-col items-center justify-center text-gray-400">
@@ -3286,46 +3677,676 @@ export default function DailyCashTracking() {
                         )}
 
                         {activeTab === 'reconciliation' && (
-                            <div>
-                                <h3 className="font-semibold text-lg mb-4">Rapprochement Journalier</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="p-6 bg-green-50 rounded-xl border border-green-100">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-2 bg-green-100 rounded-lg text-green-600">
-                                                <ArrowDownLeft size={24} />
-                                            </div>
-                                            <div className="text-green-800 font-medium">Total Recettes (Crédit)</div>
+                            <div className="space-y-6 animate-fade-in font-sans">
+                                {closingTableError ? (
+                                    <div className="p-6 bg-red-50 border border-red-200 rounded-2xl flex flex-col gap-3">
+                                        <div className="flex items-center gap-3 text-red-700">
+                                            <AlertTriangle className="shrink-0" size={24} />
+                                            <h3 className="font-bold text-lg">Configuration de la base de données requise</h3>
                                         </div>
-                                        <div className="text-3xl font-bold text-green-900">
-                                            {formatPrice(dailyTotalCredit)}
-                                        </div>
+                                        <p className="text-sm text-red-600 leading-relaxed">
+                                            La table <code>daily_cash_closings</code> n'existe pas encore dans Supabase.
+                                            Pour activer cette fonctionnalité, veuillez copier et exécuter le script SQL dans le fichier 
+                                            <span className="font-semibold"> supabase_setup_cash_closings.sql </span> 
+                                            via l'éditeur SQL de votre console Supabase, puis rafraîchir cette page.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => fetchClosingData()}
+                                            className="flex items-center gap-2 bg-red-600 text-white w-fit px-4 py-2 rounded-xl text-sm font-medium hover:bg-red-700 transition-colors shadow-sm mt-1 cursor-pointer"
+                                        >
+                                            <RefreshCw size={16} />
+                                            Réessayer la connexion
+                                        </button>
                                     </div>
-
-                                    <div className="p-6 bg-red-50 rounded-xl border border-red-100">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-2 bg-red-100 rounded-lg text-red-600">
-                                                <ArrowUpRight size={24} />
+                                ) : (
+                                    <form onSubmit={handleSaveClosing} className="space-y-6">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                            <div>
+                                                <h3 className="font-bold text-xl text-gray-800">Arrêté de Caisse (Théorique vs Réel)</h3>
+                                                <p className="text-sm text-gray-400 mt-1">Saisie et calcul de l'écart de caisse pour la date sélectionnée</p>
                                             </div>
-                                            <div className="text-red-800 font-medium">Total Dépenses (Débit)</div>
+                                            <button
+                                                type="submit"
+                                                disabled={savingClosing || loadingClosing}
+                                                className="flex items-center gap-2 bg-gradient-purple text-white px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 font-semibold text-sm cursor-pointer disabled:opacity-50"
+                                            >
+                                                {savingClosing ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                                {savingClosing ? 'Enregistrement...' : 'Enregistrer l\'arrêté'}
+                                            </button>
                                         </div>
-                                        <div className="text-3xl font-bold text-red-900">
-                                            {formatPrice(dailyTotalDebit)}
+
+                                        {loadingClosing ? (
+                                            <div className="flex justify-center items-center py-20">
+                                                <Loader2 size={32} className="animate-spin text-indigo-600" />
+                                            </div>
+                                        ) : (
+                                            (() => {
+                                                const A = (Number(closingData.total_rendement_j_prev) - Number(closingData.recette_8h_j_prev)) + Number(closingData.recette_8h_j);
+                                                const B = Number(closingData.shop_cafe) + Number(closingData.sce_bosch) + Number(closingData.lubrifiant);
+                                                const C = Number(closingData.tpe) + Number(closingData.petrom_card) + Number(closingData.bon_sntl) + Number(closingData.bon_ste);
+                                                const D = (A + B) - C;
+                                                const Ecart = Number(closingData.comptage_espece_total) - D;
+
+                                                const handleInputChange = (field, val) => {
+                                                    setClosingData(prev => ({
+                                                        ...prev,
+                                                        [field]: val === '' ? '' : Number(val)
+                                                    }));
+                                                };
+
+                                                return (
+                                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                                                        {/* LEFT COLUMN: INPUT FORM */}
+                                                        <div className="lg:col-span-7 space-y-6">
+                                                            {/* section 1: Rendement */}
+                                                            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] space-y-4">
+                                                                <h4 className="font-bold text-sm text-indigo-600 uppercase tracking-wider border-b border-gray-50 pb-2 flex items-center gap-2">
+                                                                    <div className="w-1.5 h-3 bg-indigo-500 rounded"></div>
+                                                                    Section 1 : Rendement
+                                                                </h4>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Recette 8H J-1 (1)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.recette_8h_j_prev}
+                                                                            onChange={(e) => handleInputChange('recette_8h_j_prev', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Recette 8H J (2)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.recette_8h_j}
+                                                                            onChange={(e) => handleInputChange('recette_8h_j', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Rendement J-1 (3)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.total_rendement_j_prev}
+                                                                            onChange={(e) => handleInputChange('total_rendement_j_prev', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* section 2: Encaissements Annexes */}
+                                                            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] space-y-4">
+                                                                <h4 className="font-bold text-sm text-amber-600 uppercase tracking-wider border-b border-gray-50 pb-2 flex items-center gap-2">
+                                                                    <div className="w-1.5 h-3 bg-amber-500 rounded"></div>
+                                                                    Section 2 : Encaissements Hors Espèces (Annexes)
+                                                                </h4>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">TPE (4)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.tpe}
+                                                                            onChange={(e) => handleInputChange('tpe', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Petrom Card (5)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.petrom_card}
+                                                                            onChange={(e) => handleInputChange('petrom_card', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Bon SNTL (6)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.bon_sntl}
+                                                                            onChange={(e) => handleInputChange('bon_sntl', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Bon Sté (7)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.bon_ste}
+                                                                            onChange={(e) => handleInputChange('bon_ste', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* section 3: Ventes Annexes */}
+                                                            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] space-y-4">
+                                                                <h4 className="font-bold text-sm text-emerald-600 uppercase tracking-wider border-b border-gray-50 pb-2 flex items-center gap-2">
+                                                                    <div className="w-1.5 h-3 bg-emerald-500 rounded"></div>
+                                                                    Section 3 : Ventes Hors Carburant (Annexes)
+                                                                </h4>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Shop & Café (8)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.shop_cafe}
+                                                                            onChange={(e) => handleInputChange('shop_cafe', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Service Bosch (9)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.sce_bosch}
+                                                                            onChange={(e) => handleInputChange('sce_bosch', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-semibold text-gray-400 mb-1">Lubrifiant (10)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
+                                                                            value={closingData.lubrifiant}
+                                                                            onChange={(e) => handleInputChange('lubrifiant', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* section 4: Comptage Especes */}
+                                                            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] space-y-4">
+                                                                <h4 className="font-bold text-sm text-rose-600 uppercase tracking-wider border-b border-gray-50 pb-2 flex items-center gap-2">
+                                                                    <div className="w-1.5 h-3 bg-rose-500 rounded"></div>
+                                                                    Section 4 : Comptage Réel en Espèces
+                                                                </h4>
+                                                                <div className="max-w-xs">
+                                                                    <label className="block text-xs font-bold text-gray-500 mb-1">Comptage Espèces Total (11)</label>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            placeholder="0.00"
+                                                                            className="w-full pl-3 pr-10 py-2.5 text-base font-bold border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-rose-700 bg-rose-50/20"
+                                                                            value={closingData.comptage_espece_total}
+                                                                            onChange={(e) => handleInputChange('comptage_espece_total', e.target.value)}
+                                                                        />
+                                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-xs text-rose-500">DH</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* section 5: Observations */}
+                                                            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] space-y-2">
+                                                                <label className="block text-xs font-semibold text-gray-500">Notes / Observations</label>
+                                                                <textarea
+                                                                    rows="2"
+                                                                    placeholder="Saisir des remarques sur l'écart ou l'arrêté..."
+                                                                    className="w-full px-3 py-2 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white resize-none"
+                                                                    value={closingData.notes}
+                                                                    onChange={(e) => setClosingData(prev => ({ ...prev, notes: e.target.value }))}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* RIGHT COLUMN: CALCULATION SHEET & SUMMARY */}
+                                                        <div className="lg:col-span-5 space-y-6">
+                                                            {/* Discrepancy Card */}
+                                                            <div className={`p-6 rounded-3xl border shadow-xl flex flex-col justify-between transition-all duration-300 ${
+                                                                Math.abs(Ecart) <= 0.05
+                                                                    ? 'bg-emerald-50 border-emerald-100 text-emerald-800 shadow-emerald-500/5'
+                                                                    : 'bg-rose-50 border-rose-100 text-rose-800 shadow-rose-500/5'
+                                                            }`}>
+                                                                <div>
+                                                                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">RÉSULTAT DE L'ARRÊTÉ</span>
+                                                                    <div className="flex items-baseline gap-2 mt-2">
+                                                                        <h3 className="text-4xl font-black font-mono">
+                                                                            {Ecart >= 0 ? '+' : ''}{Ecart.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                        </h3>
+                                                                    </div>
+                                                                    <p className="text-xs mt-2 opacity-85 leading-relaxed font-medium">
+                                                                        {Math.abs(Ecart) <= 0.05 
+                                                                            ? "Caisse équilibrée. Le montant d'espèces réel correspond au solde théorique de caisse." 
+                                                                            : Ecart > 0 
+                                                                                ? "Excédent de caisse. Le comptage réel en espèces est supérieur au solde théorique."
+                                                                                : "Déficit de caisse. Le comptage réel en espèces est inférieur au solde théorique."
+                                                                        }
+                                                                    </p>
+                                                                </div>
+                                                                <div className="mt-6 flex items-center gap-3">
+                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                                                        Math.abs(Ecart) <= 0.05 ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
+                                                                    }`}>
+                                                                        {Math.abs(Ecart) <= 0.05 ? <Check size={18} /> : <AlertTriangle size={18} />}
+                                                                    </div>
+                                                                    <span className="font-bold text-xs uppercase tracking-wider font-sans">
+                                                                        {Math.abs(Ecart) <= 0.05 ? "Caisse OK" : "Écart détecté"}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Logic Sheets */}
+                                                            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] space-y-5">
+                                                                <h4 className="font-bold text-sm text-gray-900 border-b border-gray-100 pb-3 uppercase tracking-wider">
+                                                                    Feuille de Calcul Logique
+                                                                </h4>
+
+                                                                <div className="space-y-4">
+                                                                    {/* A: RENDEMENT */}
+                                                                    <div className="p-4 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
+                                                                        <div className="flex justify-between items-center text-xs">
+                                                                            <span className="font-bold text-gray-500 uppercase tracking-wider">A - Rendement</span>
+                                                                            <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                                                                                {A.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-[10px] text-gray-400 font-mono italic">
+                                                                            Calcul: (Rendement J-1 ({closingData.total_rendement_j_prev}) - Recette 8H J-1 ({closingData.recette_8h_j_prev})) + Recette 8H J ({closingData.recette_8h_j})
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* B: VENTIS ANNEXES */}
+                                                                    <div className="p-4 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
+                                                                        <div className="flex justify-between items-center text-xs">
+                                                                            <span className="font-bold text-gray-500 uppercase tracking-wider">B - Ventes Annexes</span>
+                                                                            <span className="font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                                                                                {B.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-[10px] text-gray-400 font-mono italic">
+                                                                            Calcul: Shop/Café ({closingData.shop_cafe}) + Sce Bosch ({closingData.sce_bosch}) + Lubrifiant ({closingData.lubrifiant})
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* C: ENCAISSEMENTS ANNEXES */}
+                                                                    <div className="p-4 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
+                                                                        <div className="flex justify-between items-center text-xs">
+                                                                            <span className="font-bold text-gray-500 uppercase tracking-wider">C - Encaissements Hors Espèces</span>
+                                                                            <span className="font-mono font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                                                                                {C.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-[10px] text-gray-400 font-mono italic">
+                                                                            Calcul: TPE ({closingData.tpe}) + Petrom Card ({closingData.petrom_card}) + Bon SNTL ({closingData.bon_sntl}) + Bon Sté ({closingData.bon_ste})
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* D: SOLDE THEORIQUE */}
+                                                                    <div className="p-4 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
+                                                                        <div className="flex justify-between items-center text-xs">
+                                                                            <span className="font-bold text-gray-500 uppercase tracking-wider">D - Solde Théorique</span>
+                                                                            <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                                                                {D.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-[10px] text-gray-400 font-mono italic">
+                                                                            Calcul: (A + B) - C = ({A.toLocaleString(undefined, { maximumFractionDigits: 2 })} + {B.toLocaleString(undefined, { maximumFractionDigits: 2 })}) - {C.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* COMPTAGE REEL VS THEO */}
+                                                                    <div className="pt-3 border-t border-gray-100 flex justify-between items-center text-sm">
+                                                                        <span className="font-bold text-gray-900">Écart Final (11 - D)</span>
+                                                                        <span className={`font-mono font-black ${Ecart >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                            {Ecart >= 0 ? '+' : ''}{Ecart.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()
+                                        )}
+                                    </form>
+                                )}
+
+                                {/* History Section */}
+                                {!closingTableError && (
+                                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] space-y-4 mt-8">
+                                        <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                                            <div>
+                                                <h4 className="font-bold text-base text-gray-800">Historique des Arrêtés</h4>
+                                                <p className="text-xs text-gray-400 mt-0.5">Les 30 derniers arrêtés de caisse enregistrés</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => fetchClosingsHistory()}
+                                                className="p-2 hover:bg-gray-50 rounded-xl transition-colors text-gray-400 hover:text-indigo-600 cursor-pointer"
+                                                title="Actualiser l'historique"
+                                            >
+                                                <RefreshCw size={16} />
+                                            </button>
                                         </div>
+
+                                        {loadingHistoryClosings ? (
+                                            <div className="flex justify-center py-8">
+                                                <Loader2 className="animate-spin text-indigo-600" size={24} />
+                                            </div>
+                                        ) : closingsHistory.length === 0 ? (
+                                            <div className="text-center py-10 text-gray-400 text-sm">
+                                                Aucun arrêté enregistré dans l'historique.
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left border-collapse text-xs">
+                                                    <thead>
+                                                        <tr className="border-b border-border bg-gray-50/50 text-gray-400 uppercase tracking-wider font-bold">
+                                                            <th className="py-2.5 px-3">Date</th>
+                                                            <th className="py-2.5 px-3 text-right">Rendement (A)</th>
+                                                            <th className="py-2.5 px-3 text-right">Ventes (B)</th>
+                                                            <th className="py-2.5 px-3 text-right">Encaissements (C)</th>
+                                                            <th className="py-2.5 px-3 text-right">Solde Théo (D)</th>
+                                                            <th className="py-2.5 px-3 text-right">Réel (11)</th>
+                                                            <th className="py-2.5 px-3 text-right">Écart (11 - D)</th>
+                                                            <th className="py-2.5 px-3">Notes</th>
+                                                            <th className="py-2.5 px-3 text-center">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {closingsHistory.map((hist) => {
+                                                            const histA = (Number(hist.total_rendement_j_prev) - Number(hist.recette_8h_j_prev)) + Number(hist.recette_8h_j);
+                                                            const histB = Number(hist.shop_cafe) + Number(hist.sce_bosch) + Number(hist.lubrifiant);
+                                                            const histC = Number(hist.tpe) + Number(hist.petrom_card) + Number(hist.bon_sntl) + Number(hist.bon_ste);
+                                                            const histD = (histA + histB) - histC;
+                                                            const histEcart = Number(hist.comptage_espece_total) - histD;
+
+                                                            return (
+                                                                <tr key={hist.id} className="border-b border-border hover:bg-gray-50/50 transition-colors">
+                                                                    <td className="py-3 px-3 font-bold text-gray-700">
+                                                                        {new Date(hist.date).toLocaleDateString('fr-FR')}
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-right text-indigo-600 font-mono font-medium">
+                                                                        {histA.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-right text-emerald-600 font-mono font-medium">
+                                                                        {histB.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-right text-amber-600 font-mono font-medium">
+                                                                        {histC.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-right text-blue-600 font-mono font-bold">
+                                                                        {histD.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-right text-rose-600 font-mono font-bold">
+                                                                        {Number(hist.comptage_espece_total).toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                    </td>
+                                                                    <td className={`py-3 px-3 text-right font-mono font-black ${
+                                                                        Math.abs(histEcart) <= 0.05 
+                                                                            ? 'text-emerald-600' 
+                                                                            : histEcart > 0 
+                                                                                ? 'text-emerald-700 bg-emerald-50' 
+                                                                                : 'text-rose-700 bg-rose-50'
+                                                                    }`}>
+                                                                        {histEcart >= 0 ? '+' : ''}{histEcart.toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-gray-500 max-w-xs truncate" title={hist.notes}>
+                                                                        {hist.notes || '-'}
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-center">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setSelectedDate(hist.date)}
+                                                                            className="px-2.5 py-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
+                                                                        >
+                                                                            Charger
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
                                     </div>
+                                )}
+                            </div>
+                        )}
 
-                                    <div className="p-6 bg-blue-50 rounded-xl border border-blue-100">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
-                                                <Wallet size={24} />
-                                            </div>
-                                            <div className="text-blue-800 font-medium">Solde Journalier</div>
+                        {activeTab === 'prepaid_reloads' && (
+                            <div className="space-y-6 animate-fade-in font-sans">
+                                {/* Error Banner */}
+                                {prepaidTableError ? (
+                                    <div className="p-6 bg-red-50 border border-red-200 rounded-2xl flex flex-col gap-3">
+                                        <div className="flex items-center gap-3 text-red-700">
+                                            <AlertTriangle className="shrink-0" size={24} />
+                                            <h3 className="font-bold text-lg">Configuration de la base de données requise</h3>
                                         </div>
-                                        <div className={`text-3xl font-bold ${(dailyTotalCredit - dailyTotalDebit) >= 0 ? 'text-blue-900' : 'text-red-900'
+                                        <p className="text-sm text-red-600 leading-relaxed font-sans">
+                                            La table <code>prepaid_card_reloads</code> n'existe pas encore dans Supabase.
+                                            Pour activer cette fonctionnalité, veuillez copier et exécuter le script SQL dans le fichier 
+                                            <span className="font-semibold"> supabase_setup_prepaid_reloads.sql </span> 
+                                            via l'éditeur SQL de votre console Supabase, puis rafraîchir cette page.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => fetchPrepaidReloads()}
+                                            className="flex items-center gap-2 bg-red-600 text-white w-fit px-4 py-2 rounded-xl text-sm font-medium hover:bg-red-700 transition-colors shadow-sm mt-1 cursor-pointer"
+                                        >
+                                            <RefreshCw size={16} />
+                                            Réessayer la connexion
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Summary row (KPIs) */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cumul mois sélectionné</span>
+                                                    <h3 className="text-2xl font-black text-gray-900 mt-1">
+                                                        {prepaidReloads.reduce((sum, r) => sum + Number(r.amount), 0).toLocaleString()} DH
+                                                    </h3>
+                                                </div>
+                                                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                                                    <CreditCard size={24} />
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cumul mois en cours</span>
+                                                    <h3 className="text-2xl font-black text-rose-600 mt-1">
+                                                        {currentMonthCumul.toLocaleString()} DH
+                                                    </h3>
+                                                </div>
+                                                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                                                    <Calendar size={24} />
+                                                </div>
+                                            </div>
+
+                                            <div className={`p-6 rounded-2xl border flex items-center justify-between transition-all ${
+                                                alertCount > 0 
+                                                    ? 'bg-rose-50 border-rose-100 shadow-[0_8px_30px_rgba(244,63,94,0.05)]' 
+                                                    : 'bg-white border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)]'
                                             }`}>
-                                            {formatPrice(dailyTotalCredit - dailyTotalDebit)}
+                                                <div>
+                                                    <span className={`text-xs font-bold uppercase tracking-wider ${alertCount > 0 ? 'text-rose-500' : 'text-gray-400'}`}>
+                                                        Versements en attente (&gt;48h)
+                                                    </span>
+                                                    <h3 className={`text-2xl font-black mt-1 ${alertCount > 0 ? 'text-rose-600' : 'text-gray-900'}`}>
+                                                        {alertCount} {alertCount > 0 && <span className="text-sm font-semibold text-rose-500">(Alerte !)</span>}
+                                                    </h3>
+                                                </div>
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                                                    alertCount > 0 ? 'bg-rose-100 text-rose-600' : 'bg-gray-50 text-gray-400'
+                                                }`}>
+                                                    <AlertTriangle size={24} className={alertCount > 0 ? 'animate-bounce' : ''} />
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
+
+                                        {/* Actions and Filters */}
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                            <div className="flex flex-wrap items-center gap-3 flex-1">
+                                                {/* Search */}
+                                                <div className="relative w-full sm:max-w-xs">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Filtrer par société..."
+                                                        value={prepaidSearch}
+                                                        onChange={(e) => setPrepaidSearch(e.target.value)}
+                                                        className="w-full pl-9 pr-4 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white text-text-main"
+                                                    />
+                                                </div>
+
+                                                {/* Month Selector */}
+                                                <select
+                                                    value={prepaidMonth}
+                                                    onChange={(e) => setPrepaidMonth(e.target.value)}
+                                                    className="px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white font-medium text-gray-700 hover:border-gray-300 transition-colors"
+                                                >
+                                                    <option value="">Tous les mois</option>
+                                                    {getMonthOptions().map(opt => (
+                                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEditingPrepaidReload(null);
+                                                    setIsPrepaidModalOpen(true);
+                                                }}
+                                                className="flex items-center justify-center gap-2 bg-gradient-purple text-white px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 font-medium cursor-pointer"
+                                            >
+                                                <Plus size={18} />
+                                                <span>Nouvelle Recharge</span>
+                                            </button>
+                                        </div>
+
+                                        {/* List Table */}
+                                        <div className="overflow-x-auto border border-gray-100 rounded-2xl bg-white shadow-sm">
+                                            {loadingPrepaid ? (
+                                                <div className="flex justify-center py-12">
+                                                    <Loader2 className="animate-spin text-primary" size={28} />
+                                                </div>
+                                            ) : prepaidReloads.length === 0 ? (
+                                                <div className="text-center py-16 text-gray-400 flex flex-col items-center gap-2">
+                                                    <CreditCard size={48} className="text-gray-200" />
+                                                    <span className="font-medium text-gray-500">Aucune recharge trouvée pour cette période.</span>
+                                                </div>
+                                            ) : (
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead>
+                                                        <tr className="border-b border-border bg-gray-50/50 text-gray-400 text-xs uppercase tracking-wider font-bold">
+                                                            <th className="py-3 px-4">Date Recharge</th>
+                                                            <th className="py-3 px-4">Société</th>
+                                                            <th className="py-3 px-4 text-right">Montant</th>
+                                                            <th className="py-3 px-4 text-center">Versement compte banque</th>
+                                                            <th className="py-3 px-4">Date Versement</th>
+                                                            <th className="py-3 px-4">Nature</th>
+                                                            <th className="py-3 px-4 text-center">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {prepaidReloads
+                                                            .filter(item => item.company.toLowerCase().includes(prepaidSearch.toLowerCase()))
+                                                            .map((reload) => {
+                                                                const overdue = !reload.payment_status && isReloadOverdue(reload.reload_date);
+                                                                return (
+                                                                    <tr 
+                                                                        key={reload.id} 
+                                                                        className={`border-b border-border last:border-0 hover:bg-gray-50/50 transition-colors ${
+                                                                            overdue ? 'bg-rose-50/30 hover:bg-rose-50/50' : ''
+                                                                        }`}
+                                                                    >
+                                                                        <td className="py-3.5 px-4 text-sm font-medium text-gray-600">
+                                                                            {new Date(reload.reload_date).toLocaleDateString('fr-FR')}
+                                                                        </td>
+                                                                        <td className="py-3.5 px-4 text-sm font-bold text-gray-900">
+                                                                            {reload.company}
+                                                                        </td>
+                                                                        <td className="py-3.5 px-4 text-sm font-bold text-right text-indigo-600 font-mono">
+                                                                            {Number(reload.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} DH
+                                                                        </td>
+                                                                        <td className="py-3.5 px-4 text-center">
+                                                                            {reload.payment_status ? (
+                                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                                                                    <Check size={12} />
+                                                                                    Versé
+                                                                                </span>
+                                                                            ) : overdue ? (
+                                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
+                                                                                    <AlertTriangle size={12} />
+                                                                                    Non versé (&gt;48h)
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                                                                                    <AlertTriangle size={12} />
+                                                                                    En attente
+                                                                                </span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td className="py-3.5 px-4 text-sm text-gray-600">
+                                                                            {reload.payment_date 
+                                                                                ? new Date(reload.payment_date).toLocaleDateString('fr-FR')
+                                                                                : '-'
+                                                                            }
+                                                                        </td>
+                                                                        <td className="py-3.5 px-4 text-sm text-gray-600">
+                                                                            {reload.payment_method || '-'}
+                                                                        </td>
+                                                                        <td className="py-3.5 px-4">
+                                                                            <div className="flex items-center justify-center gap-2">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        setEditingPrepaidReload(reload);
+                                                                                        setIsPrepaidModalOpen(true);
+                                                                                    }}
+                                                                                    className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                                                                                    title="Modifier la recharge"
+                                                                                >
+                                                                                    <Pencil size={16} />
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleDeletePrepaidReload(reload.id)}
+                                                                                    className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                                                                    title="Supprimer la recharge"
+                                                                                >
+                                                                                    <Trash2 size={16} />
+                                                                                </button>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                    </tbody>
+                                                </table>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
                     </>
@@ -4194,6 +5215,17 @@ export default function DailyCashTracking() {
                     document.body
                 )
             }
+
+            <PrepaidReloadModal
+                isOpen={isPrepaidModalOpen}
+                onClose={() => {
+                    setIsPrepaidModalOpen(false);
+                    setEditingPrepaidReload(null);
+                }}
+                reload={editingPrepaidReload}
+                entities={entities.map(e => e.name)}
+                onSuccess={() => fetchPrepaidReloads()}
+            />
         </div >
     );
 }

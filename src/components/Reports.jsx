@@ -10,6 +10,7 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { fetchComparisonStats } from '../utils/statisticsUtils';
+import { getArticleWeightInKg } from '../utils/formatters';
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
@@ -88,6 +89,7 @@ export default function Reports() {
                     category: sale.articles?.category || '-',
                     location: sale.sales_location === 'piste' ? 'Piste' : (sale.sales_location === 'bosch' ? 'Bosch' : '-'),
                     quantity: sale.quantity,
+                    weight: getArticleWeightInKg(sale.articles?.name, sale.articles?.category, sale.quantity),
                     total: sale.total_price,
                     dailyTotal: dailyTotals[date]
                 };
@@ -377,6 +379,7 @@ export default function Reports() {
                 "Catégorie": item.category,
                 "Emplacement": item.location,
                 "Quantité": item.quantity,
+                "Poids (kg)": item.weight !== null ? Number(item.weight.toFixed(2)) : "",
                 "Total (DH)": item.total,
                 "Total Journée (DH)": item.dailyTotal
             }));
@@ -411,13 +414,14 @@ export default function Reports() {
             doc.setFontSize(10);
             doc.text(`Généré le: ${new Date().toLocaleString('fr-FR')}`, 14, 22);
 
-            const tableColumn = ["Date", "Article", "Catégorie", "Lieu", "Qté", "Total", "Total Jour"];
+            const tableColumn = ["Date", "Article", "Catégorie", "Lieu", "Qté", "Poids", "Total", "Total Jour"];
             const tableRows = salesData.map(item => [
                 item.date,
                 item.article,
                 item.category,
                 item.location,
                 item.quantity,
+                item.weight !== null ? `${item.weight.toFixed(1)} kg` : "-",
                 item.total,
                 item.dailyTotal
             ]);
@@ -695,7 +699,14 @@ export default function Reports() {
                                         <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                             <td className="py-4 px-6 text-text-main font-medium">{row.date}</td>
                                             <td className="py-4 px-6 text-text-main">{row.article}</td>
-                                            <td className="py-4 px-6 text-right text-text-main">{row.quantity}</td>
+                                            <td className="py-4 px-6 text-right text-text-main">
+                                                <div className="font-medium">{row.quantity}</div>
+                                                {row.weight !== null && (
+                                                    <div className="text-[10px] text-gray-400 font-semibold mt-0.5 whitespace-nowrap">
+                                                        {row.weight.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+                                                    </div>
+                                                )}
+                                            </td>
                                             <td className="py-4 px-6 text-right font-bold text-primary">{row.total} DH</td>
                                         </tr>
                                     ))

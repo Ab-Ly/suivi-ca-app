@@ -1,7 +1,61 @@
 import { supabase } from '../lib/supabase';
+import { getArticleWeightInKg } from './formatters';
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 const CATEGORIES = ['Shop', 'Café', 'Bosch Service', "Main d'oeuvre", 'Pneumatique', 'Lubrifiant Piste', 'Lubrifiant Bosch'];
+
+const getLubricantMetrics = (saleName = '', saleCategory = '', quantity = 1, totalPrice = 0) => {
+    const cleanName = saleName.toLowerCase();
+    const cleanCat = (saleCategory || '').toLowerCase();
+    const qty = Number(quantity) || 0;
+
+    // Check if it's a lubricant
+    const isLubricant = cleanCat.includes('lubrif') || 
+                        cleanName.includes('huile') || 
+                        cleanName.includes('lubrif') ||
+                        cleanName.includes('graisse');
+
+    if (!isLubricant) {
+        return null;
+    }
+
+    // Weight
+    const kg = getArticleWeightInKg(saleName, saleCategory, qty) || 0;
+
+    // Volume in Liters
+    let liters = 0;
+    // Check if it is a drum (205 or 180) stored in Liters
+    const isDrum205Or180 = cleanName.includes('205') || cleanName.includes('180');
+    // Check if it's a KG product
+    const kgMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*kg/);
+    
+    if (isDrum205Or180 && !kgMatch) {
+        liters = qty; // For drums stored in liters, the quantity is the liters
+    } else if (kgMatch) {
+        const capacity = parseFloat(kgMatch[1]);
+        liters = capacity * qty;
+    } else {
+        // Standard item: parse volume
+        let volumeLiters = null;
+        const mlMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*ml/);
+        if (mlMatch) {
+            volumeLiters = parseFloat(mlMatch[1]) / 1000;
+        } else {
+            const lMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*l/);
+            if (lMatch) volumeLiters = parseFloat(lMatch[1]);
+        }
+        if (volumeLiters === null) {
+            volumeLiters = 1.0;
+        }
+        liters = volumeLiters * qty;
+    }
+
+    return {
+        liters,
+        kg,
+        val: Number(totalPrice) || 0
+    };
+};
 
 export const getMappedCategory = (category, location, articleName = '') => {
     if (articleName && articleName.toLowerCase().includes("main d'oeuvre")) return "Main d'oeuvre";
@@ -71,8 +125,8 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             { data: currentFuelData },
             { data: prevFuelData }
         ] = await Promise.all([
-            supabase.from('sales').select('total_price, sale_date, sales_location, articles(name, category)').gte('sale_date', start.toISOString()).lte('sale_date', end.toISOString()),
-            supabase.from('sales').select('total_price, sale_date, sales_location, articles(name, category)').gte('sale_date', prevStart.toISOString()).lte('sale_date', prevEnd.toISOString()),
+            supabase.from('sales').select('quantity, total_price, sale_date, sales_location, articles(name, category)').gte('sale_date', start.toISOString()).lte('sale_date', end.toISOString()),
+            supabase.from('sales').select('quantity, total_price, sale_date, sales_location, articles(name, category)').gte('sale_date', prevStart.toISOString()).lte('sale_date', prevEnd.toISOString()),
             supabase.from('historical_sales').select('*').eq('year', year - 1),
             supabase.from('historical_sales').select('*').eq('year', year),
             supabase.from('fuel_sales').select('*').gte('sale_date', start.toISOString()).lte('sale_date', end.toISOString()),
@@ -151,9 +205,72 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             }
         };
 
+        // Initialize Lubricant Data Structure
+        let lubProcessedData = [];
+        if (period === 'year') {
+            lubProcessedData = MONTHS.map(label => ({ name: label, liters: 0, kg: 0, val: 0, litersPrev: 0, kgPrev: 0, valPrev: 0 }));
+        } else if (period === 'custom') {
+            const rangeLen = customEndMonth - customStartMonth + 1;
+            lubProcessedData = Array.from({ length: rangeLen }, (_, i) => ({ name: MONTHS[customStartMonth + i], liters: 0, kg: 0, val: 0, litersPrev: 0, kgPrev: 0, valPrev: 0 }));
+        } else if (period === 'month') {
+            const daysInMonth = end.getDate();
+            lubProcessedData = Array.from({ length: daysInMonth }, (_, i) => ({ name: (i + 1).toString(), liters: 0, kg: 0, val: 0, litersPrev: 0, kgPrev: 0, valPrev: 0 }));
+        } else if (period === 'week') {
+            const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+            lubProcessedData = days.map(d => ({ name: d, liters: 0, kg: 0, val: 0, litersPrev: 0, kgPrev: 0, valPrev: 0 }));
+        } else if (period === 'day') {
+            lubProcessedData = Array.from({ length: 24 }, (_, i) => ({ name: `${i}h`, liters: 0, kg: 0, val: 0, litersPrev: 0, kgPrev: 0, valPrev: 0 }));
+        }
 
+        const addToLubData = (dateStr, metrics, isCurrent) => {
+            const date = new Date(dateStr);
+            let index = -1;
+            if (period === 'year') index = date.getMonth();
+            else if (period === 'custom') {
+                const m = date.getMonth();
+                if (m >= customStartMonth && m <= customEndMonth) index = m - customStartMonth;
+            } else if (period === 'month') index = date.getDate() - 1;
+            else if (period === 'week') {
+                const day = date.getDay();
+                index = day === 0 ? 6 : day - 1;
+            } else if (period === 'day') index = date.getHours();
+
+            if (index >= 0 && index < lubProcessedData.length) {
+                if (isCurrent) {
+                    lubProcessedData[index].liters += metrics.liters;
+                    lubProcessedData[index].kg += metrics.kg;
+                    lubProcessedData[index].val += metrics.val;
+                } else {
+                    lubProcessedData[index].litersPrev += metrics.liters;
+                    lubProcessedData[index].kgPrev += metrics.kg;
+                    lubProcessedData[index].valPrev += metrics.val;
+                }
+            }
+        };
+
+        // Scan current real sales to compute dynamic average price for lubricants
+        let totalRealLubLiters = 0;
+        let totalRealLubVal = 0;
+        currentSales?.forEach(sale => {
+            const metrics = getLubricantMetrics(sale.articles?.name || '', sale.articles?.category || '', sale.quantity || 1, sale.total_price || 0);
+            if (metrics) {
+                totalRealLubLiters += metrics.liters;
+                totalRealLubVal += metrics.val;
+            }
+        });
+        const lubAvgPrice = totalRealLubLiters > 0 ? (totalRealLubVal / totalRealLubLiters) : 90.0;
+
+        const getLubricantHistoricalMetrics = (amount) => {
+            const val = Number(amount) || 0;
+            const liters = val / lubAvgPrice;
+            const kg = liters * 0.9;
+            return { liters, kg, val };
+        };
 
         CATEGORIES.forEach(cat => categoryStats[cat] = { name: cat, current: 0, previous: 0 });
+
+        let totalLubLiters = 0, totalLubKg = 0, totalLubVal = 0;
+        let totalLubLitersPrev = 0, totalLubKgPrev = 0, totalLubValPrev = 0;
 
         currentSales?.forEach(sale => {
             const resultDate = new Date(sale.sale_date);
@@ -167,6 +284,15 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             currentTotal += amount;
             addToData(sale.sale_date, amount, true, mappedCategory);
             if (categoryStats[mappedCategory]) categoryStats[mappedCategory].current += amount;
+
+            // Lubricant metrics
+            const lubMetrics = getLubricantMetrics(sale.articles?.name || '', sale.articles?.category || '', sale.quantity || 1, sale.total_price || 0);
+            if (lubMetrics) {
+                addToLubData(sale.sale_date, lubMetrics, true);
+                totalLubLiters += lubMetrics.liters;
+                totalLubKg += lubMetrics.kg;
+                totalLubVal += lubMetrics.val;
+            }
         });
 
         previousSales?.forEach(sale => {
@@ -181,6 +307,15 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             previousTotal += amount;
             addToData(sale.sale_date, amount, false, mappedCategory);
             if (categoryStats[mappedCategory]) categoryStats[mappedCategory].previous += amount;
+
+            // Lubricant metrics
+            const lubMetrics = getLubricantMetrics(sale.articles?.name || '', sale.articles?.category || '', sale.quantity || 1, sale.total_price || 0);
+            if (lubMetrics) {
+                addToLubData(sale.sale_date, lubMetrics, false);
+                totalLubLitersPrev += lubMetrics.liters;
+                totalLubKgPrev += lubMetrics.kg;
+                totalLubValPrev += lubMetrics.val;
+            }
         });
 
         // Historical Data (Year or Custom)
@@ -202,6 +337,19 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                         }
                         currentTotal += item.amount;
                         if (categoryStats[item.category]) categoryStats[item.category].current += item.amount;
+
+                        // Lubricant historical metrics
+                        if (item.category === 'Lubrifiant Piste' || item.category === 'Lubrifiant Bosch') {
+                            const metrics = getLubricantHistoricalMetrics(item.amount);
+                            if (lubProcessedData[idx]) {
+                                lubProcessedData[idx].liters += metrics.liters;
+                                lubProcessedData[idx].kg += metrics.kg;
+                                lubProcessedData[idx].val += metrics.val;
+                            }
+                            totalLubLiters += metrics.liters;
+                            totalLubKg += metrics.kg;
+                            totalLubVal += metrics.val;
+                        }
                     }
                 }
             });
@@ -218,6 +366,19 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                         }
                         previousTotal += item.amount;
                         if (categoryStats[item.category]) categoryStats[item.category].previous += item.amount;
+
+                        // Lubricant historical metrics
+                        if (item.category === 'Lubrifiant Piste' || item.category === 'Lubrifiant Bosch') {
+                            const metrics = getLubricantHistoricalMetrics(item.amount);
+                            if (lubProcessedData[idx]) {
+                                lubProcessedData[idx].litersPrev += metrics.liters;
+                                lubProcessedData[idx].kgPrev += metrics.kg;
+                                lubProcessedData[idx].valPrev += metrics.val;
+                            }
+                            totalLubLitersPrev += metrics.liters;
+                            totalLubKgPrev += metrics.kg;
+                            totalLubValPrev += metrics.val;
+                        }
                     }
                 }
             });
@@ -330,7 +491,6 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             previousSales?.forEach(s => realPreviousTotal += s.total_price);
 
             // 2. Determine if we need to use historical data
-            // Use historical if real sales are 0 (or very close to 0)
             const useHistoricalCurrent = realCurrentTotal === 0;
             const useHistoricalPrevious = realPreviousTotal === 0;
 
@@ -353,13 +513,29 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                         if (categoryStats[item.category]) categoryStats[item.category].current += item.amount;
                         else categoryStats[item.category] = { name: item.category, current: item.amount, previous: 0 };
                         
-                        // Distribute across processedData days for Category Stats & Total Current
+                        // Distribute across processedData days
                         const mappedCat = getMappedCategory(item.category, '', '');
                         const dailyAmount = daysInMonth > 0 ? item.amount / daysInMonth : 0;
                         processedData.forEach(d => {
                             d.current += dailyAmount;
                             d[mappedCat] = (d[mappedCat] || 0) + dailyAmount;
                         });
+
+                        // Lubricant historical metrics distribution
+                        if (item.category === 'Lubrifiant Piste' || item.category === 'Lubrifiant Bosch') {
+                            const metrics = getLubricantHistoricalMetrics(item.amount);
+                            const dailyLiters = daysInMonth > 0 ? metrics.liters / daysInMonth : 0;
+                            const dailyKg = daysInMonth > 0 ? metrics.kg / daysInMonth : 0;
+                            const dailyVal = daysInMonth > 0 ? metrics.val / daysInMonth : 0;
+                            lubProcessedData.forEach(ld => {
+                                ld.liters += dailyLiters;
+                                ld.kg += dailyKg;
+                                ld.val += dailyVal;
+                            });
+                            totalLubLiters += metrics.liters;
+                            totalLubKg += metrics.kg;
+                            totalLubVal += metrics.val;
+                        }
                     }
                     if (item.category === 'Gasoil Volume' && useFuelHistoricalCurrent) totalGasoil += item.amount;
                     if (item.category === 'SSP Volume' && useFuelHistoricalCurrent) totalSSP += item.amount;
@@ -376,7 +552,7 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                         else if (!categoryStats[item.category]) categoryStats[item.category] = { name: item.category, current: 0, previous: item.amount };
                         else categoryStats[item.category].previous += item.amount;
 
-                        // Distribute across processedData days for Category Stats & Total Previous
+                        // Distribute across processedData days
                         const mappedCat = getMappedCategory(item.category, '', '');
                         const prevKey = `${mappedCat}_previous`;
                         const dailyAmount = daysInMonth > 0 ? item.amount / daysInMonth : 0;
@@ -384,18 +560,34 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                             d.previous += dailyAmount;
                             d[prevKey] = (d[prevKey] || 0) + dailyAmount;
                         });
+
+                        // Lubricant historical metrics distribution
+                        if (item.category === 'Lubrifiant Piste' || item.category === 'Lubrifiant Bosch') {
+                            const metrics = getLubricantHistoricalMetrics(item.amount);
+                            const dailyLiters = daysInMonth > 0 ? metrics.liters / daysInMonth : 0;
+                            const dailyKg = daysInMonth > 0 ? metrics.kg / daysInMonth : 0;
+                            const dailyVal = daysInMonth > 0 ? metrics.val / daysInMonth : 0;
+                            lubProcessedData.forEach(ld => {
+                                ld.litersPrev += dailyLiters;
+                                ld.kgPrev += dailyKg;
+                                ld.valPrev += dailyVal;
+                            });
+                            totalLubLitersPrev += metrics.liters;
+                            totalLubKgPrev += metrics.kg;
+                            totalLubValPrev += metrics.val;
+                        }
                     }
                     if (item.category === 'Gasoil Volume' && useFuelHistoricalPrevious) totalGasoilPrev += item.amount;
                     if (item.category === 'SSP Volume' && useFuelHistoricalPrevious) totalSSPPrev += item.amount;
                 });
             }
         }
+
         if (period === 'week') {
             const realGasoilPrev = fuelSalesPrevious.reduce((acc, s) => acc + (s.fuel_type === 'Gasoil' ? Number(s.quantity_liters) : 0), 0);
             const realSSPPrev = fuelSalesPrevious.reduce((acc, s) => acc + (s.fuel_type === 'SSP' ? Number(s.quantity_liters) : 0), 0);
 
             if (realGasoilPrev === 0 && realSSPPrev === 0) {
-                // FALLBACK: Use Historical Monthly Average for Week View
                 totalGasoilPrev = 0;
                 totalSSPPrev = 0;
 
@@ -435,16 +627,13 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             const isCurrentWeek = start.getTime() === currentWeekStart.getTime();
 
             if (isCurrentWeek) {
-                const dayIndex = (today.getDay() + 6) % 7; // 0 (Mon) to 6 (Sun)
-                // Re-calculate Total to ONLY include up to today
+                const dayIndex = (today.getDay() + 6) % 7;
                 totalGasoilPrev = fuelProcessedData.slice(0, dayIndex + 1).reduce((acc, d) => acc + d.gasoilPrev, 0);
                 totalSSPPrev = fuelProcessedData.slice(0, dayIndex + 1).reduce((acc, d) => acc + d.sspPrev, 0);
             }
         }
 
         if (period === 'month') {
-            // SPECIAL LOGIC: User Requested Average Daily Volume for N-1
-            // Formula: Total N-1 / Days in Month (Average per Day)
             const daysInMonth = fuelProcessedData.length;
             const avgGasoilPrev = daysInMonth > 0 ? totalGasoilPrev / daysInMonth : 0;
             const avgSSPPrev = daysInMonth > 0 ? totalSSPPrev / daysInMonth : 0;
@@ -455,6 +644,18 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                 d.sspPrev = avgSSPPrev;
             });
 
+            // Flatten lubricant previous averages for month
+            const lubDaysInMonth = lubProcessedData.length;
+            const avgLitersPrev = lubDaysInMonth > 0 ? totalLubLitersPrev / lubDaysInMonth : 0;
+            const avgKgPrev = lubDaysInMonth > 0 ? totalLubKgPrev / lubDaysInMonth : 0;
+            const avgValPrev = lubDaysInMonth > 0 ? totalLubValPrev / lubDaysInMonth : 0;
+
+            lubProcessedData.forEach(d => {
+                d.litersPrev = avgLitersPrev;
+                d.kgPrev = avgKgPrev;
+                d.valPrev = avgValPrev;
+            });
+
             // ADJUST KPI TOTALS FOR FAIR COMPARISON (Current Month Only)
             const today = new Date();
             const isCurrentMonth = today.getFullYear() === year && today.getMonth() === selectedMonth;
@@ -462,7 +663,7 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             if (isCurrentMonth) {
                 const currentDay = today.getDate();
 
-                // Find the last day that has ACTUAL data entered (Gasoil or SSP > 0)
+                // Find the last day that has ACTUAL data entered
                 let lastDayWithData = 0;
 
                 fuelProcessedData.forEach((d, i) => {
@@ -473,14 +674,25 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
 
                 const multiplier = lastDayWithData;
 
-                // Update the "Previous Total" to be the Target for the effective days (Avg * Multiplier)
                 totalGasoilPrev = avgGasoilPrev * multiplier;
                 totalSSPPrev = avgSSPPrev * multiplier;
+
+                // Update lubricant previous totals to match effective days
+                let lubLastDayWithData = 0;
+                lubProcessedData.forEach((d, i) => {
+                    if (i + 1 <= currentDay && (d.liters > 0 || d.val > 0)) {
+                        lubLastDayWithData = i + 1;
+                    }
+                });
+                const lubMultiplier = lubLastDayWithData || currentDay;
+                totalLubLitersPrev = avgLitersPrev * lubMultiplier;
+                totalLubKgPrev = avgKgPrev * lubMultiplier;
+                totalLubValPrev = avgValPrev * lubMultiplier;
             }
         }
 
 
-        // FILTER FUTURE MONTHS (To prevent erroneous data in future months)
+        // FILTER FUTURE MONTHS
         const today = new Date();
         const currentYear = today.getFullYear();
         const currentMonth = today.getMonth();
@@ -489,22 +701,15 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             if (period === 'year') {
                 processedData.forEach((d, i) => {
                     if (i > currentMonth) {
-                        currentTotal -= d.current; // Deduct from total
+                        currentTotal -= d.current;
                         d.current = 0;
-
-                        // Also adjust category stats if possible (Harder since we aggregated already)
-                        // Best effort: We just cleaned the chart data and totals. 
-                        // Cleaning categoryStats would require re-aggregating excluding future.
                     }
                 });
 
                 fuelProcessedData.forEach((d, i) => {
                     if (i > currentMonth) {
-                        // FUTURE MONTHS: Remove BOTH Current and Previous to avoid mismatch
                         totalGasoil -= d.gasoil;
                         totalSSP -= d.ssp;
-
-                        // Also remove Previous from Total
                         totalGasoilPrev -= d.gasoilPrev;
                         totalSSPPrev -= d.sspPrev;
 
@@ -513,17 +718,10 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                         d.gasoilPrev = 0;
                         d.sspPrev = 0;
                     } else if (i === currentMonth) {
-                        // CURRENT MONTH: Prorate Previous to match the elapsed days of Current
                         const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
                         const currentDay = today.getDate();
-
-                        // Ratio of month elapsed
-                        // Better: Use the same "Last Day With Data" logic if possible, 
-                        // but here we might not have daily details. 
-                        // Falback to simple day ratio:
                         const ratio = currentDay / daysInMonth;
 
-                        // Update Total Prev
                         const originalPrevGasoil = d.gasoilPrev;
                         const originalPrevSSP = d.sspPrev;
 
@@ -537,19 +735,52 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                         d.sspPrev = newPrevSSP;
                     }
                 });
+
+                lubProcessedData.forEach((d, i) => {
+                    if (i > currentMonth) {
+                        totalLubLiters -= d.liters;
+                        totalLubKg -= d.kg;
+                        totalLubVal -= d.val;
+                        totalLubLitersPrev -= d.litersPrev;
+                        totalLubKgPrev -= d.kgPrev;
+                        totalLubValPrev -= d.valPrev;
+
+                        d.liters = 0;
+                        d.kg = 0;
+                        d.val = 0;
+                        d.litersPrev = 0;
+                        d.kgPrev = 0;
+                        d.valPrev = 0;
+                    } else if (i === currentMonth) {
+                        const daysInMonth = new Date(year, currentMonth + 1, 0).getDate();
+                        const currentDay = today.getDate();
+                        const ratio = currentDay / daysInMonth;
+
+                        const originalPrevLiters = d.litersPrev;
+                        const originalPrevKg = d.kgPrev;
+                        const originalPrevVal = d.valPrev;
+
+                        const newPrevLiters = originalPrevLiters * ratio;
+                        const newPrevKg = originalPrevKg * ratio;
+                        const newPrevVal = originalPrevVal * ratio;
+
+                        totalLubLitersPrev -= (originalPrevLiters - newPrevLiters);
+                        totalLubKgPrev -= (originalPrevKg - newPrevKg);
+                        totalLubValPrev -= (originalPrevVal - newPrevVal);
+
+                        d.litersPrev = newPrevLiters;
+                        d.kgPrev = newPrevKg;
+                        d.valPrev = newPrevVal;
+                    }
+                });
             } else if (period === 'custom') {
-                // Logic for custom period if it spans into future
                 processedData.forEach((d, i) => {
-                    // d.month is 1-based index of the month
                     if (d.month - 1 > currentMonth) {
                         currentTotal -= d.current;
                         d.current = 0;
                     }
                 });
                 fuelProcessedData.forEach((d, i) => {
-                    // fuelProcessedData indices align with months in custom view if we constructed it that way?
-                    // Wait, fuelProcessedData in custom view is: 
-                    // name: MONTHS[customStartMonth + i]
                     const monthIndex = customStartMonth + i;
                     if (monthIndex > currentMonth) {
                         totalGasoil -= d.gasoil;
@@ -558,11 +789,21 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                         d.ssp = 0;
                     }
                 });
+                lubProcessedData.forEach((d, i) => {
+                    const monthIndex = customStartMonth + i;
+                    if (monthIndex > currentMonth) {
+                        totalLubLiters -= d.liters;
+                        totalLubKg -= d.kg;
+                        totalLubVal -= d.val;
+                        d.liters = 0;
+                        d.kg = 0;
+                        d.val = 0;
+                    }
+                });
             } else if (period === 'month' && selectedMonth === currentMonth) {
-                const currentDay = today.getDate(); // 1-31
+                const currentDay = today.getDate();
 
                 processedData.forEach((d) => {
-                    // d.day is 1-based day number
                     if (d.day > currentDay) {
                         currentTotal -= d.current;
                         d.current = 0;
@@ -570,12 +811,22 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
                 });
 
                 fuelProcessedData.forEach((d, i) => {
-                    // i is 0-indexed, so day is i + 1
                     if (i + 1 > currentDay) {
                         totalGasoil -= d.gasoil;
                         totalSSP -= d.ssp;
                         d.gasoil = 0;
                         d.ssp = 0;
+                    }
+                });
+
+                lubProcessedData.forEach((d, i) => {
+                    if (i + 1 > currentDay) {
+                        totalLubLiters -= d.liters;
+                        totalLubKg -= d.kg;
+                        totalLubVal -= d.val;
+                        d.liters = 0;
+                        d.kg = 0;
+                        d.val = 0;
                     }
                 });
             }
@@ -585,6 +836,10 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
         const growth = previousTotal > 0 ? ((currentTotal - previousTotal) / previousTotal) * 100 : 0;
         const gasoilGrowth = totalGasoilPrev > 0 ? ((totalGasoil - totalGasoilPrev) / totalGasoilPrev) * 100 : 0;
         const sspGrowth = totalSSPPrev > 0 ? ((totalSSP - totalSSPPrev) / totalSSPPrev) * 100 : 0;
+
+        const lubLitersGrowth = totalLubLitersPrev > 0 ? ((totalLubLiters - totalLubLitersPrev) / totalLubLitersPrev) * 100 : 0;
+        const lubKgGrowth = totalLubKgPrev > 0 ? ((totalLubKg - totalLubKgPrev) / totalLubKgPrev) * 100 : 0;
+        const lubValGrowth = totalLubValPrev > 0 ? ((totalLubVal - totalLubValPrev) / totalLubValPrev) * 100 : 0;
 
         const categoryDetails = CATEGORIES.map(cat => {
             const curr = categoryStats[cat]?.current || 0;
@@ -598,6 +853,18 @@ export const fetchComparisonStats = async (period, year, selectedMonth, customSt
             kpis: { currentTotal, previousTotal, growth },
             fuelData: fuelProcessedData,
             fuelKpis: { gasoil: totalGasoil, ssp: totalSSP, gasoilPrev: totalGasoilPrev, sspPrev: totalSSPPrev, gasoilGrowth, sspGrowth },
+            lubData: lubProcessedData,
+            lubKpis: { 
+                liters: totalLubLiters, 
+                kg: totalLubKg, 
+                val: totalLubVal, 
+                litersPrev: totalLubLitersPrev, 
+                kgPrev: totalLubKgPrev, 
+                valPrev: totalLubValPrev, 
+                litersGrowth: lubLitersGrowth, 
+                kgGrowth: lubKgGrowth, 
+                valGrowth: lubValGrowth 
+            },
             categoryDetails
         };
     } catch (error) {

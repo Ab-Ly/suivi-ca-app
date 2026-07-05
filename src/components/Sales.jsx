@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Card } from './ui/Card';
 import { DateInput } from './ui/DateInput';
-import { Loader2, Calendar, Package, DollarSign, Droplet, Trash2, Plus, RotateCcw, Edit2, ChevronDown, ChevronRight } from 'lucide-react';
-import { formatPrice, formatNumber } from '../utils/formatters';
+import { Loader2, Calendar, Package, DollarSign, Droplet, Trash2, Plus, RotateCcw, Edit2, ChevronDown, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { formatPrice, formatNumber, getArticleWeightInKg } from '../utils/formatters';
 import BulkFuelEntryModal from './BulkFuelEntryModal';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
 import EditSaleModal from './EditSaleModal';
@@ -14,6 +14,7 @@ export default function Sales() {
     const [fuelSales, setFuelSales] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showBulkEntryModal, setShowBulkEntryModal] = useState(false);
+    const [exporting, setExporting] = useState(false);
 
     // Edit Sale State
     const [editingSale, setEditingSale] = useState(null);
@@ -190,17 +191,468 @@ export default function Sales() {
 
     const salesByMonth = groupSalesByMonth(sales);
 
+    const exportSalesToExcel = async () => {
+        setExporting(true);
+        try {
+            const ExcelJS = (await import('exceljs')).default;
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator = 'Suivi CA App';
+            workbook.created = new Date();
+
+            const sheet = workbook.addWorksheet('Ventes Boutique & Services', { views: [{ showGridLines: true }] });
+
+            // --- STYLING CONSTANTS ---
+            const fontMain = { name: 'Segoe UI', size: 10 };
+            const fontBold = { name: 'Segoe UI', size: 10, bold: true };
+            const borderThin = { style: 'thin', color: { argb: 'FFE5E7EB' } }; // Gray-200
+            
+            const cellBorder = {
+                top: borderThin,
+                left: borderThin,
+                bottom: borderThin,
+                right: borderThin
+            };
+
+            // Calculate summaries for current selection
+            let totalSalesVal = 0;
+            let totalSalesLubWeight = 0;
+            let totalSalesLubVolume = 0;
+
+            sales.forEach(sale => {
+                totalSalesVal += (sale.total_price || 0);
+
+                const cleanCat = (sale.articles?.category || '').toLowerCase();
+                const cleanName = (sale.articles?.name || '').toLowerCase();
+                const isLubricant = cleanCat.includes('lubrif') || cleanName.includes('huile') || cleanName.includes('graisse');
+
+                if (isLubricant) {
+                    const w = getArticleWeightInKg(sale.articles?.name, sale.articles?.category, sale.quantity || 0);
+                    if (w !== null) {
+                        totalSalesLubWeight += w;
+                    }
+
+                    // Volume
+                    const qty = Number(sale.quantity) || 0;
+                    let liters = 0;
+                    const isDrum205Or180 = cleanName.includes('205') || cleanName.includes('180');
+                    const kgMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*kg/);
+                    
+                    if (isDrum205Or180 && !kgMatch) {
+                        liters = qty;
+                    } else if (kgMatch) {
+                        const capacity = parseFloat(kgMatch[1]);
+                        liters = capacity * qty;
+                    } else {
+                        let volumeLiters = null;
+                        const mlMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*ml/);
+                        if (mlMatch) {
+                            volumeLiters = parseFloat(mlMatch[1]) / 1000;
+                        } else {
+                            const lMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*l/);
+                            if (lMatch) volumeLiters = parseFloat(lMatch[1]);
+                        }
+                        if (volumeLiters === null) {
+                            volumeLiters = 1.0;
+                        }
+                        liters = volumeLiters * qty;
+                    }
+                    totalSalesLubVolume += liters;
+                }
+            });
+
+            // Title
+            sheet.mergeCells('A2:H2');
+            const titleCell = sheet.getCell('A2');
+            const periodStr = startDate && endDate 
+                ? `du ${new Date(startDate).toLocaleDateString('fr-FR')} au ${new Date(endDate).toLocaleDateString('fr-FR')}` 
+                : 'toutes périodes';
+            titleCell.value = `Détails des Ventes Lubrifiants, Boutique & Services - Période : ${periodStr}`;
+            titleCell.style = {
+                font: { name: 'Segoe UI', size: 13, bold: true, color: { argb: 'FF1F2937' } },
+                alignment: { horizontal: 'left', vertical: 'middle' }
+            };
+            sheet.getRow(2).height = 25;
+
+            // Helper to style all cells of a merged card
+            const styleCard = (startCell, endCell, label, valueText, colorFill) => {
+                sheet.mergeCells(`${startCell}:${endCell}`);
+                const cell = sheet.getCell(startCell);
+                cell.value = {
+                    richText: [
+                        { text: `${label}\n`, font: { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF9CA3AF' } } },
+                        { text: valueText, font: { name: 'Segoe UI', size: 13, bold: true, color: { argb: 'FF111827' } } }
+                    ]
+                };
+                cell.style = {
+                    alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }
+                };
+
+                // Apply borders & background color to all merged cells in range
+                const startRow = parseInt(startCell.match(/\d+/)[0]);
+                const startCol = startCell.charCodeAt(0) - 64;
+                const endRow = parseInt(endCell.match(/\d+/)[0]);
+                const endCol = endCell.charCodeAt(0) - 64;
+
+                for (let r = startRow; r <= endRow; r++) {
+                    for (let c = startCol; c <= endCol; c++) {
+                        const targetCell = sheet.getCell(r, c);
+                        targetCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorFill } };
+                        targetCell.border = cellBorder;
+                    }
+                }
+            };
+
+            // Add the 3 Summary KPI Cards aligned across 8 columns
+            styleCard('A4', 'C5', "CHIFFRE D'AFFAIRES TOTAL", `${totalSalesVal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`, 'FFF0FDF4');
+            styleCard('D4', 'E5', 'POIDS LUBRIFIANTS VENDUS', `${totalSalesLubWeight.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kg`, 'FFF5F3FF');
+            styleCard('F4', 'H5', 'VOLUME LUBRIFIANTS VENDUS', `${totalSalesLubVolume.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} L`, 'FFF0FDFA');
+
+            // Add blank space
+            sheet.getRow(6).height = 15;
+
+            // Table Headers
+            const headers = [
+                'Date & Heure',
+                'Article',
+                'Catégorie',
+                'Emplacement',
+                'Quantité',
+                'Poids (kg)',
+                'Prix Unitaire',
+                'Total Vente'
+            ];
+
+            const headerRowNumber = 7;
+            const headerRow = sheet.getRow(headerRowNumber);
+            headerRow.height = 25;
+            
+            headers.forEach((h, colIdx) => {
+                const cell = headerRow.getCell(colIdx + 1);
+                cell.value = h;
+                cell.style = {
+                    font: { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } },
+                    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }, // Gray 900
+                    alignment: { 
+                        horizontal: colIdx >= 4 && colIdx !== 5 ? 'right' : colIdx === 3 ? 'center' : 'left',
+                        vertical: 'middle' 
+                    },
+                    border: cellBorder
+                };
+            });
+
+            // Populate rows
+            let currentOffset = 8;
+            sales.forEach((sale, index) => {
+                const row = sheet.getRow(currentOffset);
+                row.height = 22;
+
+                const qty = sale.quantity || 0;
+                const weight = getArticleWeightInKg(sale.articles?.name, sale.articles?.category, qty);
+                const unitPrice = qty > 0 ? (sale.total_price / qty) : 0;
+
+                // Values
+                row.getCell(1).value = new Date(sale.sale_date).toLocaleString('fr-FR');
+                row.getCell(2).value = sale.articles?.name || 'Article inconnu';
+                row.getCell(3).value = sale.articles?.category || '-';
+                row.getCell(4).value = sale.sales_location ? (sale.sales_location === 'piste' ? 'PISTE' : 'BOSCH') : '-';
+                row.getCell(5).value = qty;
+                row.getCell(6).value = weight !== null ? weight : '-';
+                row.getCell(7).value = unitPrice;
+                row.getCell(8).value = sale.total_price || 0;
+
+                // Fonts and alignments
+                row.getCell(1).font = fontMain;
+                row.getCell(2).font = fontBold;
+                row.getCell(3).font = fontMain;
+                row.getCell(4).font = fontMain;
+                row.getCell(5).font = fontBold;
+                row.getCell(6).font = fontMain;
+                row.getCell(7).font = fontMain;
+                row.getCell(8).font = fontBold;
+
+                // Alignment
+                row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+                row.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
+                row.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
+                row.getCell(4).alignment = { horizontal: 'center', vertical: 'middle' };
+                row.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(7).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(8).alignment = { horizontal: 'right', vertical: 'middle' };
+
+                // Borders
+                for (let i = 1; i <= 8; i++) {
+                    row.getCell(i).border = cellBorder;
+                }
+
+                // Zebra background
+                const rowBg = index % 2 === 0 ? 'FFFBFBFC' : 'FFFFFFFF';
+                for (let i = 1; i <= 8; i++) {
+                    row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                }
+
+                // Number formatting
+                row.getCell(5).numFmt = '#,##0';
+                row.getCell(6).numFmt = weight !== null ? '#,##0.0' : '@';
+                row.getCell(7).numFmt = '#,##0.00" DH"';
+                row.getCell(8).numFmt = '#,##0.00" DH"';
+
+                currentOffset++;
+            });
+
+            // Adjust Column Widths
+            const colWidths = [22, 35, 20, 15, 12, 15, 18, 18];
+            colWidths.forEach((w, i) => {
+                sheet.getColumn(i + 1).width = w;
+            });
+
+            // --- SHEET 2: RÉCAPITULATIF PAR PRODUIT ---
+            const recapSheet = workbook.addWorksheet('Récapitulatif par Produit', { views: [{ showGridLines: true }] });
+
+            // Title for Sheet 2
+            recapSheet.mergeCells('A2:H2');
+            const recapTitleCell = recapSheet.getCell('A2');
+            recapTitleCell.value = `Récapitulatif des Ventes par Produit - Période : ${periodStr}`;
+            recapTitleCell.style = {
+                font: { name: 'Segoe UI', size: 13, bold: true, color: { argb: 'FF1F2937' } },
+                alignment: { horizontal: 'left', vertical: 'middle' }
+            };
+            recapSheet.getRow(2).height = 25;
+
+            // Helper to style all cells of a merged card on recap sheet
+            const styleRecapCard = (startCell, endCell, label, valueText, colorFill) => {
+                recapSheet.mergeCells(`${startCell}:${endCell}`);
+                const cell = recapSheet.getCell(startCell);
+                cell.value = {
+                    richText: [
+                        { text: `${label}\n`, font: { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF9CA3AF' } } },
+                        { text: valueText, font: { name: 'Segoe UI', size: 13, bold: true, color: { argb: 'FF111827' } } }
+                    ]
+                };
+                cell.style = {
+                    alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }
+                };
+
+                const startRow = parseInt(startCell.match(/\d+/)[0]);
+                const startCol = startCell.charCodeAt(0) - 64;
+                const endRow = parseInt(endCell.match(/\d+/)[0]);
+                const endCol = endCell.charCodeAt(0) - 64;
+
+                for (let r = startRow; r <= endRow; r++) {
+                    for (let c = startCol; c <= endCol; c++) {
+                        const targetCell = recapSheet.getCell(r, c);
+                        targetCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorFill } };
+                        targetCell.border = cellBorder;
+                    }
+                }
+            };
+
+            // Add KPI cards to Sheet 2
+            styleRecapCard('A4', 'C5', "CHIFFRE D'AFFAIRES TOTAL", `${totalSalesVal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`, 'FFF0FDF4');
+            styleRecapCard('D4', 'E5', 'POIDS LUBRIFIANTS VENDUS', `${totalSalesLubWeight.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kg`, 'FFF5F3FF');
+            styleRecapCard('F4', 'H5', 'VOLUME LUBRIFIANTS VENDUS', `${totalSalesLubVolume.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} L`, 'FFF0FDFA');
+
+            recapSheet.getRow(6).height = 15;
+
+            // Sheet 2 Headers
+            const recapHeaders = [
+                'Rang',
+                'Article',
+                'Catégorie',
+                'Quantité Vendue',
+                'Poids Total (kg)',
+                'Volume Total (L)',
+                'Chiffre d\'Affaires',
+                'Part du C.A. (%)'
+            ];
+
+            const recapHeaderRow = recapSheet.getRow(7);
+            recapHeaderRow.height = 25;
+            
+            recapHeaders.forEach((h, colIdx) => {
+                const cell = recapHeaderRow.getCell(colIdx + 1);
+                cell.value = h;
+                cell.style = {
+                    font: { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } },
+                    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }, // Gray 900
+                    alignment: { 
+                        horizontal: colIdx >= 3 ? 'right' : colIdx === 0 ? 'center' : 'left',
+                        vertical: 'middle' 
+                    },
+                    border: cellBorder
+                };
+            });
+
+            // Group sales by product name
+            const productRecapMap = {};
+            sales.forEach(sale => {
+                const name = sale.articles?.name || 'Article inconnu';
+                const cat = sale.articles?.category || '-';
+                
+                if (!productRecapMap[name]) {
+                    productRecapMap[name] = {
+                        name,
+                        category: cat,
+                        quantity: 0,
+                        totalPrice: 0,
+                        weight: 0,
+                        volume: 0
+                    };
+                }
+                
+                const qty = sale.quantity || 0;
+                productRecapMap[name].quantity += qty;
+                productRecapMap[name].totalPrice += (sale.total_price || 0);
+
+                const cleanCat = cat.toLowerCase();
+                const cleanName = name.toLowerCase();
+                const isLubricant = cleanCat.includes('lubrif') || cleanName.includes('huile') || cleanName.includes('graisse');
+
+                if (isLubricant) {
+                    const w = getArticleWeightInKg(name, cat, qty);
+                    if (w !== null) {
+                        productRecapMap[name].weight += w;
+                    }
+
+                    // Volume
+                    let liters = 0;
+                    const isDrum205Or180 = cleanName.includes('205') || cleanName.includes('180');
+                    const kgMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*kg/);
+                    
+                    if (isDrum205Or180 && !kgMatch) {
+                        liters = qty;
+                    } else if (kgMatch) {
+                        const capacity = parseFloat(kgMatch[1]);
+                        liters = capacity * qty;
+                    } else {
+                        let volumeLiters = null;
+                        const mlMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*ml/);
+                        if (mlMatch) {
+                            volumeLiters = parseFloat(mlMatch[1]) / 1000;
+                        } else {
+                            const lMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*l/);
+                            if (lMatch) volumeLiters = parseFloat(lMatch[1]);
+                        }
+                        if (volumeLiters === null) {
+                            volumeLiters = 1.0;
+                        }
+                        liters = volumeLiters * qty;
+                    }
+                    productRecapMap[name].volume += liters;
+                }
+            });
+
+            const productRecapList = Object.values(productRecapMap).sort((a, b) => b.totalPrice - a.totalPrice);
+
+            // Populate Sheet 2 Rows
+            let recapOffset = 8;
+            productRecapList.forEach((item, index) => {
+                const row = recapSheet.getRow(recapOffset);
+                row.height = 22;
+
+                const hasWeight = item.weight > 0;
+                const hasVolume = item.volume > 0;
+                const caShare = totalSalesVal > 0 ? (item.totalPrice / totalSalesVal) : 0;
+
+                row.getCell(1).value = index + 1;
+                row.getCell(2).value = item.name;
+                row.getCell(3).value = item.category;
+                row.getCell(4).value = item.quantity;
+                row.getCell(5).value = hasWeight ? item.weight : '-';
+                row.getCell(6).value = hasVolume ? item.volume : '-';
+                row.getCell(7).value = item.totalPrice;
+                row.getCell(8).value = caShare;
+
+                // Font & styling
+                row.getCell(1).font = fontMain;
+                row.getCell(2).font = fontBold;
+                row.getCell(3).font = fontMain;
+                row.getCell(4).font = fontBold;
+                row.getCell(5).font = fontMain;
+                row.getCell(6).font = fontMain;
+                row.getCell(7).font = fontBold;
+                row.getCell(8).font = fontMain;
+
+                // Alignments
+                row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+                row.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
+                row.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
+                row.getCell(4).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(7).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(8).alignment = { horizontal: 'right', vertical: 'middle' };
+
+                // Borders
+                for (let i = 1; i <= 8; i++) {
+                    row.getCell(i).border = cellBorder;
+                }
+
+                // Zebra Striping
+                const rowBg = index % 2 === 0 ? 'FFFBFBFC' : 'FFFFFFFF';
+                for (let i = 1; i <= 8; i++) {
+                    row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                }
+
+                // Number Formatting
+                row.getCell(1).numFmt = '#,##0';
+                row.getCell(4).numFmt = '#,##0';
+                row.getCell(5).numFmt = hasWeight ? '#,##0.0' : '@';
+                row.getCell(6).numFmt = hasVolume ? '#,##0.0' : '@';
+                row.getCell(7).numFmt = '#,##0.00" DH"';
+                row.getCell(8).numFmt = '0.0%';
+
+                recapOffset++;
+            });
+
+            // Adjust Column Widths for Sheet 2
+            const recapColWidths = [8, 35, 20, 18, 18, 18, 20, 15];
+            recapColWidths.forEach((w, i) => {
+                recapSheet.getColumn(i + 1).width = w;
+            });
+
+            // Generate blob & download
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `detaille_des_ventes_lubrifiants_${new Date().toISOString().split('T')[0]}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error('Error exporting sales to Excel:', error);
+        } finally {
+            setExporting(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <h2 className="text-2xl font-bold text-text-main">Historique des Ventes</h2>
-                <button
-                    onClick={resetFilters}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 shadow-sm rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-all"
-                >
-                    <RotateCcw size={16} />
-                    Réinitialiser les filtres
-                </button>
+                <div className="flex items-center gap-2">
+                    {activeTab === 'sales' && (
+                        <button
+                            onClick={exportSalesToExcel}
+                            disabled={exporting}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium shadow-sm hover:-translate-y-0.5 active:scale-95 transition-all"
+                        >
+                            {exporting ? <Loader2 className="animate-spin" size={16} /> : <FileSpreadsheet size={16} />}
+                            <span>Export Excel</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={resetFilters}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 shadow-sm rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-all"
+                    >
+                        <RotateCcw size={16} />
+                        Réinitialiser les filtres
+                    </button>
+                </div>
             </div>
 
             {/* Tabs */}
@@ -363,9 +815,22 @@ export default function Sales() {
                                                                     )}
                                                                 </div>
                                                             </td>
-                                                            <td className="py-4 px-6 text-center font-bold text-gray-900 text-sm">
-                                                                {sale.quantity}
-                                                            </td>
+                                                             <td className="py-4 px-6 text-center">
+                                                                 <div className="font-bold text-gray-900 text-sm">
+                                                                     {sale.quantity}
+                                                                 </div>
+                                                                 {(() => {
+                                                                     const w = getArticleWeightInKg(sale.articles?.name, sale.articles?.category, sale.quantity);
+                                                                     if (w !== null) {
+                                                                         return (
+                                                                             <div className="text-[10px] text-gray-400 font-semibold mt-0.5 whitespace-nowrap">
+                                                                                 {w.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+                                                                             </div>
+                                                                         );
+                                                                     }
+                                                                     return null;
+                                                                 })()}
+                                                             </td>
                                                             <td className="py-4 px-6 text-right">
                                                                 <span className="font-mono font-bold text-gray-900 text-sm">
                                                                     {formatPrice(sale.total_price)}

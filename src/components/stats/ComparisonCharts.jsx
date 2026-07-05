@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Cell } from 'recharts';
-import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, ShoppingBag, Coffee, Wrench, Droplet, Disc, Hammer, Fuel } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, ShoppingBag, Coffee, Wrench, Droplet, Disc, Hammer, Fuel, Scale } from 'lucide-react';
 import { formatPrice, formatNumber } from '../../utils/formatters';
 import { fetchComparisonStats } from '../../utils/statisticsUtils';
 
@@ -41,6 +41,15 @@ export default function ComparisonCharts() {
     const [fuelData, setFuelData] = useState([]);
     const [fuelKpis, setFuelKpis] = useState({ gasoil: 0, ssp: 0, gasoilPrev: 0, sspPrev: 0, gasoilGrowth: 0, sspGrowth: 0 });
 
+    // Lubricant State
+    const [lubData, setLubData] = useState([]);
+    const [lubMetricView, setLubMetricView] = useState('liters');
+    const [lubKpis, setLubKpis] = useState({ 
+        liters: 0, kg: 0, val: 0, 
+        litersPrev: 0, kgPrev: 0, valPrev: 0, 
+        litersGrowth: 0, kgGrowth: 0, valGrowth: 0 
+    });
+
     useEffect(() => {
         fetchComparisonData();
     }, [year, period, selectedMonth, customStartMonth, customEndMonth]);
@@ -56,6 +65,8 @@ export default function ComparisonCharts() {
             setKpis(result.kpis);
             setFuelData(result.fuelData);
             setFuelKpis(result.fuelKpis);
+            setLubData(result.lubData || []);
+            setLubKpis(result.lubKpis || { liters: 0, kg: 0, val: 0, litersPrev: 0, kgPrev: 0, valPrev: 0, litersGrowth: 0, kgGrowth: 0, valGrowth: 0 });
             setCategoryDetails(result.categoryDetails);
 
         } catch (error) {
@@ -568,6 +579,189 @@ export default function ComparisonCharts() {
                                         <Bar dataKey="ssp" name="SSP (N)" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={40} />
                                     </BarChart>
                                 )}
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Lubricant Statistics Section */}
+            <div className="space-y-6 pt-6 border-t border-gray-150">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                        <h3 className="font-bold text-xl text-gray-900">Statistiques Lubrifiants</h3>
+                        <p className="text-sm text-gray-500">Comparaison des ventes en volume (L), en poids (kg) et en valeur (DH)</p>
+                    </div>
+                </div>
+
+                {/* Lubricant KPIs */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Volume Liters Card */}
+                    <div className="bg-gradient-to-br from-blue-50 to-white p-6 rounded-2xl shadow-sm border border-blue-100 flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center gap-2 mb-3">
+                                <div className="p-2 bg-blue-100/50 rounded-lg text-blue-600">
+                                    <Droplet size={20} />
+                                </div>
+                                <span className="text-sm font-semibold text-blue-800">Volume Global (Litre)</span>
+                            </div>
+                            <div className="text-3xl font-extrabold text-gray-900 mb-1">{formatNumber(lubKpis.liters)} L</div>
+                            <div className="text-sm text-gray-500 font-medium">Précédent : <span className="font-bold text-gray-700">{formatNumber(lubKpis.litersPrev)} L</span></div>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-blue-100/30 flex justify-between items-center">
+                            <span className="text-xs text-gray-400 font-medium">Évolution</span>
+                            <span className={`text-sm font-bold px-2 py-1 rounded-md flex items-center gap-1 ${lubKpis.litersGrowth >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {lubKpis.litersGrowth >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                {lubKpis.litersGrowth >= 0 ? '+' : ''}{lubKpis.litersGrowth.toFixed(1)}%
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Weight Kg Card */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-white p-6 rounded-2xl shadow-sm border border-indigo-100 flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center gap-2 mb-3">
+                                <div className="p-2 bg-indigo-100/50 rounded-lg text-indigo-600">
+                                    <Scale size={20} />
+                                </div>
+                                <span className="text-sm font-semibold text-indigo-800">Masse Globale (kg)</span>
+                            </div>
+                            <div className="text-3xl font-extrabold text-gray-900 mb-1">{formatNumber(lubKpis.kg)} kg</div>
+                            <div className="text-sm text-gray-500 font-medium">Précédent : <span className="font-bold text-gray-700">{formatNumber(lubKpis.kgPrev)} kg</span></div>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-indigo-100/30 flex justify-between items-center">
+                            <span className="text-xs text-gray-400 font-medium">Évolution</span>
+                            <span className={`text-sm font-bold px-2 py-1 rounded-md flex items-center gap-1 ${lubKpis.kgGrowth >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {lubKpis.kgGrowth >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                {lubKpis.kgGrowth >= 0 ? '+' : ''}{lubKpis.kgGrowth.toFixed(1)}%
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Value DH Card */}
+                    <div className="bg-gradient-to-br from-emerald-50 to-white p-6 rounded-2xl shadow-sm border border-emerald-100 flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center gap-2 mb-3">
+                                <div className="p-2 bg-emerald-100/50 rounded-lg text-emerald-600">
+                                    <TrendingUp size={20} />
+                                </div>
+                                <span className="text-sm font-semibold text-emerald-800">Chiffre d'Affaires (DH)</span>
+                            </div>
+                            <div className="text-3xl font-extrabold text-gray-900 mb-1">{formatPrice(lubKpis.val)}</div>
+                            <div className="text-sm text-gray-500 font-medium">Précédent : <span className="font-bold text-gray-700">{formatPrice(lubKpis.valPrev)}</span></div>
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-emerald-100/30 flex justify-between items-center">
+                            <span className="text-xs text-gray-400 font-medium">Évolution</span>
+                            <span className={`text-sm font-bold px-2 py-1 rounded-md flex items-center gap-1 ${lubKpis.valGrowth >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {lubKpis.valGrowth >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                {lubKpis.valGrowth >= 0 ? '+' : ''}{lubKpis.valGrowth.toFixed(1)}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Lubricant Detailed Comparison Chart */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
+                        <div>
+                            <h4 className="font-bold text-lg text-gray-900">Évolution Temporelle des Lubrifiants</h4>
+                            <p className="text-sm text-gray-500">Comparaison de l'année en cours (N) par rapport à l'année précédente (N-1)</p>
+                        </div>
+                        {/* Selector for metric to display in chart */}
+                        <div className="flex bg-gray-50 p-1 rounded-lg border border-gray-200 w-fit self-end">
+                            {['liters', 'kg', 'val'].map((m) => (
+                                <button
+                                    key={m}
+                                    onClick={() => setLubMetricView(m)}
+                                    className={`px-3 py-1.5 text-xs rounded-md font-semibold transition-all ${
+                                        lubMetricView === m ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    {m === 'liters' ? 'Litres (L)' : m === 'kg' ? 'Poids (kg)' : 'Valeur (DH)'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-2">
+                        <div className="h-[350px] w-full min-w-[600px] sm:min-w-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={lubData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barGap={3}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.5} />
+                                    <XAxis
+                                        dataKey="name"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#64748B', fontSize: 12, fontWeight: 500 }}
+                                        dy={10}
+                                        interval={period === 'month' ? 3 : 0}
+                                    />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#94A3B8', fontSize: 11 }}
+                                        tickFormatter={(val) => lubMetricView === 'val' ? `${(val / 1000).toFixed(0)}k DH` : `${val.toFixed(0)}`}
+                                    />
+                                    <Tooltip
+                                        cursor={{ fill: '#F1F5F9', opacity: 0.6 }}
+                                        content={({ active, payload, label }) => {
+                                            if (active && payload && payload.length) {
+                                                const currentVal = payload.find(p => p.dataKey === lubMetricView)?.value || 0;
+                                                const prevVal = payload.find(p => p.dataKey === `${lubMetricView}Prev`)?.value || 0;
+                                                const diff = currentVal - prevVal;
+                                                const growth = prevVal > 0 ? (diff / prevVal * 100) : 0;
+                                                
+                                                const unit = lubMetricView === 'liters' ? 'L' : lubMetricView === 'kg' ? 'kg' : 'DH';
+                                                const formatFn = lubMetricView === 'val' ? formatPrice : (val) => `${formatNumber(val)} ${unit}`;
+                                                
+                                                return (
+                                                    <div className="bg-white p-4 shadow-xl rounded-2xl border border-gray-100 min-w-[200px]">
+                                                        <p className="font-bold text-gray-900 mb-3 border-b border-gray-50 pb-2 bg-gray-50 -mx-4 -mt-4 px-4 pt-4 rounded-t-2xl text-center">
+                                                            {period === 'month' ? `${label} ${MONTHS[selectedMonth]}` : label}
+                                                        </p>
+                                                        <div className="space-y-2">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-xs text-gray-500 font-medium">Actuel (N) :</span>
+                                                                <span className="font-bold text-gray-900 text-sm">{formatFn(currentVal)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-xs text-gray-400 font-medium">Précédent (N-1) :</span>
+                                                                <span className="font-semibold text-gray-600 text-sm">{formatFn(prevVal)}</span>
+                                                            </div>
+                                                            <div className="pt-2 border-t border-gray-100 flex justify-between items-center text-xs">
+                                                                <span className="text-gray-500 font-medium">Évolution :</span>
+                                                                <span className={`font-bold ${growth >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                                    {growth >= 0 ? '+' : ''}{growth.toFixed(1)}%
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        }}
+                                    />
+                                    <Legend
+                                        iconType="circle"
+                                        iconSize={8}
+                                        wrapperStyle={{ paddingTop: '24px', paddingBottom: '10px' }}
+                                        formatter={(value) => <span className="text-sm font-medium text-gray-600 ml-1">{value}</span>}
+                                    />
+                                    <Bar 
+                                        dataKey={`${lubMetricView}Prev`} 
+                                        name={lubMetricView === 'liters' ? "Volume N-1 (L)" : lubMetricView === 'kg' ? "Masse N-1 (kg)" : "Chiffre d'Affaires N-1 (DH)"} 
+                                        fill="#C7D2FE" 
+                                        radius={[4, 4, 0, 0]} 
+                                        maxBarSize={40} 
+                                    />
+                                    <Bar 
+                                        dataKey={lubMetricView} 
+                                        name={lubMetricView === 'liters' ? "Volume N (L)" : lubMetricView === 'kg' ? "Masse N (kg)" : "Chiffre d'Affaires N (DH)"} 
+                                        fill="#4F46E5" 
+                                        radius={[4, 4, 0, 0]} 
+                                        maxBarSize={40} 
+                                    />
+                                </BarChart>
                             </ResponsiveContainer>
                         </div>
                     </div>

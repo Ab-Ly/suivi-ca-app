@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader } from './ui/Card';
-import { Search, Filter, CirclePlus, CircleMinus, PackagePlus, Loader2, History, LayoutGrid, Calendar, Truck, Edit2, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Filter, CirclePlus, CircleMinus, PackagePlus, Loader2, History, LayoutGrid, Calendar, Truck, Edit2, Trash2, ChevronDown, ChevronUp, DollarSign, Droplet, Scale, FileSpreadsheet } from 'lucide-react';
 import ArticleManager from './ArticleManager';
 import EditArticleModal from './EditArticleModal';
 import LubricantDeliveryModal from './LubricantDeliveryModal';
@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { Modal } from './ui/Modal';
 import { DateInput } from './ui/DateInput';
 import PasswordConfirmationModal from './ui/PasswordConfirmationModal';
+import { getArticleWeightInKg } from '../utils/formatters';
 
 export default function StockStatus() {
     const [activeTab, setActiveTab] = useState('status'); // 'status' or 'movements'
@@ -39,6 +40,7 @@ export default function StockStatus() {
     // Edit Article State
     const [isEditArticleOpen, setIsEditArticleOpen] = useState(false);
     const [editingArticle, setEditingArticle] = useState(null);
+    const [exporting, setExporting] = useState(false);
 
     // Lubricant Deliveries History State
     const [lubricantDeliveries, setLubricantDeliveries] = useState([]);
@@ -326,6 +328,245 @@ export default function StockStatus() {
     });
 
     const totalValue = stockData.reduce((sum, item) => sum + (item.current_stock * item.price), 0);
+    const totalLubricantWeight = stockData.reduce((sum, item) => {
+        const cleanCat = (item.category || '').toLowerCase();
+        const cleanName = (item.name || '').toLowerCase();
+        if (cleanCat.includes('lubrif') || cleanName.includes('huile')) {
+            const w = getArticleWeightInKg(item.name, item.category, item.current_stock || 0);
+            return sum + (w || 0);
+        }
+        return sum;
+    }, 0);
+    const totalLubricantVolume = stockData.reduce((sum, item) => {
+        const cleanCat = (item.category || '').toLowerCase();
+        const cleanName = (item.name || '').toLowerCase();
+        const isLubricant = cleanCat.includes('lubrif') || cleanName.includes('huile') || cleanName.includes('graisse');
+        if (isLubricant) {
+            const qty = Number(item.current_stock) || 0;
+            let liters = 0;
+            const isDrum205Or180 = cleanName.includes('205') || cleanName.includes('180');
+            const kgMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*kg/);
+            
+            if (isDrum205Or180 && !kgMatch) {
+                liters = qty;
+            } else if (kgMatch) {
+                const capacity = parseFloat(kgMatch[1]);
+                liters = capacity * qty;
+            } else {
+                let volumeLiters = null;
+                const mlMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*ml/);
+                if (mlMatch) {
+                    volumeLiters = parseFloat(mlMatch[1]) / 1000;
+                } else {
+                    const lMatch = cleanName.match(/(\d+(?:\.\d+)?)\s*l/);
+                    if (lMatch) volumeLiters = parseFloat(lMatch[1]);
+                }
+                if (volumeLiters === null) {
+                    volumeLiters = 1.0;
+                }
+                liters = volumeLiters * qty;
+            }
+            return sum + liters;
+        }
+        return sum;
+    }, 0);
+
+    const exportStockToExcel = async () => {
+        setExporting(true);
+        try {
+            const ExcelJS = (await import('exceljs')).default;
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator = 'Suivi CA App';
+            workbook.created = new Date();
+
+            const sheet = workbook.addWorksheet('État de Stock', { views: [{ showGridLines: true }] });
+
+            // --- STYLING CONSTANTS ---
+            const fontMain = { name: 'Segoe UI', size: 10 };
+            const fontBold = { name: 'Segoe UI', size: 10, bold: true };
+            const borderThin = { style: 'thin', color: { argb: 'FFE5E7EB' } }; // Gray-200
+            
+            const cellBorder = {
+                top: borderThin,
+                left: borderThin,
+                bottom: borderThin,
+                right: borderThin
+            };
+
+            // Title
+            sheet.mergeCells('A2:G2');
+            const titleCell = sheet.getCell('A2');
+            titleCell.value = `État de Stock Réel - Le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+            titleCell.style = {
+                font: { name: 'Segoe UI', size: 14, bold: true, color: { argb: 'FF1F2937' } },
+                alignment: { horizontal: 'left', vertical: 'middle' }
+            };
+            sheet.getRow(2).height = 25;
+
+            // Helper to style all cells of a merged card
+            const styleCard = (startCell, endCell, label, valueText, colorFill) => {
+                sheet.mergeCells(`${startCell}:${endCell}`);
+                const cell = sheet.getCell(startCell);
+                cell.value = {
+                    richText: [
+                        { text: `${label}\n`, font: { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF9CA3AF' } } },
+                        { text: valueText, font: { name: 'Segoe UI', size: 13, bold: true, color: { argb: 'FF111827' } } }
+                    ]
+                };
+                cell.style = {
+                    alignment: { horizontal: 'center', vertical: 'middle', wrapText: true }
+                };
+
+                // Apply borders & background color to all merged cells in range
+                const startRow = parseInt(startCell.match(/\d+/)[0]);
+                const startCol = startCell.charCodeAt(0) - 64;
+                const endRow = parseInt(endCell.match(/\d+/)[0]);
+                const endCol = endCell.charCodeAt(0) - 64;
+
+                for (let r = startRow; r <= endRow; r++) {
+                    for (let c = startCol; c <= endCol; c++) {
+                        const targetCell = sheet.getCell(r, c);
+                        targetCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorFill } };
+                        targetCell.border = cellBorder;
+                    }
+                }
+            };
+
+            // Add the 3 Summary KPI Cards aligned across 7 columns
+            styleCard('A4', 'B5', 'VALEUR TOTALE DU STOCK', `${totalValue.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`, 'FFF0FDF4');
+            styleCard('C4', 'D5', 'POIDS TOTAL LUBRIFIANTS', `${totalLubricantWeight.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kg`, 'FFF5F3FF');
+            styleCard('E4', 'G5', 'VOLUME TOTAL LUBRIFIANTS', `${totalLubricantVolume.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} L`, 'FFF0FDFA');
+
+            // Add blank space
+            sheet.getRow(6).height = 15;
+
+            // Table Headers
+            const headers = [
+                'Article',
+                'Catégorie',
+                'Statut Stock',
+                'Quantité en Stock',
+                'Poids (kg)',
+                'Prix Unitaire',
+                'Valeur Stock'
+            ];
+
+            const headerRowNumber = 7;
+            const headerRow = sheet.getRow(headerRowNumber);
+            headerRow.height = 25;
+            
+            headers.forEach((h, colIdx) => {
+                const cell = headerRow.getCell(colIdx + 1);
+                cell.value = h;
+                cell.style = {
+                    font: { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } },
+                    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }, // Gray 900
+                    alignment: { 
+                        horizontal: colIdx >= 3 && colIdx !== 4 && colIdx !== 2 ? 'right' : colIdx === 2 ? 'center' : 'left',
+                        vertical: 'middle' 
+                    },
+                    border: cellBorder
+                };
+            });
+
+            // Populate rows
+            let currentOffset = 8;
+            filteredStock.forEach((item, index) => {
+                const row = sheet.getRow(currentOffset);
+                row.height = 22;
+
+                const stock = item.current_stock || 0;
+                let label = 'Ok';
+                let statusFill = 'D1FAE5'; // Emerald 100
+                let statusText = '065F46'; // Emerald 800
+
+                if (stock === 0 || stock <= 5) {
+                    label = stock === 0 ? 'Rupture' : 'Critique';
+                    statusFill = 'FEE2E2'; // Red 100
+                    statusText = '991B1B'; // Red 800
+                } else if (stock <= 15) {
+                    label = 'Bas';
+                    statusFill = 'FEF3C7'; // Amber 100
+                    statusText = '92400E'; // Amber 800
+                }
+
+                const weight = getArticleWeightInKg(item.name, item.category, stock);
+
+                // Values
+                row.getCell(1).value = item.name;
+                row.getCell(2).value = item.category || '-';
+                row.getCell(3).value = label.toUpperCase();
+                row.getCell(4).value = stock;
+                row.getCell(5).value = weight !== null ? weight : '-';
+                row.getCell(6).value = item.price;
+                row.getCell(7).value = stock * item.price;
+
+                // Fonts and alignments
+                row.getCell(1).font = fontBold;
+                row.getCell(2).font = fontMain;
+                row.getCell(3).font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: statusText } };
+                row.getCell(4).font = fontBold;
+                row.getCell(5).font = fontMain;
+                row.getCell(6).font = fontMain;
+                row.getCell(7).font = fontBold;
+
+                // Alignment
+                row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+                row.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
+                row.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+                row.getCell(4).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' };
+                row.getCell(7).alignment = { horizontal: 'right', vertical: 'middle' };
+
+                // Borders
+                for (let i = 1; i <= 7; i++) {
+                    row.getCell(i).border = cellBorder;
+                }
+
+                // Zebra background or status background
+                const rowBg = index % 2 === 0 ? 'FFFBFBFC' : 'FFFFFFFF';
+                for (let i = 1; i <= 7; i++) {
+                    if (i === 3) {
+                        row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: statusFill } };
+                    } else {
+                        row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                    }
+                }
+
+                // Number formatting
+                row.getCell(4).numFmt = '#,##0';
+                row.getCell(5).numFmt = weight !== null ? '#,##0.0' : '@';
+                row.getCell(6).numFmt = '#,##0.00" DH"';
+                row.getCell(7).numFmt = '#,##0.00" DH"';
+
+                currentOffset++;
+            });
+
+            // Adjust Column Widths
+            const colWidths = [35, 20, 15, 18, 15, 18, 18];
+            colWidths.forEach((w, i) => {
+                sheet.getColumn(i + 1).width = w;
+            });
+
+            // Generate blob & download
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `Stock_SuiviCaisse_${new Date().toISOString().split('T')[0]}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error('Error exporting stock to Excel:', error);
+        } finally {
+            setExporting(false);
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -369,33 +610,89 @@ export default function StockStatus() {
 
             {activeTab === 'status' && (
                 <>
-                    <div className="flex justify-end items-center gap-4">
-                        <div className="bg-white px-4 py-2.5 border border-border rounded-xl shadow-sm flex items-center gap-2">
-                            <span className="text-sm text-text-muted">Valeur Totale:</span>
-                            <span className="font-bold text-lg text-primary">{totalValue.toLocaleString()} DH</span>
+                    {/* Stat Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+                        {/* Valeur Totale */}
+                        <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-between group">
+                            <div>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Valeur Totale du Stock</span>
+                                <span className="font-extrabold text-2xl text-gray-900 font-mono">{totalValue.toLocaleString()} <span className="text-xs font-medium text-gray-400">DH</span></span>
+                            </div>
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300">
+                                <DollarSign size={22} />
+                            </div>
                         </div>
-                        <button
-                            onClick={() => setIsLubricantDeliveryOpen(true)}
-                            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl shadow-md hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200"
-                        >
-                            <Truck size={20} />
-                            <span className="hidden sm:inline font-medium">Livraison Lubrifiant</span>
-                        </button>
-                        <button
-                            onClick={() => setIsArticleManagerOpen(true)}
-                            className="flex items-center gap-2 bg-gradient-purple text-white px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
-                        >
-                            <PackagePlus size={20} />
-                            <span className="hidden sm:inline font-medium">Nouveau Article</span>
-                        </button>
-                        <button
-                            onClick={() => setDeleteConfig({ isOpen: true })}
-                            className="flex items-center gap-2 bg-orange-50 text-orange-600 px-3 py-2.5 rounded-xl hover:bg-orange-100 transition-colors border border-orange-200"
-                            title="Fusionner les doublons"
-                        >
-                            <Filter size={18} />
-                            <span className="hidden sm:inline font-medium">Nettoyer</span>
-                        </button>
+
+                        {/* Poids Lubrifiants */}
+                        <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-between group">
+                            <div>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Poids Total Lubrifiants</span>
+                                <span className="font-extrabold text-2xl text-indigo-600 font-mono">{totalLubricantWeight.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs font-medium text-gray-400">kg</span></span>
+                            </div>
+                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300">
+                                <Scale size={22} />
+                            </div>
+                        </div>
+
+                        {/* Volume Lubrifiants */}
+                        <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-between group">
+                            <div>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Volume Total Lubrifiants</span>
+                                <span className="font-extrabold text-2xl text-teal-600 font-mono">{totalLubricantVolume.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs font-medium text-gray-400">L</span></span>
+                            </div>
+                            <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300">
+                                <Droplet size={22} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Actions & Filters Row */}
+                    <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 mb-6">
+                        {/* Search Input */}
+                        <div className="relative flex-1 max-w-md">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Rechercher un article..."
+                                className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all duration-200 hover:border-gray-300 font-medium"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                onClick={exportStockToExcel}
+                                disabled={exporting}
+                                className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:scale-95 transition-all duration-200 font-semibold text-sm"
+                            >
+                                {exporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />}
+                                <span>Export Excel</span>
+                            </button>
+                            <button
+                                onClick={() => setIsLubricantDeliveryOpen(true)}
+                                className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:scale-95 transition-all duration-200 font-semibold text-sm"
+                            >
+                                <Truck size={18} />
+                                <span>Livraison Lubrifiant</span>
+                            </button>
+                            <button
+                                onClick={() => setIsArticleManagerOpen(true)}
+                                className="flex items-center justify-center gap-2 bg-gradient-purple hover:opacity-95 text-white px-4 py-2.5 rounded-xl shadow-sm hover:-translate-y-0.5 active:scale-95 transition-all duration-200 font-semibold text-sm"
+                            >
+                                <PackagePlus size={18} />
+                                <span>Nouvel Article</span>
+                            </button>
+                            <button
+                                onClick={() => setDeleteConfig({ isOpen: true })}
+                                className="flex items-center justify-center gap-2 bg-orange-50 hover:bg-orange-100 text-orange-600 px-4 py-2.5 rounded-xl border border-orange-200 active:scale-95 transition-all duration-200 font-semibold text-sm"
+                                title="Fusionner les doublons"
+                            >
+                                <Filter size={18} />
+                                <span>Nettoyer</span>
+                            </button>
+                        </div>
                     </div>
 
                     <LubricantDeliveryModal
@@ -492,19 +789,6 @@ export default function StockStatus() {
                     </Modal>
 
                     <Card>
-                        <div className="flex items-center gap-4 mb-6">
-                            <div className="relative flex-1 max-w-md">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-notion-gray" size={18} />
-                                <input
-                                    type="text"
-                                    placeholder="Rechercher un article..."
-                                    className="w-full pl-10 pr-4 py-2 border border-notion-border rounded-md focus:outline-none focus:ring-1 focus:ring-notion-gray"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
                         <div className="overflow-x-auto">
                             {loading ? (
                                 <div className="flex justify-center py-8">
@@ -561,9 +845,22 @@ export default function StockStatus() {
                                                                 <div className="flex-1 min-w-[50px] max-w-[80px] h-1.5 bg-gray-100 rounded-full overflow-hidden hidden lg:block">
                                                                     <div className={`h-full ${barColor} rounded-full transition-all duration-500`} style={{ width: `${percent}%` }}></div>
                                                                 </div>
-                                                                <span className="font-mono font-bold text-gray-900 text-sm whitespace-nowrap">
-                                                                    {stock}
-                                                                </span>
+                                                                <div className="text-right">
+                                                                     <div className="font-mono font-bold text-gray-900 text-sm whitespace-nowrap">
+                                                                         {stock}
+                                                                     </div>
+                                                                     {(() => {
+                                                                         const weight = getArticleWeightInKg(item.name, item.category, stock);
+                                                                         if (weight !== null) {
+                                                                             return (
+                                                                                 <div className="text-[10px] text-gray-400 font-semibold mt-0.5 whitespace-nowrap">
+                                                                                     {weight.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+                                                                                 </div>
+                                                                             );
+                                                                         }
+                                                                         return null;
+                                                                     })()}
+                                                                 </div>
                                                             </div>
                                                         );
                                                     })()}

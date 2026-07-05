@@ -3,7 +3,7 @@ import { Modal } from './ui/Modal';
 import { DateInput } from './ui/DateInput';
 import { Search, Plus, Trash2, Loader2, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { formatPrice, formatNumber } from '../utils/formatters';
+import { formatPrice, formatNumber, getArticleWeightInKg } from '../utils/formatters';
 
 export default function SalesEntry({ isOpen, onClose, ...props }) {
     // Common State
@@ -485,7 +485,20 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                                                 )}
                                             </td>
                                             <td className="py-3.5 px-4 text-right font-mono text-gray-500">{formatNumber(item.price, 2)}</td>
-                                            <td className="py-3.5 px-4 text-center font-mono font-bold text-gray-700">{item.quantity}</td>
+                                            <td className="py-3.5 px-4 text-center">
+                                                <div className="font-mono font-bold text-gray-700">{item.quantity}</div>
+                                                {(() => {
+                                                    const w = getArticleWeightInKg(item.name, item.category, item.quantity);
+                                                    if (w !== null) {
+                                                        return (
+                                                            <div className="text-[10px] text-gray-400 font-semibold mt-0.5 whitespace-nowrap">
+                                                                {w.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </td>
                                             <td className="py-3.5 px-4 text-right font-mono font-bold text-gray-900">{formatPrice(item.price * item.quantity)}</td>
                                             <td className="py-3.5 px-4 text-center">
                                                 <button
