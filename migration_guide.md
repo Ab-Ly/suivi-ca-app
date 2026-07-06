@@ -23,8 +23,8 @@ npm install
 ## 4. Configurer les variables d'environnement (Crucial ⚠️)
 Créez un fichier nommé `.env` à la racine du projet et collez-y les informations de connexion Supabase suivantes :
 ```env
-VITE_SUPABASE_URL=https://zzllzyijkwrihxxqucve.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6bGx6eWlqa3dyaWh4eHF1Y3ZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MTA1MzYsImV4cCI6MjA4MDI4NjUzNn0.1cNKh6Bss4fU5RSiw0WPFA0tgasbw3L5F7RFPU_SSJQ
+VITE_SUPABASE_URL=votre_url_supabase_ici
+VITE_SUPABASE_ANON_KEY=votre_cle_anon_supabase_ici
 ```
 
 > 💡 **Sécurité** : Le fichier `.env` est ignoré par Git (défini dans `.gitignore`) pour protéger vos accès confidentiels. Il doit donc être recréé manuellement sur chaque nouvel ordinateur.
