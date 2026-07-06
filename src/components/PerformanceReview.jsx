@@ -57,7 +57,8 @@ const ComparisonSettingsModal = ({ isOpen, onClose, config, onUpdate }) => {
     if (!isOpen) return null;
 
     const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-    const YEARS = [2024, 2025, 2026];
+    const currentYear = new Date().getFullYear();
+    const YEARS = [currentYear - 2, currentYear - 1, currentYear];
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -343,7 +344,7 @@ export default function PerformanceReview() {
     const [isConfigOpen, setIsConfigOpen] = useState(false);
     const [config, setConfig] = useState({
         period: 'year', // 'year' | 'month' | 'custom'
-        year: 2025,
+        year: new Date().getFullYear(),
         month: new Date().getMonth() - 1 < 0 ? 11 : new Date().getMonth() - 1, // Default to previous month
         startMonth: 0,
         endMonth: new Date().getMonth()
@@ -585,24 +586,7 @@ export default function PerformanceReview() {
                 totalPrev: totalFuelPrevM3
             });
 
-            // 2. Lubrifiants Recap Slide (Unified Vol, Poids & C.A. with 3 bars)
-            const lubRecapChartData = (lubData || []).map(d => ({
-                name: d.name,
-                liters: d.liters || 0,
-                kg: d.kg || 0,
-                kdh: (d.val || 0) / 1000,
-                litersPrev: d.litersPrev || 0,
-                kgPrev: d.kgPrev || 0,
-                kdhPrev: (d.valPrev || 0) / 1000
-            }));
-            builtSlides.push({
-                type: 'lub_recap',
-                title: "Focus LUBRIFIANTS (Vol, Poids & C.A.)",
-                icon: Droplet,
-                customData: lubRecapChartData,
-                kpis: lubKpis,
-                color: THEME.charts.indigo
-            });
+
 
             // 3. Lubrifiants - Volume L Slide (comparatif)
             const lubVolumeTrend = (lubData || []).map(d => ({

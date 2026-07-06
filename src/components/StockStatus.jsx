@@ -320,14 +320,18 @@ export default function StockStatus() {
 
     const filteredStock = stockData.filter(item => {
         // Exclude services from stock view
-        const isService = ['Shop', 'Café', 'Bosch Car Service', "Main d'oeuvre"].includes(item.category);
+        const isService = ['Shop', 'Café', 'Bosch Service', 'Bosch Car Service', "Main d'oeuvre", 'Pneumatique'].includes(item.category) || item.type === 'service';
         if (isService) return false;
 
         return item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (item.category && item.category.toLowerCase().includes(searchTerm.toLowerCase()));
     });
 
-    const totalValue = stockData.reduce((sum, item) => sum + (item.current_stock * item.price), 0);
+    const totalValue = stockData.reduce((sum, item) => {
+        const isService = ['Shop', 'Café', 'Bosch Service', 'Bosch Car Service', "Main d'oeuvre", 'Pneumatique'].includes(item.category) || item.type === 'service';
+        if (isService) return sum;
+        return sum + ((item.current_stock || 0) * (item.price || 0));
+    }, 0);
     const totalLubricantWeight = stockData.reduce((sum, item) => {
         const cleanCat = (item.category || '').toLowerCase();
         const cleanName = (item.name || '').toLowerCase();

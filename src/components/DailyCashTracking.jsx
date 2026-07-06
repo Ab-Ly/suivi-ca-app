@@ -2018,7 +2018,7 @@ export default function DailyCashTracking() {
         }
     }, [activeTab, prepaidMonth]);
 
-    const fetchClosingData = async () => {
+    const fetchClosingData = async (ignoreDraft = false) => {
         setLoadingClosing(true);
         try {
             const { data: closing, error } = await supabase
@@ -2035,6 +2035,18 @@ export default function DailyCashTracking() {
             }
 
             setClosingTableError(false);
+
+            // Check if draft exists in localStorage
+            const draft = localStorage.getItem(`draft_closing_${selectedDate}`);
+            if (draft && !ignoreDraft) {
+                try {
+                    const parsed = JSON.parse(draft);
+                    setClosingData(parsed);
+                    return;
+                } catch (e) {
+                    console.error('Error parsing draft closing data:', e);
+                }
+            }
 
             if (closing) {
                 setClosingData({
@@ -2136,6 +2148,7 @@ export default function DailyCashTracking() {
                 .upsert(dataToSave, { onConflict: 'date' });
 
             if (error) throw error;
+            localStorage.removeItem(`draft_closing_${selectedDate}`);
             showSuccess('Arrêté de caisse enregistré avec succès');
             fetchClosingData();
             fetchClosingsHistory();
@@ -2144,6 +2157,14 @@ export default function DailyCashTracking() {
             showError('Erreur lors de l\'enregistrement de l\'arrêté de caisse');
         } finally {
             setSavingClosing(false);
+        }
+    };
+
+    const handleResetClosing = () => {
+        if (window.confirm("Êtes-vous sûr de vouloir réinitialiser cet arrêté de caisse ? Tous les changements non enregistrés pour cette date seront perdus.")) {
+            localStorage.removeItem(`draft_closing_${selectedDate}`);
+            fetchClosingData(true);
+            showSuccess('Arrêté de caisse réinitialisé');
         }
     };
 
@@ -3706,14 +3727,25 @@ export default function DailyCashTracking() {
                                                 <h3 className="font-bold text-xl text-gray-800">Arrêté de Caisse (Théorique vs Réel)</h3>
                                                 <p className="text-sm text-gray-400 mt-1">Saisie et calcul de l'écart de caisse pour la date sélectionnée</p>
                                             </div>
-                                            <button
-                                                type="submit"
-                                                disabled={savingClosing || loadingClosing}
-                                                className="flex items-center gap-2 bg-gradient-purple text-white px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 font-semibold text-sm cursor-pointer disabled:opacity-50"
-                                            >
-                                                {savingClosing ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                                {savingClosing ? 'Enregistrement...' : 'Enregistrer l\'arrêté'}
-                                            </button>
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleResetClosing}
+                                                    disabled={loadingClosing}
+                                                    className="flex items-center gap-2 border border-rose-200 text-rose-600 bg-rose-50/50 hover:bg-rose-50 px-4 py-2.5 rounded-xl transition-all duration-200 font-semibold text-sm cursor-pointer disabled:opacity-50"
+                                                >
+                                                    <Trash2 size={16} />
+                                                    Réinitialiser (RAZ)
+                                                </button>
+                                                <button
+                                                    type="submit"
+                                                    disabled={savingClosing || loadingClosing}
+                                                    className="flex items-center gap-2 bg-gradient-purple text-white px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 font-semibold text-sm cursor-pointer disabled:opacity-50"
+                                                >
+                                                    {savingClosing ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                                    {savingClosing ? 'Enregistrement...' : 'Enregistrer l\'arrêté'}
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {loadingClosing ? (
@@ -3729,10 +3761,15 @@ export default function DailyCashTracking() {
                                                 const Ecart = Number(closingData.comptage_espece_total) - D;
 
                                                 const handleInputChange = (field, val) => {
-                                                    setClosingData(prev => ({
-                                                        ...prev,
-                                                        [field]: val === '' ? '' : Number(val)
-                                                    }));
+                                                    const numericVal = val === '' ? '' : Number(val);
+                                                    setClosingData(prev => {
+                                                        const updated = {
+                                                            ...prev,
+                                                            [field]: numericVal
+                                                        };
+                                                        localStorage.setItem(`draft_closing_${selectedDate}`, JSON.stringify(updated));
+                                                        return updated;
+                                                    });
                                                 };
 
                                                 return (
@@ -3909,7 +3946,17 @@ export default function DailyCashTracking() {
                                                                     placeholder="Saisir des remarques sur l'écart ou l'arrêté..."
                                                                     className="w-full px-3 py-2 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white resize-none"
                                                                     value={closingData.notes}
-                                                                    onChange={(e) => setClosingData(prev => ({ ...prev, notes: e.target.value }))}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setClosingData(prev => {
+                                                                            const updated = {
+                                                                                ...prev,
+                                                                                notes: val
+                                                                            };
+                                                                            localStorage.setItem(`draft_closing_${selectedDate}`, JSON.stringify(updated));
+                                                                            return updated;
+                                                                        });
+                                                                    }}
                                                                 />
                                                             </div>
                                                         </div>

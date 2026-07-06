@@ -128,9 +128,12 @@ export default function HistoricalEntry() {
                         onChange={(e) => setYear(parseInt(e.target.value))}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     >
-                        {[2023, 2024, 2025, 2026].map(y => (
-                            <option key={y} value={y}>{y}</option>
-                        ))}
+                        {(() => {
+                            const currentYear = new Date().getFullYear();
+                            return [currentYear - 3, currentYear - 2, currentYear - 1, currentYear].map(y => (
+                                <option key={y} value={y}>{y}</option>
+                            ));
+                        })()}
                     </select>
                 </div>
                 <button

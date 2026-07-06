@@ -529,9 +529,12 @@ export default function Reports() {
                                     onChange={(e) => setCmpYear(Number(e.target.value))}
                                     className="w-full appearance-none pl-4 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium hover:border-indigo-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
                                 >
-                                    {[2024, 2025, 2026].map(y => (
-                                        <option key={y} value={y}>{y}</option>
-                                    ))}
+                                    {(() => {
+                                        const currentYear = new Date().getFullYear();
+                                        return [currentYear - 2, currentYear - 1, currentYear].map(y => (
+                                            <option key={y} value={y}>{y}</option>
+                                        ));
+                                    })()}
                                 </select>
                                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                             </div>

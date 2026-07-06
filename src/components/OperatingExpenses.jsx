@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { 
     CreditCard, Plus, Trash2, Calendar, FileText, CheckCircle, AlertTriangle, 
     X, ShieldAlert, Sparkles, Receipt, RefreshCw, Settings, TrendingUp, 
-    TrendingDown, Search, Info, Save, DollarSign, Droplet, ShoppingBag, BarChart3, Activity, UserCog, UserPlus
+    TrendingDown, Search, Info, Save, DollarSign, Droplet, ShoppingBag, BarChart3, Activity, UserCog, UserPlus, ChevronRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -203,6 +203,7 @@ export default function OperatingExpenses() {
     const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
     const [visibleExpensesCount, setVisibleExpensesCount] = useState(50);
     const [selectedMonthFilter, setSelectedMonthFilter] = useState('');
+    const [expandedMonths, setExpandedMonths] = useState(new Set());
     const [formData, setFormData] = useState({
         date: new Date().toISOString().split('T')[0],
         category: 'Loyer',
@@ -258,6 +259,8 @@ export default function OperatingExpenses() {
         expensesTotal: 0,
         expensesByCategory: {}
     });
+    const [isREXExpensesExpanded, setIsREXExpensesExpanded] = useState(false);
+    const [isREXStockExpanded, setIsREXStockExpanded] = useState(false);
 
     // Check database structure
     const checkDatabaseSetup = async () => {
@@ -369,6 +372,17 @@ export default function OperatingExpenses() {
             calculateMargins();
         }
     }, [activeTab, priceSubTab, marginStartDate, marginEndDate, dbSetup.operatingExpensesOk, dbSetup.fuelPricesOk, dbSetup.articlesPurchasePriceOk, dbSetup.monthlyStockCostsOk]);
+
+    useEffect(() => {
+        if (expenses.length > 0 && expandedMonths.size === 0) {
+            const mostRecentMonth = expenses
+                .map(e => e.date.substring(0, 7))
+                .sort((a, b) => b.localeCompare(a))[0];
+            if (mostRecentMonth) {
+                setExpandedMonths(new Set([mostRecentMonth]));
+            }
+        }
+    }, [expenses]);
 
     // Tab 1: Fetch General Expenses
     const fetchExpenses = async () => {
@@ -1854,8 +1868,15 @@ export default function OperatingExpenses() {
                                                 <Sparkles size={64} className="text-orange-600" />
                                             </div>
                                             <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Poste le plus important</div>
-                                            <div className="text-2xl font-black text-gray-900 truncate">
-                                                {topCat ? `${getCategoryDetails(topCat[0]).label} (${formatPrice(topCat[1])})` : 'Aucun'}
+                                            <div className="flex flex-col min-h-[3.5rem] justify-center">
+                                                <div className="text-lg font-extrabold text-gray-900 leading-tight">
+                                                    {topCat ? getCategoryDetails(topCat[0]).label : 'Aucun'}
+                                                </div>
+                                                {topCat && (
+                                                    <div className="text-sm font-black text-orange-600 mt-0.5 font-mono">
+                                                        {formatPrice(topCat[1])}
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="absolute bottom-0 left-0 w-full h-1 bg-orange-500"></div>
                                         </div>
@@ -1939,37 +1960,92 @@ export default function OperatingExpenses() {
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                filteredExpenses.slice(0, visibleExpensesCount).map(exp => {
-                                                    const catInfo = getCategoryDetails(exp.category);
-                                                    const pMethod = PAYMENT_METHODS.find(p => p.value === exp.payment_method) || { label: exp.payment_method };
-                                                    
-                                                    return (
-                                                        <tr key={exp.id} className="hover:bg-slate-50/60 transition-colors">
-                                                            <td className="px-6 py-4 whitespace-nowrap font-mono text-sm font-bold text-gray-700">
-                                                                {format(new Date(exp.date), 'dd/MM/yyyy')}
-                                                            </td>
-                                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                                <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${catInfo.color}`}>
-                                                                    {catInfo.label}
-                                                                </span>
-                                                            </td>
-                                                            <td className="px-6 py-4 font-medium text-gray-800">{exp.description || '—'}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">{pMethod.label}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-base font-black text-gray-900">
-                                                                {formatPrice(Number(exp.amount))}
-                                                            </td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                                <button
-                                                                    onClick={() => handleDeleteExpense(exp.id)}
-                                                                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                                                    title="Supprimer"
-                                                                >
-                                                                    <Trash2 size={18} />
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })
+                                                (() => {
+                                                    // Group expenses by YYYY-MM
+                                                    const groups = {};
+                                                    filteredExpenses.forEach(exp => {
+                                                        const monthKey = exp.date.substring(0, 7); // 'YYYY-MM'
+                                                        if (!groups[monthKey]) groups[monthKey] = [];
+                                                        groups[monthKey].push(exp);
+                                                    });
+
+                                                    return Object.entries(groups)
+                                                        .sort((a, b) => b[0].localeCompare(a[0])) // sort descending (recent first)
+                                                        .map(([monthKey, monthExps]) => {
+                                                            const isExpanded = expandedMonths.has(monthKey) || 
+                                                                               selectedMonthFilter === monthKey || 
+                                                                               selectedCategoryFilter !== '';
+                                                            const monthTotal = monthExps.reduce((sum, exp) => sum + Number(exp.amount), 0);
+                                                            const dateObj = new Date(monthKey + '-02'); // avoid timezone shifts
+
+                                                            return (
+                                                                <React.Fragment key={monthKey}>
+                                                                    {/* Group Header Row */}
+                                                                    <tr
+                                                                        onClick={() => {
+                                                                            const newExpanded = new Set(expandedMonths);
+                                                                            if (newExpanded.has(monthKey)) newExpanded.delete(monthKey);
+                                                                            else newExpanded.add(monthKey);
+                                                                            setExpandedMonths(newExpanded);
+                                                                        }}
+                                                                        className="bg-indigo-50/10 hover:bg-indigo-50/20 cursor-pointer transition-colors border-t border-b border-indigo-100/30"
+                                                                    >
+                                                                        <td colSpan="6" className="px-6 py-3">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div className="flex items-center gap-2.5">
+                                                                                    <div className={`transition-transform duration-200 text-indigo-500 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
+                                                                                        <ChevronRight size={16} />
+                                                                                    </div>
+                                                                                    <span className="font-extrabold text-sm text-indigo-950 capitalize">
+                                                                                        {format(dateObj, 'MMMM yyyy', { locale: fr })}
+                                                                                    </span>
+                                                                                    <span className="inline-flex px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold text-[10px] rounded-full border border-indigo-100/50">
+                                                                                        {monthExps.length} {monthExps.length > 1 ? 'charges' : 'charge'}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="font-mono font-black text-xs text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-100/40 shadow-sm">
+                                                                                    Total : {formatPrice(monthTotal)}
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+
+                                                                    {/* Data Rows */}
+                                                                    {isExpanded && monthExps.map(exp => {
+                                                                        const catInfo = getCategoryDetails(exp.category);
+                                                                        const pMethod = PAYMENT_METHODS.find(p => p.value === exp.payment_method) || { label: exp.payment_method };
+                                                                        
+                                                                        return (
+                                                                            <tr key={exp.id} className="hover:bg-slate-50/60 transition-colors">
+                                                                                <td className="px-6 py-4 whitespace-nowrap font-mono text-sm font-bold text-gray-700">
+                                                                                    {format(new Date(exp.date), 'dd/MM/yyyy')}
+                                                                                </td>
+                                                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${catInfo.color}`}>
+                                                                                        {catInfo.label}
+                                                                                    </span>
+                                                                                </td>
+                                                                                <td className="px-6 py-4 font-medium text-gray-800">{exp.description || '—'}</td>
+                                                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">{pMethod.label}</td>
+                                                                                <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-base font-black text-gray-900">
+                                                                                    {formatPrice(Number(exp.amount))}
+                                                                                </td>
+                                                                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                                                    <button
+                                                                                        onClick={() => handleDeleteExpense(exp.id)}
+                                                                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                                                        title="Supprimer"
+                                                                                    >
+                                                                                        <Trash2 size={18} />
+                                                                                    </button>
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </React.Fragment>
+                                                            );
+                                                        });
+                                                })()
                                             )}
                                             {filteredExpenses.length > visibleExpensesCount && (
                                                 <tr>
@@ -2601,13 +2677,42 @@ export default function OperatingExpenses() {
                                                     <td className="px-4 py-3 text-right font-mono text-gray-400">100.0 %</td>
                                                 </tr>
                                                 {/* COGS */}
-                                                <tr className="hover:bg-slate-50/50 text-gray-600">
-                                                    <td className="px-4 py-3 pl-6 text-xs font-semibold">Coûts de stock / Achat carburants & marchandises (-)</td>
+                                                <tr 
+                                                    className="hover:bg-slate-50/50 text-gray-600 cursor-pointer transition-colors"
+                                                    onClick={() => setIsREXStockExpanded(!isREXStockExpanded)}
+                                                >
+                                                    <td className="px-4 py-3 pl-6 text-xs font-semibold flex items-center">
+                                                        <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-gray-300 text-[10px] font-bold text-gray-500 mr-2 bg-gray-50/80 select-none">
+                                                            {isREXStockExpanded ? '−' : '+'}
+                                                        </span>
+                                                        Coûts de stock / Achat carburants & marchandises (-)
+                                                    </td>
                                                     <td className="px-4 py-3 text-right font-mono font-semibold text-rose-500">-{formatPrice(marginData.total.cost)}</td>
                                                     <td className="px-4 py-3 text-right font-mono text-xs text-gray-400">
                                                         {marginData.total.revenue > 0 ? formatNumber((marginData.total.cost / marginData.total.revenue) * 100, 1) : 0} %
                                                     </td>
                                                 </tr>
+                                                {isREXStockExpanded && [
+                                                    { label: "Gasoil", cost: marginData.gasoil.cost },
+                                                    { label: "Super Sans Plomb (SSP)", cost: marginData.ssp.cost },
+                                                    { label: "Lubrifiants", cost: marginData.lubricants.cost },
+                                                    { label: "Boutique / Shop", cost: marginData.shop.cost },
+                                                    { label: "Café", cost: marginData.cafe.cost },
+                                                    { label: "Service Bosch", cost: marginData.bosch.cost }
+                                                ]
+                                                    .filter(item => item.cost > 0)
+                                                    .map(item => (
+                                                        <tr key={item.label} className="bg-rose-50/10 text-gray-500 hover:bg-slate-50/30 text-xs">
+                                                            <td className="px-4 py-2 pl-12 flex items-center gap-2">
+                                                                <div className="w-1 h-1 rounded-full bg-rose-400"></div>
+                                                                {item.label}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right font-mono text-rose-600/80">-{formatPrice(item.cost)}</td>
+                                                            <td className="px-4 py-2 text-right font-mono text-gray-400/80">
+                                                                {marginData.total.revenue > 0 ? formatNumber((item.cost / marginData.total.revenue) * 100, 1) : 0} %
+                                                            </td>
+                                                        </tr>
+                                                    ))}
                                                 {/* Gross margin */}
                                                 <tr className="hover:bg-slate-50/50 bg-emerald-50/30">
                                                     <td className="px-4 py-3 font-bold text-emerald-800">Marge Brute Globale</td>
@@ -2617,13 +2722,38 @@ export default function OperatingExpenses() {
                                                     </td>
                                                 </tr>
                                                 {/* General Expenses */}
-                                                <tr className="hover:bg-slate-50/50 text-gray-600">
-                                                    <td className="px-4 py-3 pl-6 text-xs font-semibold">Charges Générales d'Exploitation (Charges) (-)</td>
+                                                <tr 
+                                                    className="hover:bg-slate-50/50 text-gray-600 cursor-pointer transition-colors"
+                                                    onClick={() => setIsREXExpensesExpanded(!isREXExpensesExpanded)}
+                                                >
+                                                    <td className="px-4 py-3 pl-6 text-xs font-semibold flex items-center">
+                                                        <span className="inline-flex items-center justify-center w-4 h-4 rounded border border-gray-300 text-[10px] font-bold text-gray-500 mr-2 bg-gray-50/80 select-none">
+                                                            {isREXExpensesExpanded ? '−' : '+'}
+                                                        </span>
+                                                        Charges Générales d'Exploitation (Charges) (-)
+                                                    </td>
                                                     <td className="px-4 py-3 text-right font-mono font-semibold text-rose-500">-{formatPrice(marginData.expensesTotal)}</td>
                                                     <td className="px-4 py-3 text-right font-mono text-xs text-gray-400">
                                                         {marginData.total.revenue > 0 ? formatNumber((marginData.expensesTotal / marginData.total.revenue) * 100, 1) : 0} %
                                                     </td>
                                                 </tr>
+                                                {isREXExpensesExpanded && Object.entries(marginData.expensesByCategory || {})
+                                                    .filter(([_, amount]) => amount > 0)
+                                                    .map(([catKey, amount]) => {
+                                                        const catInfo = getCategoryDetails(catKey);
+                                                        return (
+                                                            <tr key={catKey} className="bg-rose-50/10 text-gray-500 hover:bg-slate-50/30 text-xs">
+                                                                <td className="px-4 py-2 pl-12 flex items-center gap-2">
+                                                                    <div className="w-1 h-1 rounded-full bg-rose-400"></div>
+                                                                    {catInfo.label}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-right font-mono text-rose-600/80">-{formatPrice(amount)}</td>
+                                                                <td className="px-4 py-2 text-right font-mono text-gray-400/80">
+                                                                    {marginData.total.revenue > 0 ? formatNumber((amount / marginData.total.revenue) * 100, 1) : 0} %
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 {/* EBIT */}
                                                 {(() => {
                                                     const ebitVal = marginData.total.margin - marginData.expensesTotal;

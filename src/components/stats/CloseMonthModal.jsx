@@ -197,7 +197,12 @@ export default function CloseMonthModal({ isOpen, onClose, onClosed }) {
                                     value={year}
                                     onChange={e => setYear(parseInt(e.target.value))}
                                 >
-                                    {[2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                                    {(() => {
+                                        const currentYear = new Date().getFullYear();
+                                        return [currentYear - 3, currentYear - 2, currentYear - 1, currentYear].map(y => (
+                                            <option key={y} value={y}>{y}</option>
+                                        ));
+                                    })()}
                                 </select>
                             </div>
                         </div>
