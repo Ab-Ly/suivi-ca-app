@@ -4431,7 +4431,7 @@ export default function DailyCashTracking() {
                                 </button>
                             </div>
 
-                            <form onSubmit={handleAddTransaction} className="space-y-4 sm:space-y-5 overflow-y-auto flex-1 pr-1">
+                            <form onSubmit={handleAddTransaction} className="space-y-4 sm:space-y-5 overflow-y-auto flex-1 px-2 pr-3 pb-2">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
                                     <div className="relative">
@@ -4645,7 +4645,7 @@ export default function DailyCashTracking() {
                                 </button>
                             </div>
 
-                            <form onSubmit={handleSaveEditTransaction} className="space-y-4 sm:space-y-5 overflow-y-auto flex-1 pr-1">
+                            <form onSubmit={handleSaveEditTransaction} className="space-y-4 sm:space-y-5 overflow-y-auto flex-1 px-2 pr-3 pb-2">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
                                     <div className="relative">
