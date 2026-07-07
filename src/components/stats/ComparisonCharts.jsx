@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, ShoppingBag, Coffee, Wrench, Droplet, Disc, Hammer, Fuel, Scale } from 'lucide-react';
 import { formatPrice, formatNumber } from '../../utils/formatters';
 import { fetchComparisonStats } from '../../utils/statisticsUtils';
+import { supabase } from '../../lib/supabase';
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
@@ -19,6 +20,115 @@ const getCategoryIcon = (category) => {
     if (catLower.includes('pneumatique')) return <Disc size={20} className="text-gray-700" />;
     if (catLower.includes('lubrifiant')) return <Droplet size={20} className="text-blue-600" />;
     return <div className="w-2 h-2 rounded-full bg-gray-400" />;
+};
+
+const computeFuelRevenue = (fuelData, fuelPrices, currentYear, period, selectedMonth, customStartMonth, customEndMonth) => {
+    if (!fuelData || fuelData.length === 0 || !fuelPrices || fuelPrices.length === 0) {
+        return { chartData: [], kpis: { gasoil: 0, ssp: 0, gasoilPrev: 0, sspPrev: 0, gasoilGrowth: 0, sspGrowth: 0 } };
+    }
+
+    const getActivePrice = (dateStr, type) => {
+        let active = null;
+        for (const p of fuelPrices) {
+            if (p.fuel_type === type && p.date <= dateStr) {
+                active = p;
+            }
+        }
+        return active || { sale_price: 0, purchase_price: 0 };
+    };
+
+    let datesCurr = [];
+    let datesPrev = [];
+
+    if (period === 'year') {
+        for (let i = 0; i < 12; i++) {
+            const mStr = String(i + 1).padStart(2, '0');
+            datesCurr.push(`${currentYear}-${mStr}-15`);
+            datesPrev.push(`${currentYear - 1}-${mStr}-15`);
+        }
+    } else if (period === 'custom') {
+        const rangeLen = customEndMonth - customStartMonth + 1;
+        for (let i = 0; i < rangeLen; i++) {
+            const mStr = String(customStartMonth + i + 1).padStart(2, '0');
+            datesCurr.push(`${currentYear}-${mStr}-15`);
+            datesPrev.push(`${currentYear - 1}-${mStr}-15`);
+        }
+    } else if (period === 'month') {
+        const daysInMonth = fuelData.length;
+        const mStr = String(selectedMonth + 1).padStart(2, '0');
+        for (let i = 0; i < daysInMonth; i++) {
+            const dStr = String(i + 1).padStart(2, '0');
+            datesCurr.push(`${currentYear}-${mStr}-${dStr}`);
+            datesPrev.push(`${currentYear - 1}-${mStr}-${dStr}`);
+        }
+    } else if (period === 'week') {
+        const now = new Date();
+        const currentMonday = new Date(now);
+        const day = currentMonday.getDay() || 7;
+        if (day !== 1) currentMonday.setDate(currentMonday.getDate() - (day - 1));
+        
+        for (let i = 0; i < 7; i++) {
+            const dCurr = new Date(currentMonday);
+            dCurr.setDate(currentMonday.getDate() + i);
+            dCurr.setFullYear(currentYear);
+            datesCurr.push(dCurr.toISOString().split('T')[0]);
+
+            const dPrev = new Date(currentMonday);
+            dPrev.setDate(currentMonday.getDate() + i);
+            dPrev.setFullYear(currentYear - 1);
+            datesPrev.push(dPrev.toISOString().split('T')[0]);
+        }
+    } else if (period === 'day') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const lastYearStr = new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0];
+        datesCurr.push(todayStr);
+        datesPrev.push(lastYearStr);
+    }
+
+    let totalGasoil = 0, totalSSP = 0, totalGasoilPrev = 0, totalSSPPrev = 0;
+
+    const chartData = fuelData.map((d, i) => {
+        const dateCurr = datesCurr[i] || datesCurr[datesCurr.length - 1];
+        const datePrev = datesPrev[i] || datesPrev[datesPrev.length - 1];
+
+        const priceGasoilCurr = Number(getActivePrice(dateCurr, 'Gasoil').sale_price || 0);
+        const priceGasoilPrev = Number(getActivePrice(datePrev, 'Gasoil').sale_price || 0);
+        const priceSSPCurr = Number(getActivePrice(dateCurr, 'SSP').sale_price || 0);
+        const priceSSPPrev = Number(getActivePrice(datePrev, 'SSP').sale_price || 0);
+
+        const gasoilRev = d.gasoil * priceGasoilCurr;
+        const gasoilPrevRev = d.gasoilPrev * priceGasoilPrev;
+        const sspRev = d.ssp * priceSSPCurr;
+        const sspPrevRev = d.sspPrev * priceSSPPrev;
+
+        totalGasoil += gasoilRev;
+        totalSSP += sspRev;
+        totalGasoilPrev += gasoilPrevRev;
+        totalSSPPrev += sspPrevRev;
+
+        return {
+            name: d.name,
+            gasoil: gasoilRev,
+            gasoilPrev: gasoilPrevRev,
+            ssp: sspRev,
+            sspPrev: sspPrevRev
+        };
+    });
+
+    const gasoilGrowth = totalGasoilPrev > 0 ? ((totalGasoil - totalGasoilPrev) / totalGasoilPrev) * 100 : 0;
+    const sspGrowth = totalSSPPrev > 0 ? ((totalSSP - totalSSPPrev) / totalSSPPrev) * 100 : 0;
+
+    return {
+        chartData,
+        kpis: {
+            gasoil: totalGasoil,
+            ssp: totalSSP,
+            gasoilPrev: totalGasoilPrev,
+            sspPrev: totalSSPPrev,
+            gasoilGrowth,
+            sspGrowth
+        }
+    };
 };
 
 
@@ -41,6 +151,10 @@ export default function ComparisonCharts() {
     const [fuelData, setFuelData] = useState([]);
     const [fuelKpis, setFuelKpis] = useState({ gasoil: 0, ssp: 0, gasoilPrev: 0, sspPrev: 0, gasoilGrowth: 0, sspGrowth: 0 });
 
+    // Fuel Revenue State
+    const [fuelRevenueData, setFuelRevenueData] = useState([]);
+    const [fuelRevenueKpis, setFuelRevenueKpis] = useState({ gasoil: 0, ssp: 0, gasoilPrev: 0, sspPrev: 0, gasoilGrowth: 0, sspGrowth: 0 });
+
     // Lubricant State
     const [lubData, setLubData] = useState([]);
     const [lubMetricView, setLubMetricView] = useState('liters');
@@ -59,7 +173,14 @@ export default function ComparisonCharts() {
     const fetchComparisonData = async () => {
         setLoading(true);
         try {
+            // Fetch comparison statistics
             const result = await fetchComparisonStats(period, year, selectedMonth, customStartMonth, customEndMonth);
+
+            // Fetch fuel prices to convert volumes to revenues
+            const { data: prices } = await supabase
+                .from('fuel_prices')
+                .select('*')
+                .order('date', { ascending: true });
 
             setData(result.data);
             setKpis(result.kpis);
@@ -68,6 +189,11 @@ export default function ComparisonCharts() {
             setLubData(result.lubData || []);
             setLubKpis(result.lubKpis || { liters: 0, kg: 0, val: 0, litersPrev: 0, kgPrev: 0, valPrev: 0, litersGrowth: 0, kgGrowth: 0, valGrowth: 0 });
             setCategoryDetails(result.categoryDetails);
+
+            // Compute fuel revenue statistics
+            const revResult = computeFuelRevenue(result.fuelData, prices || [], year, period, selectedMonth, customStartMonth, customEndMonth);
+            setFuelRevenueData(revResult.chartData);
+            setFuelRevenueKpis(revResult.kpis);
 
         } catch (error) {
             console.error('Error fetching comparison data:', error);
@@ -559,6 +685,246 @@ export default function ComparisonCharts() {
                                                                         <span className="text-xs text-gray-400">N-1</span>
                                                                     </div>
                                                                     <span className="font-semibold text-gray-500 text-sm">{formatNumber(payload.find(p => p.dataKey === 'sspPrev')?.value || 0)} L</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            }}
+                                        />
+                                        <Legend
+                                            iconType="circle"
+                                            iconSize={8}
+                                            wrapperStyle={{ paddingTop: '24px', paddingBottom: '10px' }}
+                                            formatter={(value) => <span className="text-sm font-medium text-gray-600 ml-1">{value}</span>}
+                                        />
+                                        <Bar dataKey="gasoilPrev" name="Gasoil (N-1)" fill="#FED7AA" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="gasoil" name="Gasoil (N)" fill="#F97316" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="sspPrev" name="SSP (N-1)" fill="#BBF7D0" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="ssp" name="SSP (N)" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                    </BarChart>
+                                )}
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Fuel Revenue Statistics Section */}
+            <div className="space-y-6 pt-6 border-t border-gray-150">
+                <h3 className="font-bold text-xl text-gray-900">Statistiques Carburant (Chiffre d'affaire)</h3>
+
+                {/* Fuel Revenue KPIs */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Gasoil Revenue Card */}
+                    <div className="bg-gradient-to-br from-orange-50/50 to-white p-6 rounded-2xl shadow-sm border border-orange-100/70">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="flex gap-4 items-center">
+                                <div className="p-3 bg-orange-100/50 rounded-xl text-orange-600">
+                                    <Fuel size={24} />
+                                </div>
+                                <div>
+                                    <div className="text-sm text-orange-600 font-medium mb-1">CA Gasoil {period === 'year' ? year : 'Actuel'}</div>
+                                    <div className="text-2xl font-black text-gray-900 mb-1">{formatPrice(fuelRevenueKpis.gasoil)}</div>
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-gray-500 font-medium">{period === 'year' ? year - 1 : 'Précédent'}:</span>
+                                        <span className="text-gray-700 font-bold">{formatPrice(fuelRevenueKpis.gasoilPrev)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                                <div className={`text-sm font-bold px-3 py-1.5 rounded-full flex items-center gap-1 ${fuelRevenueKpis.gasoilGrowth >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} `}>
+                                    {fuelRevenueKpis.gasoilGrowth >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                                    {fuelRevenueKpis.gasoilGrowth >= 0 ? '+' : ''}{fuelRevenueKpis.gasoilGrowth.toFixed(1)}%
+                                </div>
+                                <div className={`text-xs font-bold px-2 py-1 rounded-md ${fuelRevenueKpis.gasoil - fuelRevenueKpis.gasoilPrev >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'} `}>
+                                    {fuelRevenueKpis.gasoil - fuelRevenueKpis.gasoilPrev >= 0 ? '+' : ''}{formatPrice(fuelRevenueKpis.gasoil - fuelRevenueKpis.gasoilPrev)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SSP Revenue Card */}
+                    <div className="bg-gradient-to-br from-green-50/50 to-white p-6 rounded-2xl shadow-sm border border-green-100/70">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="flex gap-4 items-center">
+                                <div className="p-3 bg-green-100/50 rounded-xl text-green-650">
+                                    <Fuel size={24} />
+                                </div>
+                                <div>
+                                    <div className="text-sm text-green-650 font-medium mb-1">CA SSP {period === 'year' ? year : 'Actuel'}</div>
+                                    <div className="text-2xl font-black text-gray-900 mb-1">{formatPrice(fuelRevenueKpis.ssp)}</div>
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-gray-500 font-medium">{period === 'year' ? year - 1 : 'Précédent'}:</span>
+                                        <span className="text-gray-700 font-bold">{formatPrice(fuelRevenueKpis.sspPrev)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                                <div className={`text-sm font-bold px-3 py-1.5 rounded-full flex items-center gap-1 ${fuelRevenueKpis.sspGrowth >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} `}>
+                                    {fuelRevenueKpis.sspGrowth >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                                    {fuelRevenueKpis.sspGrowth >= 0 ? '+' : ''}{fuelRevenueKpis.sspGrowth.toFixed(1)}%
+                                </div>
+                                <div className={`text-xs font-bold px-2 py-1 rounded-md ${fuelRevenueKpis.ssp - fuelRevenueKpis.sspPrev >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'} `}>
+                                    {fuelRevenueKpis.ssp - fuelRevenueKpis.sspPrev >= 0 ? '+' : ''}{formatPrice(fuelRevenueKpis.ssp - fuelRevenueKpis.sspPrev)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Fuel Revenue Chart */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="mb-6">
+                        <h4 className="font-bold text-lg text-gray-900">
+                            {period === 'year' ? "Comparatif Mensuel du Chiffre d'Affaires Carburant" :
+                             period === 'custom' ? `Comparatif Revenus Personnalisé (${MONTHS[customStartMonth]} - ${MONTHS[customEndMonth]})` :
+                             period === 'month' ? (isFuelFallback ? `CA Carburant Global du Mois de ${MONTHS[selectedMonth]}` : `Suivi Journalier du CA Carburant - ${MONTHS[selectedMonth]} ${year}`) :
+                             period === 'week' ? "Comparatif Revenus Hebdomadaire" : "Comparatif Revenus Horaire"}
+                        </h4>
+                        <p className="text-sm text-gray-500 mt-1">
+                            {period === 'year' ? `Comparaison des revenus de vente de carburant par mois (${year} vs ${year - 1})` :
+                             period === 'custom' ? `Revenus de vente de carburant ${year} vs ${year - 1}` :
+                             period === 'month' ? (isFuelFallback ? `Revenus cumulés sur le mois (Comparaison ${year} vs ${year - 1})` : `Revenus carburant jour par jour sur le mois sélectionné`) :
+                             period === 'week' ? "Performance des revenus sur la semaine (Lun-Dim)" : "Revenus moyens par heure sur la période"}
+                        </p>
+                    </div>
+                    <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-2">
+                        <div className="h-[400px] w-full min-w-[600px] sm:min-w-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                                {isFuelFallback ? (
+                                    <BarChart
+                                        data={[
+                                            { name: 'Gasoil', amountPrev: fuelRevenueKpis.gasoilPrev, amount: fuelRevenueKpis.gasoil, type: 'Gasoil' },
+                                            { name: 'SSP', amountPrev: fuelRevenueKpis.sspPrev, amount: fuelRevenueKpis.ssp, type: 'SSP' }
+                                        ]}
+                                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                                        barGap={0}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 13, fontWeight: 500 }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94A3B8', fontSize: 12 }} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k DH`} />
+                                        <Tooltip
+                                            cursor={{ fill: '#F8FAFC' }}
+                                            content={({ active, payload }) => {
+                                                if (active && payload && payload.length) {
+                                                    const data = payload[0].payload;
+                                                    const growth = data.amountPrev ? ((data.amount - data.amountPrev) / data.amountPrev * 100) : 0;
+                                                    return (
+                                                        <div className="bg-white p-4 shadow-xl rounded-2xl border border-gray-100 min-w-[220px]">
+                                                            <p className="font-bold text-gray-900 mb-3 text-lg">{data.name}</p>
+                                                            <div className="space-y-3">
+                                                                <div className="flex justify-between items-center group">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className={`w-2 h-2 rounded-full ${data.type === 'Gasoil' ? 'bg-orange-500' : 'bg-green-500'}`}></div>
+                                                                        <span className="text-sm text-gray-500 font-medium">Actuel (N)</span>
+                                                                    </div>
+                                                                    <span className="text-base font-bold text-gray-900">{formatPrice(data.amount)}</span>
+                                                                </div>
+                                                                <div className="flex justify-between items-center group">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className={`w-2 h-2 rounded-full ${data.type === 'Gasoil' ? 'bg-orange-200' : 'bg-green-200'}`}></div>
+                                                                        <span className="text-sm text-gray-400 font-medium">Précédent (N-1)</span>
+                                                                    </div>
+                                                                    <span className="text-sm font-semibold text-gray-500">{formatPrice(data.amountPrev)}</span>
+                                                                </div>
+                                                                <div className="pt-2 border-t border-gray-100 flex justify-between items-center">
+                                                                    <span className="text-xs text-gray-500 font-medium">Évolution</span>
+                                                                    <span className={`text-sm font-bold ${growth >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                                        {growth > 0 ? '+' : ''}{growth.toFixed(1)}%
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            }}
+                                        />
+                                        <Bar dataKey="amountPrev" name="N-1" radius={[4, 4, 0, 0]} barSize={60}>
+                                            {
+                                                [
+                                                    { fill: '#FED7AA' }, // Orange 200
+                                                    { fill: '#BBF7D0' }, // Green 200
+                                                ].map((entry, index) => (
+                                                    <Cell key={`cell-prev-rev-${index}`} fill={entry.fill} />
+                                                ))
+                                            }
+                                        </Bar>
+                                        <Bar dataKey="amount" name="N" radius={[4, 4, 0, 0]} barSize={60}>
+                                            {
+                                                [
+                                                    { fill: '#F97316' }, // Orange 500
+                                                    { fill: '#22C55E' }, // Green 500
+                                                ].map((entry, index) => (
+                                                    <Cell key={`cell-curr-rev-${index}`} fill={entry.fill} />
+                                                ))
+                                            }
+                                        </Bar>
+                                    </BarChart>
+                                ) : (
+                                    <BarChart data={fuelRevenueData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barGap={2}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" opacity={0.5} />
+                                        <XAxis
+                                            dataKey="name"
+                                            axisLine={false}
+                                            tickLine={false}
+                                            tick={{ fill: '#64748B', fontSize: 12, fontWeight: 500 }}
+                                            dy={10}
+                                            interval={period === 'month' ? 3 : 0}
+                                        />
+                                        <YAxis
+                                            axisLine={false}
+                                            tickLine={false}
+                                            tick={{ fill: '#94A3B8', fontSize: 11 }}
+                                            tickFormatter={(val) => `${(val / 1000).toFixed(0)}k DH`}
+                                        />
+                                        <Tooltip
+                                            cursor={{ fill: '#F1F5F9', opacity: 0.6 }}
+                                            content={({ active, payload, label }) => {
+                                                if (active && payload && payload.length) {
+                                                    return (
+                                                        <div className="bg-white p-4 shadow-xl rounded-2xl border border-gray-100 min-w-[240px]">
+                                                            <p className="font-bold text-gray-900 mb-3 border-b border-gray-50 pb-2 bg-gray-50 -mx-4 -mt-4 px-4 pt-4 rounded-t-2xl text-center">
+                                                                {period === 'month' ? `${label} ${MONTHS[selectedMonth]}` : label}
+                                                            </p>
+
+                                                            {/* Gasoil Section */}
+                                                            <div className="mb-4">
+                                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Gasoil</p>
+                                                                <div className="flex justify-between items-center mb-1">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                                                                        <span className="text-xs text-gray-500">Actuel</span>
+                                                                    </div>
+                                                                    <span className="font-bold text-gray-900 text-sm">{formatPrice(payload.find(p => p.dataKey === 'gasoil')?.value || 0)}</span>
+                                                                </div>
+                                                                <div className="flex justify-between items-center">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <div className="w-2 h-2 rounded-full bg-orange-200"></div>
+                                                                        <span className="text-xs text-gray-400">N-1</span>
+                                                                    </div>
+                                                                    <span className="font-semibold text-gray-500 text-sm">{formatPrice(payload.find(p => p.dataKey === 'gasoilPrev')?.value || 0)}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* SSP Section */}
+                                                            <div>
+                                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">SSP</p>
+                                                                <div className="flex justify-between items-center mb-1">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                                                        <span className="text-xs text-gray-500">Actuel</span>
+                                                                    </div>
+                                                                    <span className="font-bold text-gray-900 text-sm">{formatPrice(payload.find(p => p.dataKey === 'ssp')?.value || 0)}</span>
+                                                                </div>
+                                                                <div className="flex justify-between items-center">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <div className="w-2 h-2 rounded-full bg-green-200"></div>
+                                                                        <span className="text-xs text-gray-400">N-1</span>
+                                                                    </div>
+                                                                    <span className="font-semibold text-gray-500 text-sm">{formatPrice(payload.find(p => p.dataKey === 'sspPrev')?.value || 0)}</span>
                                                                 </div>
                                                             </div>
                                                         </div>

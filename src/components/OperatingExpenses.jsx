@@ -261,6 +261,8 @@ export default function OperatingExpenses() {
     });
     const [isREXExpensesExpanded, setIsREXExpensesExpanded] = useState(false);
     const [isREXStockExpanded, setIsREXStockExpanded] = useState(false);
+    const marginRawDataRef = React.useRef({ fuelSales: [], fuelPrices: [], nonFuelSales: [], expenses: [] });
+    const [rexDetailsModal, setRexDetailsModal] = useState({ isOpen: false, title: '', items: [], isExpense: false });
 
     // Check database structure
     const checkDatabaseSetup = async () => {
@@ -1125,12 +1127,117 @@ export default function OperatingExpenses() {
                 expensesByCategory
             });
 
+            marginRawDataRef.current = {
+                fuelSales: fuelSalesData || [],
+                fuelPrices: fuelPricesData || [],
+                nonFuelSales: nonFuelSales || [],
+                expenses: expensesData || []
+            };
+
         } catch (err) {
             console.error('Error calculating margins:', err);
             alert('Erreur lors du calcul des marges');
             setMarginData(prev => ({ ...prev, loading: false }));
         }
     };
+
+    const showExpenseDetails = (categoryKey, categoryLabel) => {
+        const rawExpenses = marginRawDataRef.current.expenses;
+        const filtered = rawExpenses
+            .filter(exp => exp.category === categoryKey)
+            .map(exp => ({
+                date: exp.date,
+                label: exp.description || `Charge - ${categoryLabel}`,
+                quantity: '—',
+                paymentMethod: exp.payment_method,
+                amount: Number(exp.amount)
+            }));
+        setRexDetailsModal({
+            isOpen: true,
+            title: `Détails des Charges - ${categoryLabel}`,
+            isExpense: true,
+            items: filtered
+        });
+    };
+
+    const showFuelDetails = (fuelType, fuelLabel) => {
+        const rawSales = marginRawDataRef.current.fuelSales;
+        const rawPrices = marginRawDataRef.current.fuelPrices;
+        
+        const getFuelPrice = (saleDateStr, fuelType) => {
+            const saleDate = saleDateStr.split('T')[0];
+            let activePrice = null;
+            for (const p of rawPrices) {
+                if (p.fuel_type === fuelType && p.date <= saleDate) {
+                    activePrice = p;
+                }
+            }
+            return activePrice || { purchase_price: 0, sale_price: 0 };
+        };
+
+        const filtered = rawSales
+            .filter(sale => sale.fuel_type === fuelType)
+            .map(sale => {
+                const priceInfo = getFuelPrice(sale.sale_date, sale.fuel_type);
+                const qty = Number(sale.quantity_liters);
+                const purchasePrice = Number(priceInfo.purchase_price);
+                const salePrice = Number(priceInfo.sale_price);
+                return {
+                    date: sale.sale_date,
+                    label: `Vente Carburant ${fuelType}`,
+                    quantity: `${qty.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} L`,
+                    purchasePrice: purchasePrice,
+                    cost: qty * purchasePrice,
+                    revenue: qty * salePrice
+                };
+            });
+        
+        setRexDetailsModal({
+            isOpen: true,
+            title: `Détails des Coûts - ${fuelLabel}`,
+            isExpense: false,
+            items: filtered
+        });
+    };
+
+    const showNonFuelDetails = (categoryKey, categoryLabel) => {
+        const rawSales = marginRawDataRef.current.nonFuelSales;
+        const filtered = rawSales
+            .filter(sale => {
+                const cat = (sale.articles?.category || '').toLowerCase();
+                if (categoryKey === 'lubricants') {
+                    return ['lubricant_piste', 'lubricant_bosch', 'lubrifiants'].includes(cat);
+                } else if (categoryKey === 'shop') {
+                    return cat.includes('shop');
+                } else if (categoryKey === 'cafe') {
+                    return cat.includes('cafe') || cat.includes('café');
+                } else if (categoryKey === 'bosch') {
+                    return !['lubricant_piste', 'lubricant_bosch', 'lubrifiants'].includes(cat) && !cat.includes('shop') && !(cat.includes('cafe') || cat.includes('café'));
+                }
+                return false;
+            })
+            .map(sale => {
+                const qty = Number(sale.quantity || 1);
+                const purchasePrice = Number(sale.articles?.purchase_price || 0);
+                const revenue = Number(sale.total_price || 0);
+                return {
+                    date: sale.sale_date,
+                    label: sale.articles?.name || `Vente ${categoryLabel}`,
+                    quantity: `${qty} U`,
+                    purchasePrice: purchasePrice,
+                    cost: qty * purchasePrice,
+                    revenue: revenue
+                };
+            });
+
+        setRexDetailsModal({
+            isOpen: true,
+            title: `Détails des Coûts - ${categoryLabel}`,
+            isExpense: false,
+            items: filtered
+        });
+    };
+
     // Filter calculations for Tab 1
     const filteredExpenses = expenses.filter(exp => {
         const matchesCategory = selectedCategoryFilter ? exp.category === selectedCategoryFilter : true;
@@ -2693,21 +2800,31 @@ export default function OperatingExpenses() {
                                                     </td>
                                                 </tr>
                                                 {isREXStockExpanded && [
-                                                    { label: "Gasoil", cost: marginData.gasoil.cost },
-                                                    { label: "Super Sans Plomb (SSP)", cost: marginData.ssp.cost },
-                                                    { label: "Lubrifiants", cost: marginData.lubricants.cost },
-                                                    { label: "Boutique / Shop", cost: marginData.shop.cost },
-                                                    { label: "Café", cost: marginData.cafe.cost },
-                                                    { label: "Service Bosch", cost: marginData.bosch.cost }
+                                                    { key: "Gasoil", type: "fuel", label: "Gasoil", cost: marginData.gasoil.cost },
+                                                    { key: "SSP", type: "fuel", label: "Super Sans Plomb (SSP)", cost: marginData.ssp.cost },
+                                                    { key: "lubricants", type: "non-fuel", label: "Lubrifiants", cost: marginData.lubricants.cost },
+                                                    { key: "shop", type: "non-fuel", label: "Boutique / Shop", cost: marginData.shop.cost },
+                                                    { key: "cafe", type: "non-fuel", label: "Café", cost: marginData.cafe.cost },
+                                                    { key: "bosch", type: "non-fuel", label: "Service Bosch", cost: marginData.bosch.cost }
                                                 ]
                                                     .filter(item => item.cost > 0)
                                                     .map(item => (
-                                                        <tr key={item.label} className="bg-rose-50/10 text-gray-500 hover:bg-slate-50/30 text-xs">
+                                                        <tr 
+                                                            key={item.label} 
+                                                            className="bg-rose-50/10 text-gray-500 hover:bg-slate-50/30 hover:text-indigo-600 text-xs cursor-pointer transition-colors"
+                                                            onClick={() => {
+                                                                if (item.type === 'fuel') {
+                                                                    showFuelDetails(item.key, item.label);
+                                                                } else {
+                                                                    showNonFuelDetails(item.key, item.label);
+                                                                }
+                                                            }}
+                                                        >
                                                             <td className="px-4 py-2 pl-12 flex items-center gap-2">
-                                                                <div className="w-1 h-1 rounded-full bg-rose-400"></div>
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-rose-400"></div>
                                                                 {item.label}
                                                             </td>
-                                                            <td className="px-4 py-2 text-right font-mono text-rose-600/80">-{formatPrice(item.cost)}</td>
+                                                            <td className="px-4 py-2 text-right font-mono text-rose-600/80 font-semibold">-{formatPrice(item.cost)}</td>
                                                             <td className="px-4 py-2 text-right font-mono text-gray-400/80">
                                                                 {marginData.total.revenue > 0 ? formatNumber((item.cost / marginData.total.revenue) * 100, 1) : 0} %
                                                             </td>
@@ -2742,12 +2859,12 @@ export default function OperatingExpenses() {
                                                     .map(([catKey, amount]) => {
                                                         const catInfo = getCategoryDetails(catKey);
                                                         return (
-                                                            <tr key={catKey} className="bg-rose-50/10 text-gray-500 hover:bg-slate-50/30 text-xs">
+                                                            <tr key={catKey} className="bg-rose-50/10 text-gray-500 hover:bg-slate-50/30 hover:text-indigo-600 text-xs cursor-pointer transition-colors" onClick={() => showExpenseDetails(catKey, catInfo.label)}>
                                                                 <td className="px-4 py-2 pl-12 flex items-center gap-2">
-                                                                    <div className="w-1 h-1 rounded-full bg-rose-400"></div>
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-400"></div>
                                                                     {catInfo.label}
                                                                 </td>
-                                                                <td className="px-4 py-2 text-right font-mono text-rose-600/80">-{formatPrice(amount)}</td>
+                                                                <td className="px-4 py-2 text-right font-mono text-rose-600/80 font-semibold">-{formatPrice(amount)}</td>
                                                                 <td className="px-4 py-2 text-right font-mono text-gray-400/80">
                                                                     {marginData.total.revenue > 0 ? formatNumber((amount / marginData.total.revenue) * 100, 1) : 0} %
                                                                 </td>
@@ -3201,6 +3318,118 @@ export default function OperatingExpenses() {
                             >
                                 Confirmer & Générer
                             </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* REX Details Modal */}
+            {rexDetailsModal.isOpen && createPortal(
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setRexDetailsModal({ isOpen: false, title: '', items: [], isExpense: false })}>
+                    <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="bg-gradient-purple px-6 py-4 flex items-center justify-between text-white flex-shrink-0">
+                            <div>
+                                <h3 className="text-lg font-bold">{rexDetailsModal.title}</h3>
+                                <p className="text-xs text-purple-100">
+                                    Détails des écritures pour la période du {marginStartDate ? format(new Date(marginStartDate), 'dd/MM/yyyy') : 'début'} au {marginEndDate ? format(new Date(marginEndDate), 'dd/MM/yyyy') : 'fin'}
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setRexDetailsModal({ isOpen: false, title: '', items: [], isExpense: false })}
+                                className="p-1.5 bg-white/10 hover:bg-white/20 rounded-xl transition-colors text-white"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        
+                        {/* Table Content */}
+                        <div className="p-6 overflow-y-auto flex-grow">
+                            {rexDetailsModal.items.length === 0 ? (
+                                <div className="text-center py-12 text-gray-400 font-semibold text-sm">
+                                    Aucun enregistrement trouvé pour cette période.
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto border border-gray-100 rounded-2xl">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
+                                                <th className="px-4 py-3">Date</th>
+                                                <th className="px-4 py-3">Libellé / Détail</th>
+                                                <th className="px-4 py-3 text-right">Quantité / Volume</th>
+                                                {rexDetailsModal.isExpense ? (
+                                                    <>
+                                                        <th className="px-4 py-3">Mode Paiement</th>
+                                                        <th className="px-4 py-3 text-right">Montant (DH)</th>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <th className="px-4 py-3 text-right">P.U. Achat (DH)</th>
+                                                        <th className="px-4 py-3 text-right">Coût Achat (DH)</th>
+                                                        <th className="px-4 py-3 text-right">Vente Totale (DH)</th>
+                                                    </>
+                                                )}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50 font-medium text-xs text-gray-800">
+                                            {rexDetailsModal.items.map((item, idx) => (
+                                                <tr key={idx} className="hover:bg-slate-50/50">
+                                                    <td className="px-4 py-3 font-bold font-mono text-gray-500">
+                                                        {item.date ? format(new Date(item.date), 'dd/MM/yyyy') : '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3 max-w-xs truncate font-semibold text-gray-900" title={item.label}>
+                                                        {item.label}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono font-bold text-gray-600">
+                                                        {item.quantity}
+                                                    </td>
+                                                    {rexDetailsModal.isExpense ? (
+                                                        <>
+                                                            <td className="px-4 py-3 font-bold text-indigo-600">
+                                                                {item.paymentMethod || '—'}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono font-black text-rose-500">
+                                                                -{formatPrice(item.amount)}
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <td className="px-4 py-3 text-right font-mono text-gray-500">
+                                                                {formatPrice(item.purchasePrice)}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono font-black text-rose-500">
+                                                                -{formatPrice(item.cost)}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono font-black text-emerald-600">
+                                                                {formatPrice(item.revenue)}
+                                                            </td>
+                                                        </>
+                                                    )}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Footer */}
+                        <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-150 flex-shrink-0">
+                            <span className="text-xs font-bold text-gray-400 uppercase">Total de la sélection :</span>
+                            <div className="flex gap-4 flex-wrap">
+                                {rexDetailsModal.isExpense ? (
+                                    <span className="text-base font-black text-rose-500 font-mono">
+                                        -{formatPrice(rexDetailsModal.items.reduce((sum, item) => sum + item.amount, 0))} DH
+                                    </span>
+                                ) : (
+                                    <div className="flex items-center gap-4 text-xs font-bold flex-wrap">
+                                        <span className="text-gray-500 flex items-center gap-1">Coût d'achat total : <strong className="text-rose-500 font-mono">-{formatPrice(rexDetailsModal.items.reduce((sum, item) => sum + item.cost, 0))} DH</strong></span>
+                                        <span className="text-gray-500 flex items-center gap-1">Vente totale : <strong className="text-emerald-600 font-mono">+{formatPrice(rexDetailsModal.items.reduce((sum, item) => sum + item.revenue, 0))} DH</strong></span>
+                                        <span className="text-gray-500 flex items-center gap-1">Marge brute : <strong className="text-indigo-600 font-mono">+{formatPrice(rexDetailsModal.items.reduce((sum, item) => sum + (item.revenue - item.cost), 0))} DH</strong></span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>,
