@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet, CloudUpload, AlertTriangle, CheckCircle2, RefreshCw, Save, Scale } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, ChevronDown, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet, CloudUpload, AlertTriangle, CheckCircle2, RefreshCw, Save, Scale } from 'lucide-react';
 import PrepaidReloadModal from './PrepaidReloadModal';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -3043,13 +3043,22 @@ export default function DailyCashTracking() {
                                                                                 </td>
                                                                                 <td className="p-4 text-center">
                                                                                     {!isSettled && (
-                                                                                        <button
-                                                                                            onClick={(e) => { e.stopPropagation(); handleDeleteOperation(op.id); }}
-                                                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                                                                            title="Supprimer"
-                                                                                        >
-                                                                                            <Trash2 size={18} />
-                                                                                        </button>
+                                                                                        <div className="flex items-center justify-center gap-2">
+                                                                                            <button
+                                                                                                onClick={(e) => { e.stopPropagation(); handleOpenEditOperationModal(op); }}
+                                                                                                className="p-2 text-gray-400 hover:text-indigo-650 hover:bg-indigo-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                                                title="Modifier"
+                                                                                            >
+                                                                                                <Pencil size={18} />
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={(e) => { e.stopPropagation(); handleDeleteOperation(op.id); }}
+                                                                                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                                                title="Supprimer"
+                                                                                            >
+                                                                                                <Trash2 size={18} />
+                                                                                            </button>
+                                                                                        </div>
                                                                                     )}
                                                                                 </td>
                                                                             </tr>
@@ -4492,7 +4501,7 @@ export default function DailyCashTracking() {
                                             </optgroup>
                                         </select>
                                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                                            <ArrowDownLeft size={16} />
+                                            <ChevronDown size={16} />
                                         </div>
                                     </div>
                                 </div>
@@ -4592,24 +4601,11 @@ export default function DailyCashTracking() {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                                     <input
                                         type="text"
-                                        list="description-suggestions"
                                         value={description}
                                         onChange={(e) => setDescription(e.target.value)}
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none"
                                         placeholder="Libellé de l'opération"
                                     />
-                                    <datalist id="description-suggestions">
-                                        <option value="Achat Materiel" />
-                                        <option value="Transport" />
-                                        <option value="Repas" />
-                                        <option value="Maintenance" />
-                                        <option value="Fourniture Bureau" />
-                                        <option value="Achat Ciment" />
-                                        <option value="Technicien" />
-                                        <option value="Frais de Géstion" />
-                                        <option value="Avance Salaire" />
-                                        <option value="Remboursement" />
-                                    </datalist>
                                 </div>
 
                                 <div className="flex gap-3 pt-2">
@@ -4717,7 +4713,7 @@ export default function DailyCashTracking() {
                                             </optgroup>
                                         </select>
                                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
-                                            <ArrowDownLeft size={16} />
+                                            <ChevronDown size={16} />
                                         </div>
                                     </div>
                                 </div>
@@ -4812,24 +4808,11 @@ export default function DailyCashTracking() {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                                     <input
                                         type="text"
-                                        list="description-suggestions"
                                         value={description}
                                         onChange={(e) => setDescription(e.target.value)}
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none"
                                         placeholder="Libellé de l'opération"
                                     />
-                                    <datalist id="description-suggestions">
-                                        <option value="Achat Materiel" />
-                                        <option value="Transport" />
-                                        <option value="Repas" />
-                                        <option value="Maintenance" />
-                                        <option value="Fourniture Bureau" />
-                                        <option value="Achat Ciment" />
-                                        <option value="Technicien" />
-                                        <option value="Frais de Géstion" />
-                                        <option value="Avance Salaire" />
-                                        <option value="Remboursement" />
-                                    </datalist>
                                 </div>
 
                                 <div className="flex gap-3 pt-2">
