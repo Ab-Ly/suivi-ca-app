@@ -79,6 +79,9 @@ export default function DailyCashTracking() {
     const [currentMonthCumul, setCurrentMonthCumul] = useState(0);
     const [prepaidTableError, setPrepaidTableError] = useState(false);
 
+    // Focused Field State for accounting inputs formatting and 0 elimination
+    const [focusedField, setFocusedField] = useState(null);
+
     // Daily Cash Closing State
     const [closingData, setClosingData] = useState({
         recette_8h_j_prev: 0,
@@ -3772,6 +3775,30 @@ export default function DailyCashTracking() {
                                                     });
                                                 };
 
+                                                const getInputProps = (field) => {
+                                                    const isFocused = focusedField === field;
+                                                    const rawVal = closingData[field];
+                                                    return {
+                                                        type: isFocused ? 'number' : 'text',
+                                                        value: isFocused 
+                                                            ? (rawVal === '' ? '' : rawVal) 
+                                                            : formatNumber(Number(rawVal) || 0, 2),
+                                                        onChange: (e) => handleInputChange(field, e.target.value),
+                                                        onFocus: () => {
+                                                            setFocusedField(field);
+                                                            if (Number(rawVal) === 0) {
+                                                                handleInputChange(field, '');
+                                                            }
+                                                        },
+                                                        onBlur: () => {
+                                                            setFocusedField(null);
+                                                            if (closingData[field] === '' || closingData[field] === undefined || closingData[field] === null) {
+                                                                handleInputChange(field, 0);
+                                                            }
+                                                        }
+                                                    };
+                                                };
+
                                                 return (
                                                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                                                         {/* LEFT COLUMN: INPUT FORM */}
@@ -3786,34 +3813,28 @@ export default function DailyCashTracking() {
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Recette 8H J-1 (1)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.recette_8h_j_prev}
-                                                                            onChange={(e) => handleInputChange('recette_8h_j_prev', e.target.value)}
+                                                                            {...getInputProps('recette_8h_j_prev')}
                                                                         />
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Recette 8H J (2)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.recette_8h_j}
-                                                                            onChange={(e) => handleInputChange('recette_8h_j', e.target.value)}
+                                                                            {...getInputProps('recette_8h_j')}
                                                                         />
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Rendement J-1 (3)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.total_rendement_j_prev}
-                                                                            onChange={(e) => handleInputChange('total_rendement_j_prev', e.target.value)}
+                                                                            {...getInputProps('total_rendement_j_prev')}
                                                                         />
                                                                     </div>
                                                                 </div>
@@ -3829,45 +3850,37 @@ export default function DailyCashTracking() {
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">TPE (4)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.tpe}
-                                                                            onChange={(e) => handleInputChange('tpe', e.target.value)}
+                                                                            {...getInputProps('tpe')}
                                                                         />
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Petrom Card (5)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.petrom_card}
-                                                                            onChange={(e) => handleInputChange('petrom_card', e.target.value)}
+                                                                            {...getInputProps('petrom_card')}
                                                                         />
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Bon SNTL (6)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.bon_sntl}
-                                                                            onChange={(e) => handleInputChange('bon_sntl', e.target.value)}
+                                                                            {...getInputProps('bon_sntl')}
                                                                         />
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Bon Sté (7)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.bon_ste}
-                                                                            onChange={(e) => handleInputChange('bon_ste', e.target.value)}
+                                                                            {...getInputProps('bon_ste')}
                                                                         />
                                                                     </div>
                                                                 </div>
@@ -3883,34 +3896,28 @@ export default function DailyCashTracking() {
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Shop & Café (8)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.shop_cafe}
-                                                                            onChange={(e) => handleInputChange('shop_cafe', e.target.value)}
+                                                                            {...getInputProps('shop_cafe')}
                                                                         />
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Service Bosch (9)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.sce_bosch}
-                                                                            onChange={(e) => handleInputChange('sce_bosch', e.target.value)}
+                                                                            {...getInputProps('sce_bosch')}
                                                                         />
                                                                     </div>
                                                                     <div>
                                                                         <label className="block text-xs font-semibold text-gray-400 mb-1">Lubrifiant (10)</label>
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full px-3 py-2.5 text-sm border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-gray-900 bg-white"
-                                                                            value={closingData.lubrifiant}
-                                                                            onChange={(e) => handleInputChange('lubrifiant', e.target.value)}
+                                                                            {...getInputProps('lubrifiant')}
                                                                         />
                                                                     </div>
                                                                 </div>
@@ -3926,12 +3933,10 @@ export default function DailyCashTracking() {
                                                                     <label className="block text-xs font-bold text-gray-500 mb-1">Comptage Espèces Total (11)</label>
                                                                     <div className="relative">
                                                                         <input
-                                                                            type="number"
                                                                             step="0.01"
                                                                             placeholder="0.00"
                                                                             className="w-full pl-3 pr-10 py-2.5 text-base font-bold border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-rose-700 bg-rose-50/20"
-                                                                            value={closingData.comptage_espece_total}
-                                                                            onChange={(e) => handleInputChange('comptage_espece_total', e.target.value)}
+                                                                            {...getInputProps('comptage_espece_total')}
                                                                         />
                                                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-xs text-rose-500">DH</span>
                                                                     </div>
