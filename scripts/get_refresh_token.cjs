@@ -23,10 +23,10 @@ async function main() {
     console.log('1. Créé des identifiants OAuth (Application Web) sur Google Cloud Console.');
     console.log(`2. Ajouté "${REDIRECT_URI}" dans les "URI de redirection autorisés".\n`);
 
-    const clientId = await askQuestion('Entrez votre Google Client ID : ');
-    const clientSecret = await askQuestion('Entrez votre Google Client Secret : ');
+    const clientId = process.env.GOOGLE_CLIENT_ID || await askQuestion('Entrez votre Google Client ID : ');
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || await askQuestion('Entrez votre Google Client Secret : ');
 
-    if (!clientId.trim() || !clientSecret.trim()) {
+    if (!clientId || !clientSecret || !clientId.trim() || !clientSecret.trim()) {
         console.error('Erreur: Le Client ID et le Client Secret sont requis.');
         process.exit(1);
     }
