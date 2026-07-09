@@ -5,6 +5,14 @@ import { Search, Plus, Trash2, Loader2, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatPrice, formatNumber, getArticleWeightInKg } from '../utils/formatters';
 
+const SERVICES_CONFIG = [
+    { key: 'mainDoeuvre', dbName: "Main d'oeuvre", defaultCategory: 'Bosch Service', matchTerms: ["main d'oeuvre", "main d’oeuvre", "main d’œuvre", "main d'œuvre"] },
+    { key: 'shop', dbName: 'Shop', defaultCategory: 'Shop', matchTerms: ['shop', 'boutique'] },
+    { key: 'cafe', dbName: 'Café', defaultCategory: 'Café', matchTerms: ['café', 'cafe'] },
+    { key: 'bosch', dbName: 'Bosch Car Service', defaultCategory: 'Bosch Service', matchTerms: ['bosch car service', 'bosch service', 'service bosch'] },
+    { key: 'pneumatique', dbName: 'Service Pneumatique', defaultCategory: 'Pneumatique', matchTerms: ['pneumatique', 'pneu'] }
+];
+
 export default function SalesEntry({ isOpen, onClose, ...props }) {
     // Common State
     const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
@@ -15,6 +23,81 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
     const [gasoilUnit, setGasoilUnit] = useState('L'); // 'L' | 'm3'
     const [sspQty, setSspQty] = useState('');
     const [sspUnit, setSspUnit] = useState('L'); // 'L' | 'm3'
+
+    // Direct Service Inputs State
+    const [mainDoeuvreVal, setMainDoeuvreVal] = useState('');
+    const [shopVal, setShopVal] = useState('');
+    const [cafeVal, setCafeVal] = useState('');
+    const [boschVal, setBoschVal] = useState('');
+    const [pneumatiqueVal, setPneumatiqueVal] = useState('');
+
+    // Loaded service articles from database
+    const [serviceArticlesMap, setServiceArticlesMap] = useState({});
+
+    // Fetch / Auto-create services on mount
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const loadServices = async () => {
+            try {
+                const { data: existing, error: fetchError } = await supabase
+                    .from('articles')
+                    .select('*')
+                    .eq('type', 'service');
+
+                if (fetchError) throw fetchError;
+
+                const mapped = {};
+                const missingConfigs = [];
+
+                SERVICES_CONFIG.forEach(config => {
+                    const found = existing?.find(art => 
+                        config.matchTerms.some(term => art.name.toLowerCase().includes(term))
+                    );
+                    if (found) {
+                        mapped[config.key] = found;
+                    } else {
+                        missingConfigs.push(config);
+                    }
+                });
+
+                // Auto-create missing services
+                if (missingConfigs.length > 0) {
+                    const toInsert = missingConfigs.map(config => ({
+                        name: config.dbName,
+                        category: config.defaultCategory,
+                        type: 'service',
+                        price: 0,
+                        current_stock: 0
+                    }));
+
+                    const { data: inserted, error: insertError } = await supabase
+                        .from('articles')
+                        .insert(toInsert)
+                        .select();
+
+                    if (insertError) {
+                        console.error('Error auto-creating service articles:', insertError);
+                    } else if (inserted) {
+                        inserted.forEach(art => {
+                            const config = SERVICES_CONFIG.find(c => 
+                                c.matchTerms.some(term => art.name.toLowerCase().includes(term))
+                            );
+                            if (config) {
+                                mapped[config.key] = art;
+                            }
+                        });
+                    }
+                }
+
+                setServiceArticlesMap(mapped);
+            } catch (err) {
+                console.error('Failed to load service articles:', err);
+            }
+        };
+
+        loadServices();
+    }, [isOpen]);
 
     // Article Form State
     const [newItem, setNewItem] = useState({ article: null, quantity: '1', price: '', sales_location: 'piste' });
@@ -112,14 +195,28 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
         setSelectedItems(prev => prev.filter((_, i) => i !== index));
     };
 
-    const total = selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const directTotal = 
+        (parseFloat(mainDoeuvreVal) || 0) +
+        (parseFloat(shopVal) || 0) +
+        (parseFloat(cafeVal) || 0) +
+        (parseFloat(boschVal) || 0) +
+        (parseFloat(pneumatiqueVal) || 0);
+
+    const total = selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0) + directTotal;
 
     const handleGlobalSubmit = async () => {
+        const hasDirectServices = 
+            (mainDoeuvreVal && parseFloat(mainDoeuvreVal) > 0) ||
+            (shopVal && parseFloat(shopVal) > 0) ||
+            (cafeVal && parseFloat(cafeVal) > 0) ||
+            (boschVal && parseFloat(boschVal) > 0) ||
+            (pneumatiqueVal && parseFloat(pneumatiqueVal) > 0);
+
         const hasFuel = (gasoilQty && parseFloat(gasoilQty) > 0) || (sspQty && parseFloat(sspQty) > 0);
-        const hasArticles = selectedItems.length > 0;
+        const hasArticles = selectedItems.length > 0 || hasDirectServices;
 
         if (!hasFuel && !hasArticles) {
-            alert('Veuillez saisir au moins une vente (carburant ou article).');
+            alert('Veuillez saisir au moins une vente (carburant, article ou service).');
             return;
         }
 
@@ -146,7 +243,7 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                 if (errorSsp) throw errorSsp;
             }
 
-            // 2. Submit Article Sales if entered
+            // 2. Submit Article / Service Sales if entered
             if (hasArticles) {
                 const salesData = selectedItems.map(item => ({
                     article_id: item.id,
@@ -156,8 +253,37 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                     sales_location: item.category === 'Lubrifiants' ? item.sales_location : null
                 }));
 
-                const { error: salesError } = await supabase.from('sales').insert(salesData);
-                if (salesError) throw salesError;
+                // Append direct services
+                const directServicesList = [
+                    { key: 'mainDoeuvre', val: mainDoeuvreVal },
+                    { key: 'shop', val: shopVal },
+                    { key: 'cafe', val: cafeVal },
+                    { key: 'bosch', val: boschVal },
+                    { key: 'pneumatique', val: pneumatiqueVal }
+                ];
+
+                directServicesList.forEach(service => {
+                    const amount = parseFloat(service.val);
+                    if (amount && amount > 0) {
+                        const article = serviceArticlesMap[service.key];
+                        if (article) {
+                            salesData.push({
+                                article_id: article.id,
+                                quantity: 1,
+                                total_price: amount,
+                                sale_date: new Date(saleDate).toISOString(),
+                                sales_location: null
+                            });
+                        } else {
+                            console.error(`Article for direct service ${service.key} not loaded`);
+                        }
+                    }
+                });
+
+                if (salesData.length > 0) {
+                    const { error: salesError } = await supabase.from('sales').insert(salesData);
+                    if (salesError) throw salesError;
+                }
 
                 for (const item of selectedItems) {
                     const isService = ['Shop', 'Café', 'Bosch Car Service', "Main d'oeuvre", 'Pneumatique'].includes(item.category) || item.type === 'service';
@@ -190,6 +316,11 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
             setSelectedItems([]);
             setGasoilQty('');
             setSspQty('');
+            setMainDoeuvreVal('');
+            setShopVal('');
+            setCafeVal('');
+            setBoschVal('');
+            setPneumatiqueVal('');
             setSaleDate(new Date().toISOString().split('T')[0]);
         } catch (error) {
             console.error('Error submitting global sale:', error);
@@ -309,6 +440,110 @@ export default function SalesEntry({ isOpen, onClose, ...props }) {
                                     Soit <strong>{formatNumber(parseFloat(sspQty) * 1000)}</strong> Litres
                                 </div>
                             )}
+                        </div>
+                    </div>
+
+                    {/* Divider and Direct Service Inputs */}
+                    <div className="border-t border-gray-100/80 pt-5 mt-5 space-y-4">
+                        <div>
+                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest text-left">Saisie Directe Services & Boutique</h4>
+                            <p className="text-[11px] text-gray-400 text-left">Saisir directement les montants des ventes pour la journée (laissés vides si aucun)</p>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            {/* Main d'oeuvre */}
+                            <div className="p-3.5 rounded-xl bg-amber-50/20 border border-amber-100/50 space-y-2 text-left">
+                                <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">Main d'œuvre</span>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={mainDoeuvreVal}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(',', '.');
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) setMainDoeuvreVal(val);
+                                        }}
+                                        placeholder="0.00"
+                                        className="w-full pl-3 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none font-mono font-bold text-gray-700 shadow-sm"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-semibold">DH</span>
+                                </div>
+                            </div>
+
+                            {/* Shop */}
+                            <div className="p-3.5 rounded-xl bg-blue-50/20 border border-blue-100/50 space-y-2 text-left">
+                                <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100">Shop</span>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={shopVal}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(',', '.');
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) setShopVal(val);
+                                        }}
+                                        placeholder="0.00"
+                                        className="w-full pl-3 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none font-mono font-bold text-gray-700 shadow-sm"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-semibold">DH</span>
+                                </div>
+                            </div>
+
+                            {/* Café */}
+                            <div className="p-3.5 rounded-xl bg-rose-50/20 border border-rose-100/50 space-y-2 text-left">
+                                <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-100">Café</span>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={cafeVal}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(',', '.');
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) setCafeVal(val);
+                                        }}
+                                        placeholder="0.00"
+                                        className="w-full pl-3 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 outline-none font-mono font-bold text-gray-700 shadow-sm"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-semibold">DH</span>
+                                </div>
+                            </div>
+
+                            {/* Service Bosch */}
+                            <div className="p-3.5 rounded-xl bg-indigo-50/20 border border-indigo-100/50 space-y-2 text-left">
+                                <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">Service Bosch</span>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={boschVal}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(',', '.');
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) setBoschVal(val);
+                                        }}
+                                        placeholder="0.00"
+                                        className="w-full pl-3 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono font-bold text-gray-700 shadow-sm"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-semibold">DH</span>
+                                </div>
+                            </div>
+
+                            {/* Pneumatique */}
+                            <div className="p-3.5 rounded-xl bg-teal-50/20 border border-teal-100/50 space-y-2 text-left">
+                                <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-100">Pneumatique</span>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={pneumatiqueVal}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(',', '.');
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) setPneumatiqueVal(val);
+                                        }}
+                                        placeholder="0.00"
+                                        className="w-full pl-3 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none font-mono font-bold text-gray-700 shadow-sm"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-semibold">DH</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
