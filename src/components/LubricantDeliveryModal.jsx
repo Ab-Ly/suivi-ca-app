@@ -129,7 +129,7 @@ export default function LubricantDeliveryModal({ isOpen, onClose, onSuccess }) {
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Nouvelle Livraison Lubrifiant">
+        <Modal isOpen={isOpen} onClose={onClose} title="Nouvelle Livraison Lubrifiant" className="max-w-2xl">
             <form onSubmit={handleSubmit} className="space-y-6">
 
                 {/* Header Info */}
@@ -184,11 +184,11 @@ export default function LubricantDeliveryModal({ isOpen, onClose, onSuccess }) {
 
                     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                         {items.map((item, index) => (
-                            <div key={item.id} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end bg-white p-3 rounded-lg border border-gray-200 shadow-sm animate-fade-in">
-                                <div className="flex-1">
-                                    <label className="text-[10px] text-gray-400 font-bold uppercase mb-0.5 block">Article</label>
+                            <div key={item.id} className="grid grid-cols-12 gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm items-end animate-fade-in">
+                                <div className="col-span-12 sm:col-span-8">
+                                    <label className="text-[10px] text-gray-400 font-bold uppercase mb-1 block">Article</label>
                                     <select
-                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                        className="w-full pl-3 pr-8 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none bg-white transition-all"
                                         value={item.articleId}
                                         onChange={(e) => updateItem(item.id, 'articleId', e.target.value)}
                                         required
@@ -201,28 +201,26 @@ export default function LubricantDeliveryModal({ isOpen, onClose, onSuccess }) {
                                         ))}
                                     </select>
                                 </div>
-                                <div className="flex gap-2 items-end">
-                                    <div className="flex-1 sm:w-24">
-                                        <label className="text-[10px] text-gray-400 font-bold uppercase mb-0.5 block">Qté Reçue</label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            required
-                                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:ring-indigo-500 outline-none font-mono"
-                                            value={item.quantity}
-                                            onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="pb-1 sm:pb-0">
-                                        <button
-                                            type="button"
-                                            onClick={() => removeItem(item.id)}
-                                            className="text-gray-400 hover:text-red-500 transition-colors p-1.5 border border-gray-200 rounded-md sm:border-0"
-                                            disabled={items.length === 1}
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
+                                <div className="col-span-9 sm:col-span-3">
+                                    <label className="text-[10px] text-gray-400 font-bold uppercase mb-1 block">Qté Reçue</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        required
+                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono bg-white transition-all"
+                                        value={item.quantity}
+                                        onChange={(e) => updateItem(item.id, 'quantity', e.target.value)}
+                                    />
+                                </div>
+                                <div className="col-span-3 sm:col-span-1 flex justify-end pb-0.5 sm:pb-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => removeItem(item.id)}
+                                        className="text-gray-400 hover:text-red-500 transition-colors p-2 border border-gray-200 rounded-lg sm:border-0 hover:bg-red-50 sm:hover:bg-transparent"
+                                        disabled={items.length === 1}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
                                 </div>
                             </div>
                         ))}
