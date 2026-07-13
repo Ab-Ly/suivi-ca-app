@@ -71,13 +71,15 @@ export default function DailyCashTracking() {
     // Prepaid Card Reloads State
     const [prepaidReloads, setPrepaidReloads] = useState([]);
     const [loadingPrepaid, setLoadingPrepaid] = useState(false);
-    const [prepaidMonth, setPrepaidMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [prepaidMonth, setPrepaidMonth] = useState(new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0')); // YYYY-MM
     const [prepaidSearch, setPrepaidSearch] = useState('');
     const [isPrepaidModalOpen, setIsPrepaidModalOpen] = useState(false);
     const [editingPrepaidReload, setEditingPrepaidReload] = useState(null);
     const [alertCount, setAlertCount] = useState(0);
     const [currentMonthCumul, setCurrentMonthCumul] = useState(0);
     const [prepaidTableError, setPrepaidTableError] = useState(false);
+    const [isExportingPrepaid, setIsExportingPrepaid] = useState(false);
+    const [isSyncingPrepaidToDrive, setIsSyncingPrepaidToDrive] = useState(false);
 
     // Focused Field State for accounting inputs formatting and 0 elimination
     const [focusedField, setFocusedField] = useState(null);
@@ -1456,6 +1458,268 @@ export default function DailyCashTracking() {
         }
     };
 
+    const generatePrepaidReloadsWorkbook = async () => {
+        const ExcelJS = (await import('exceljs')).default;
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Recharges pCARD', { views: [{ showGridLines: true }] });
+
+        const borderGray = { style: 'thin', color: { argb: 'FFD1D5DB' } };
+        const cellBorder = { top: borderGray, bottom: borderGray, left: borderGray, right: borderGray };
+
+        sheet.columns = [
+            { width: 18 }, // A: Date Recharge
+            { width: 35 }, // B: Société
+            { width: 22 }, // C: Montant
+            { width: 25 }, // D: Versement compte banque
+            { width: 18 }, // E: Date Versement
+            { width: 22 }, // F: Nature
+            { width: 40 }  // G: Observations / Notes
+        ];
+
+        // Title Block
+        sheet.addRow(['RECAP DES RECHARGES pCARD']);
+        sheet.mergeCells('A1:G1');
+        sheet.getRow(1).height = 35;
+        sheet.getCell('A1').font = { name: 'Segoe UI', bold: true, size: 14, color: { argb: 'FF1F2937' } };
+        sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Subtitle
+        let subtitle = '';
+        if (prepaidMonth) {
+            const [year, month] = prepaidMonth.split('-').map(Number);
+            const dateObj = new Date(year, month - 1, 1);
+            subtitle = `Période : ${format(dateObj, 'MMMM yyyy', { locale: fr })}`;
+        } else {
+            subtitle = 'Période : Tous les mois';
+        }
+        if (prepaidSearch) {
+            subtitle += ` | Filtre société : "${prepaidSearch}"`;
+        }
+        
+        sheet.addRow([subtitle]);
+        sheet.mergeCells('A2:G2');
+        sheet.getRow(2).height = 22;
+        sheet.getCell('A2').font = { name: 'Segoe UI', italic: true, size: 10, color: { argb: 'FF6B7280' } };
+        sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Spacer
+        sheet.addRow([]);
+
+        // Table Headers
+        const headerRow = sheet.addRow([
+            'Date Recharge',
+            'Société',
+            'Montant (DH)',
+            'Versement Compte Banque',
+            'Date Versement',
+            'Nature',
+            'Observations / Notes'
+        ]);
+        headerRow.height = 28;
+        for (let i = 1; i <= 7; i++) {
+            const cell = headerRow.getCell(i);
+            cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } }; // Indigo-600
+            cell.alignment = { horizontal: i === 3 ? 'right' : (i === 4 ? 'center' : 'left'), vertical: 'middle' };
+            cell.border = cellBorder;
+        }
+
+        // Filter and add data
+        const filteredReloads = prepaidReloads.filter(item => 
+            item.company.toLowerCase().includes(prepaidSearch.toLowerCase())
+        );
+
+        filteredReloads.forEach((reload, idx) => {
+            const rowNum = 5 + idx;
+            const reloadDate = reload.reload_date ? new Date(reload.reload_date).toLocaleDateString('fr-FR') : '-';
+            const paymentDate = reload.payment_date ? new Date(reload.payment_date).toLocaleDateString('fr-FR') : '-';
+            
+            let statusStr = 'En attente';
+            if (reload.payment_status) {
+                statusStr = 'Versé';
+            } else if (isReloadOverdue(reload.reload_date)) {
+                statusStr = 'Non versé (>48h)';
+            }
+
+            sheet.addRow([
+                reloadDate,
+                reload.company,
+                Number(reload.amount),
+                statusStr,
+                paymentDate,
+                reload.payment_method || '-',
+                reload.notes || '-'
+            ]);
+
+            const row = sheet.getRow(rowNum);
+            row.height = 22;
+
+            const isEven = idx % 2 === 0;
+            const rowBg = isEven ? 'FFFFFFFF' : 'FFF9FAFB';
+
+            for (let i = 1; i <= 7; i++) {
+                const cell = row.getCell(i);
+                cell.border = cellBorder;
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+                cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF374151' } };
+
+                if (i === 3) { // Amount
+                    cell.numFmt = '#,##0.00';
+                    cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                    cell.font = { name: 'Courier New', bold: true, size: 10, color: { argb: 'FF4F46E5' } };
+                } else if (i === 4) { // Status
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    if (reload.payment_status) {
+                        cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF047857' } }; // green-700
+                    } else if (isReloadOverdue(reload.reload_date)) {
+                        cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFB91C1C' } }; // red-700
+                    } else {
+                        cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFD97706' } }; // amber-600
+                    }
+                } else {
+                    cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                }
+            }
+        });
+
+        // Add Total Row at the bottom
+        const totalRowIndex = 5 + filteredReloads.length;
+        const totalReloadsAmount = filteredReloads.reduce((sum, r) => sum + Number(r.amount), 0);
+
+        sheet.addRow([
+            'TOTAL',
+            '',
+            totalReloadsAmount,
+            '',
+            '',
+            '',
+            ''
+        ]);
+        
+        sheet.mergeCells(`A${totalRowIndex}:B${totalRowIndex}`);
+        const totalRow = sheet.getRow(totalRowIndex);
+        totalRow.height = 24;
+
+        for (let i = 1; i <= 7; i++) {
+            const cell = totalRow.getCell(i);
+            cell.border = cellBorder;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F3FF' } }; // violet-50
+            cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF1F2937' } };
+
+            if (i === 1) {
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            } else if (i === 3) {
+                cell.numFmt = '#,##0.00';
+                cell.font = { name: 'Courier New', bold: true, size: 10, color: { argb: 'FF4F46E5' } };
+                cell.alignment = { horizontal: 'right', vertical: 'middle' };
+            }
+        }
+
+        let dateSuffix = new Date().toISOString().split('T')[0];
+        if (prepaidMonth) {
+            dateSuffix = prepaidMonth;
+        }
+        const fileName = `Recap_des_Recharges_pCARD_${dateSuffix}.xlsx`;
+
+        return { workbook, fileName };
+    };
+
+    const handleExportPrepaidExcel = async () => {
+        setIsExportingPrepaid(true);
+        try {
+            const { workbook, fileName } = await generatePrepaidReloadsWorkbook();
+            const buffer = await workbook.xlsx.writeBuffer();
+
+            if (Capacitor.isNativePlatform()) {
+                const base64Data = btoa(
+                    new Uint8Array(buffer)
+                        .reduce((data, byte) => data + String.fromCharCode(byte), '')
+                );
+                
+                const savedFile = await Filesystem.writeFile({
+                    path: fileName,
+                    data: base64Data,
+                    directory: Directory.Cache,
+                });
+
+                await Share.share({
+                    title: `Recap des Recharges pCARD`,
+                    text: `Fichier exporté : ${fileName}`,
+                    url: savedFile.uri,
+                    dialogTitle: 'Partager ou enregistrer le rapport',
+                });
+            } else {
+                // Web download
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }
+        } catch (error) {
+            console.error('Error exporting prepaid Excel:', error);
+            showError("Erreur lors de l'exportation des recharges pCARD");
+        } finally {
+            setIsExportingPrepaid(false);
+        }
+    };
+
+    const handleSyncPrepaidToDrive = async () => {
+        setIsSyncingPrepaidToDrive(true);
+        try {
+            const { workbook, fileName } = await generatePrepaidReloadsWorkbook();
+            const buffer = await workbook.xlsx.writeBuffer();
+
+            // Convert buffer to base64
+            const base64Data = btoa(
+                new Uint8Array(buffer)
+                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
+            );
+
+            // Invoke Supabase Edge Function
+            const { data, error } = await supabase.functions.invoke('upload-to-drive', {
+                body: {
+                    name: fileName,
+                    fileBase64: base64Data,
+                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                }
+            });
+
+            if (error) {
+                let detailedError = error.message;
+                if (error.context) {
+                    try {
+                        const errData = await error.context.json();
+                        if (errData && errData.error) {
+                            detailedError = errData.error;
+                        }
+                    } catch (jsonErr) {
+                        try {
+                            const errText = await error.context.text();
+                            if (errText) detailedError = errText;
+                        } catch (textErr) {
+                            // Ignore
+                        }
+                    }
+                }
+                throw new Error(detailedError);
+            }
+            if (data && data.success === false) {
+                throw new Error(data.error || 'Erreur inconnue lors du téléversement');
+            }
+
+            showSuccess('Recap des Recharges pCARD envoyé avec succès sur Google Drive !');
+        } catch (error) {
+            console.error('Google Drive backup failed for prepaid reloads:', error);
+            showError("Erreur lors de la sauvegarde sur Google Drive : " + (error.message || error));
+        } finally {
+            setIsSyncingPrepaidToDrive(false);
+        }
+    };
+
+
     const handleBackupData = async () => {
         setIsBackingUp(true);
         try {
@@ -1909,7 +2173,8 @@ export default function DailyCashTracking() {
 
     const fetchPrepaidStats = async () => {
         try {
-            const currentMonthStr = new Date().toISOString().slice(0, 7);
+            const today = new Date();
+            const currentMonthStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
             const startOfMonth = `${currentMonthStr}-01`;
             
             const { data: monthData, error: errorMonth } = await supabase
@@ -2008,7 +2273,7 @@ export default function DailyCashTracking() {
         const today = new Date();
         for (let i = 0; i < 12; i++) {
             const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-            const value = d.toISOString().slice(0, 7); // YYYY-MM
+            const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             const label = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
             options.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
         }
@@ -4289,6 +4554,37 @@ export default function DailyCashTracking() {
                                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                                                     ))}
                                                 </select>
+
+                                                {/* Export Excel */}
+                                                <button
+                                                    type="button"
+                                                    onClick={handleExportPrepaidExcel}
+                                                    disabled={isExportingPrepaid}
+                                                    className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
+                                                >
+                                                    {isExportingPrepaid ? (
+                                                        <Loader2 size={16} className="animate-spin" />
+                                                    ) : (
+                                                        <FileSpreadsheet size={16} />
+                                                    )}
+                                                    Exporter Excel
+                                                </button>
+
+                                                {/* Export to Google Drive */}
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSyncPrepaidToDrive}
+                                                    disabled={isSyncingPrepaidToDrive}
+                                                    className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
+                                                    title="Sauvegarder directement sur Google Drive"
+                                                >
+                                                    {isSyncingPrepaidToDrive ? (
+                                                        <Loader2 size={16} className="animate-spin" />
+                                                    ) : (
+                                                        <CloudUpload size={16} />
+                                                    )}
+                                                    Sauvegarder sur Drive
+                                                </button>
                                             </div>
 
                                             <button

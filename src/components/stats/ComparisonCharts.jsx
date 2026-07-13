@@ -377,58 +377,44 @@ export default function ComparisonCharts() {
                                     </Bar>
                                 </BarChart>
                             ) : (
-                                // Standard Chart
-                                <AreaChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                    <defs>
-                                        <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.1} />
-                                            <stop offset="95%" stopColor="#4F46E5" stopOpacity={0} />
-                                        </linearGradient>
-                                        <linearGradient id="colorPrevious" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#94A3B8" stopOpacity={0.1} />
-                                            <stop offset="95%" stopColor="#94A3B8" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                    <XAxis
-                                        dataKey="name"
-                                        axisLine={false}
-                                        tickLine={false}
-                                        tick={{ fill: '#64748b', fontSize: 12 }}
-                                        dy={10}
-                                        minTickGap={15}
-                                    />
-                                    <YAxis
-                                        axisLine={false}
-                                        tickLine={false}
-                                        tick={{ fill: '#64748b', fontSize: 12 }}
-                                        tickFormatter={(value) => `${value / 1000} k`}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                                        cursor={{ stroke: '#CBD5E1', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                        formatter={(value) => formatPrice(value)}
-                                    />
-                                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="previous"
-                                        name={period === 'year' ? (year - 1).toString() : "Période précédente"}
-                                        stroke="#94A3B8"
-                                        fillOpacity={1}
-                                        fill="url(#colorPrevious)"
-                                        strokeWidth={2}
-                                    />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="current"
-                                        name={period === 'year' ? year.toString() : "Période actuelle"}
-                                        stroke="#4F46E5"
-                                        fillOpacity={1}
-                                        fill="url(#colorCurrent)"
-                                        strokeWidth={2}
-                                    />
-                                </AreaChart>
+                                 // Standard Chart
+                                 <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barGap={3}>
+                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                     <XAxis
+                                         dataKey="name"
+                                         axisLine={false}
+                                         tickLine={false}
+                                         tick={{ fill: '#64748b', fontSize: 12 }}
+                                         dy={10}
+                                         minTickGap={15}
+                                     />
+                                     <YAxis
+                                         axisLine={false}
+                                         tickLine={false}
+                                         tick={{ fill: '#64748b', fontSize: 12 }}
+                                         tickFormatter={(value) => `${value / 1000} k`}
+                                     />
+                                     <Tooltip
+                                         contentStyle={{ backgroundColor: '#fff', border: 'none', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                                         cursor={{ fill: '#F1F5F9', opacity: 0.4 }}
+                                         formatter={(value) => formatPrice(value)}
+                                     />
+                                     <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                                     <Bar
+                                         dataKey="previous"
+                                         name={period === 'year' ? (year - 1).toString() : "Période précédente"}
+                                         fill="#94A3B8"
+                                         radius={[4, 4, 0, 0]}
+                                         maxBarSize={40}
+                                     />
+                                     <Bar
+                                         dataKey="current"
+                                         name={period === 'year' ? year.toString() : "Période actuelle"}
+                                         fill="#4F46E5"
+                                         radius={[4, 4, 0, 0]}
+                                         maxBarSize={40}
+                                     />
+                                 </BarChart>
                             )}
                         </ResponsiveContainer>
                     </div>
