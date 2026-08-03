@@ -111,7 +111,7 @@ export default function StockStatus() {
     const fetchLubricantDeliveries = async () => {
         setLoadingLubricantDeliveries(true);
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('stock_movements')
                 .select(`
                     id,
@@ -122,20 +122,26 @@ export default function StockStatus() {
                     notes,
                     articles (id, name, category, price)
                 `)
-                .ilike('notes', 'Livraison Lubrifiant%')
+                .ilike('notes', '%Livraison Lubrifiant%')
                 .gte('movement_date', `${movementDateFilter.start}T00:00:00`)
                 .lte('movement_date', `${movementDateFilter.end}T23:59:59`)
                 .order('movement_date', { ascending: false });
+
+            if (selectedArticleFilter) {
+                query = query.eq('article_id', selectedArticleFilter);
+            }
+
+            const { data, error } = await query;
 
             if (error) throw error;
 
             // Group by notes and date
             const grouped = [];
             (data || []).forEach(move => {
-                const notes = move.notes || '';
+                const notes = (move.notes || '').trim();
                 let blNumber = '';
                 let supplier = '';
-                const cleanNotes = notes.replace('Livraison Lubrifiant BL:', '').trim();
+                const cleanNotes = notes.replace(/^Livraison Lubrifiant\s*(BL:?)?\s*/i, '').trim();
                 if (cleanNotes.endsWith(')')) {
                     const lastOpenParen = cleanNotes.lastIndexOf('(');
                     if (lastOpenParen !== -1) {
@@ -702,7 +708,11 @@ export default function StockStatus() {
                     <LubricantDeliveryModal
                         isOpen={isLubricantDeliveryOpen}
                         onClose={() => setIsLubricantDeliveryOpen(false)}
-                        onSuccess={() => fetchStock()}
+                        onSuccess={() => {
+                            fetchStock();
+                            fetchLubricantDeliveries();
+                            fetchMovements();
+                        }}
                     />
 
                     <PasswordConfirmationModal

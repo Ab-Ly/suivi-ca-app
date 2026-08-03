@@ -101,12 +101,16 @@ export default function LubricantDeliveryModal({ isOpen, onClose, onSuccess }) {
                 }
 
                 // 2. Log Movement
+                const now = new Date();
+                const timeStr = now.toTimeString().split(' ')[0];
+                const movementDate = new Date(`${formData.date}T${timeStr}`).toISOString();
+
                 await supabase.from('stock_movements').insert({
                     article_id: article.id,
                     type: 'in',
                     quantity: qty,
-                    movement_date: new Date(formData.date).toISOString(),
-                    notes: `Livraison Lubrifiant BL: ${formData.blNumber} ${formData.supplier ? `(${formData.supplier})` : ''}`
+                    movement_date: movementDate,
+                    notes: `Livraison Lubrifiant BL: ${formData.blNumber}${formData.supplier ? ` (${formData.supplier})` : ''}`
                 });
             }
 
