@@ -27,8 +27,10 @@ export default function CloseMonthModal({ isOpen, onClose, onClosed }) {
     const calculateData = async () => {
         setLoading(true);
         try {
-            const startDate = new Date(year, month - 1, 1).toISOString();
-            const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+            const pad = (n) => String(n).padStart(2, '0');
+            const lastDay = new Date(year, month, 0).getDate();
+            const startDateStr = `${year}-${pad(month)}-01`;
+            const endDateStr = `${year}-${pad(month)}-${pad(lastDay)}`;
 
             // 1. Fetch Sales (Turnover)
             const { data: sales, error: salesError } = await supabase
@@ -36,22 +38,23 @@ export default function CloseMonthModal({ isOpen, onClose, onClosed }) {
                 .select(`
                     total_price,
                     sales_location,
+                    sale_date,
                     articles (
                         name,
                         category
                     )
                 `)
-                .gte('sale_date', startDate)
-                .lte('sale_date', endDate);
+                .gte('sale_date', `${startDateStr}T00:00:00`)
+                .lte('sale_date', `${endDateStr}T23:59:59.999`);
 
             if (salesError) throw salesError;
 
             // 2. Fetch Fuel Sales (Volume)
             const { data: fuelSales, error: fuelError } = await supabase
                 .from('fuel_sales')
-                .select('fuel_type, quantity_liters')
-                .gte('sale_date', startDate)
-                .lte('sale_date', endDate);
+                .select('sale_date, fuel_type, quantity_liters')
+                .gte('sale_date', startDateStr)
+                .lte('sale_date', endDateStr);
 
             if (fuelError) throw fuelError;
 
@@ -71,6 +74,11 @@ export default function CloseMonthModal({ isOpen, onClose, onClosed }) {
             };
 
             sales.forEach(sale => {
+                if (sale.sale_date) {
+                    const dStr = sale.sale_date.split('T')[0];
+                    if (dStr < startDateStr || dStr > endDateStr) return;
+                }
+
                 const amount = sale.total_price || 0;
                 const category = sale.articles?.category;
                 const location = sale.sales_location; // 'piste' or 'bosch'
@@ -107,6 +115,10 @@ export default function CloseMonthModal({ isOpen, onClose, onClosed }) {
             });
 
             fuelSales.forEach(fuel => {
+                if (fuel.sale_date) {
+                    const dStr = fuel.sale_date.split('T')[0];
+                    if (dStr < startDateStr || dStr > endDateStr) return;
+                }
                 const qty = fuel.quantity_liters || 0;
                 if (fuel.fuel_type === 'Gasoil') aggregates['Gasoil Volume'] += qty;
                 else if (fuel.fuel_type === 'SSP' || fuel.fuel_type === 'Sans Plomb') aggregates['SSP Volume'] += qty;
