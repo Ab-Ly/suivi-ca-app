@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, Cell } from 'recharts';
-import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, ShoppingBag, Coffee, Wrench, Droplet, Disc, Hammer, Fuel, Scale, FileSpreadsheet } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, ChevronDown, ChevronUp, ShoppingBag, Coffee, Wrench, Droplet, Disc, Hammer, Fuel, Scale, FileSpreadsheet, Presentation } from 'lucide-react';
 import { formatPrice, formatNumber } from '../../utils/formatters';
 import { fetchComparisonStats } from '../../utils/statisticsUtils';
 import { exportStatisticsToExcel } from '../../utils/statisticsExcelExport';
+import { exportStatisticsToSlides } from '../../utils/statisticsSlidesExport';
 import { supabase } from '../../lib/supabase';
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
@@ -144,6 +145,7 @@ export default function ComparisonCharts() {
     const [period, setPeriod] = useState('year'); // 'day', 'week', 'month', 'year', 'custom'
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
+    const [exportingSlides, setExportingSlides] = useState(false);
     const [data, setData] = useState([]);
     const [kpis, setKpis] = useState({ currentTotal: 0, previousTotal: 0, growth: 0 });
     const [categoryDetails, setCategoryDetails] = useState([]);
@@ -229,6 +231,34 @@ export default function ComparisonCharts() {
             alert('Une erreur est survenue lors de la génération du fichier Excel.');
         } finally {
             setExporting(false);
+        }
+    };
+
+    const handleExportSlides = async () => {
+        if (exportingSlides) return;
+        setExportingSlides(true);
+        try {
+            await exportStatisticsToSlides({
+                period,
+                year,
+                selectedMonth,
+                customStartMonth,
+                customEndMonth,
+                kpis,
+                categoryDetails,
+                data,
+                fuelKpis,
+                fuelData,
+                fuelRevenueKpis,
+                fuelRevenueData,
+                lubKpis,
+                lubData
+            });
+        } catch (error) {
+            console.error('Erreur lors de la génération de la présentation Slides:', error);
+            alert('Une erreur est survenue lors de la génération de la présentation Slides.');
+        } finally {
+            setExportingSlides(false);
         }
     };
 
@@ -356,6 +386,16 @@ export default function ComparisonCharts() {
                             <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                         </div>
                     )}
+
+                    <button
+                        onClick={handleExportSlides}
+                        disabled={exportingSlides || loading}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 active:scale-95 text-white rounded-xl font-medium shadow-sm transition-all text-sm disabled:opacity-50"
+                        title="Exporter la présentation en diapositives compatibles Google Slides et PowerPoint"
+                    >
+                        {exportingSlides ? <Loader2 size={16} className="animate-spin" /> : <Presentation size={16} />}
+                        <span>{exportingSlides ? 'Export...' : 'Exporter en Slides'}</span>
+                    </button>
 
                     <button
                         onClick={handleExportExcel}
