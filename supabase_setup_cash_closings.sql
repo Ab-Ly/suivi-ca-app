@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS public.daily_cash_closings (
     recette_8h_j_prev NUMERIC NOT NULL DEFAULT 0,
     recette_8h_j NUMERIC NOT NULL DEFAULT 0,
     total_rendement_j_prev NUMERIC NOT NULL DEFAULT 0,
+    total_rendement_piste NUMERIC NOT NULL DEFAULT 0,
+    shifts_data JSONB DEFAULT '[]'::jsonb,
     tpe NUMERIC NOT NULL DEFAULT 0,
     petrom_card NUMERIC NOT NULL DEFAULT 0,
     bon_sntl NUMERIC NOT NULL DEFAULT 0,
@@ -16,6 +18,10 @@ CREATE TABLE IF NOT EXISTS public.daily_cash_closings (
     comptage_espece_total NUMERIC NOT NULL DEFAULT 0,
     notes TEXT
 );
+
+-- Upgrade existing table if already created
+ALTER TABLE public.daily_cash_closings ADD COLUMN IF NOT EXISTS shifts_data JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.daily_cash_closings ADD COLUMN IF NOT EXISTS total_rendement_piste NUMERIC NOT NULL DEFAULT 0;
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.daily_cash_closings ENABLE ROW LEVEL SECURITY;
