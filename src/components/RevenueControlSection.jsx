@@ -682,12 +682,12 @@ export default function RevenueControlSection({
             {!tableError && (
                 <form onSubmit={handleSaveControl} className="space-y-8">
                     {/* TOP BAR / HEADER */}
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-50/70 p-5 rounded-2xl border border-gray-100">
-                        <div>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-50/70 p-4 sm:p-5 rounded-2xl border border-gray-100">
+                        <div className="w-full md:w-auto">
                             <div className="flex items-center gap-2.5">
                                 <div className="w-3 h-3 rounded-full bg-cyan-500 shadow-sm shadow-cyan-500/50"></div>
-                                <h3 className="font-bold text-xl text-gray-800 tracking-tight">
-                                    Contrôle des Recettes (Théorique vs Réel)
+                                <h3 className="font-bold text-lg sm:text-xl text-gray-800 tracking-tight">
+                                    Contrôle des Recettes
                                 </h3>
                             </div>
                             <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
@@ -696,13 +696,14 @@ export default function RevenueControlSection({
                             </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+                        {/* Action Buttons: Responsive Grid on Mobile, Flex on Desktop */}
+                        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full md:w-auto">
                             {/* Reset Button */}
                             <button
                                 type="button"
                                 onClick={handleReset}
                                 disabled={loadingData || savingData}
-                                className="flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold rounded-xl border border-rose-200 text-rose-600 bg-rose-50/40 hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
+                                className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border border-rose-200 text-rose-600 bg-rose-50/40 hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
                                 title="Réinitialiser la saisie"
                             >
                                 <Trash2 size={15} />
@@ -714,21 +715,44 @@ export default function RevenueControlSection({
                                 type="button"
                                 onClick={handleExportExcel}
                                 disabled={loadingData || savingData || exportingExcel}
-                                className="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-sm"
+                                className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
                             >
                                 {exportingExcel ? <Loader2 size={15} className="animate-spin text-emerald-600" /> : <FileSpreadsheet size={15} className="text-emerald-600" />}
-                                <span>Exporter Excel</span>
+                                <span>Excel</span>
                             </button>
 
                             {/* Save Button */}
                             <button
                                 type="submit"
                                 disabled={loadingData || savingData}
-                                className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
+                                className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
                             >
                                 {savingData ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                                 <span>{savingData ? 'Enregistrement...' : 'Enregistrer le contrôle'}</span>
                             </button>
+                        </div>
+                    </div>
+
+                    {/* MOBILE QUICK RESULT BANNER (Visible on mobile/tablet, hidden on desktop lg) */}
+                    <div className={`lg:hidden p-4 rounded-2xl border shadow-sm flex items-center justify-between gap-3 transition-all ${
+                        isOk
+                            ? 'bg-emerald-50/90 border-emerald-200 text-emerald-900'
+                            : ecartFinal > 0
+                                ? 'bg-blue-50/90 border-blue-200 text-blue-900'
+                                : 'bg-rose-50/90 border-rose-200 text-rose-900'
+                    }`}>
+                        <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-75">Écart de caisse</span>
+                            <div className="text-2xl font-black font-mono">
+                                {ecartFinal >= 0 ? '+' : ''}{ecartFinal.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                            </div>
+                            <span className="text-[11px] font-semibold">
+                                {isOk ? '✅ Caisse Équilibrée' : (ecartFinal > 0 ? '🔵 Excédent détecté' : '🔴 Déficit détecté')}
+                            </span>
+                        </div>
+                        <div className="text-right text-xs space-y-0.5 font-mono">
+                            <div className="text-gray-500 text-[10px]">Théo : <span className="font-bold text-gray-800">{soldeTheoriqueEspeces.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} DH</span></div>
+                            <div className="text-gray-500 text-[10px]">Réel : <span className="font-bold text-gray-800">{Number(comptageReel || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} DH</span></div>
                         </div>
                     </div>
 
@@ -743,12 +767,12 @@ export default function RevenueControlSection({
                             <div className="lg:col-span-7 space-y-6">
                                 
                                 {/* SECTION 1 : RENDEMENT PISTE PAR SHIFT & POMPISTE */}
-                                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-5">
+                                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-5">
                                     <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-gray-100 pb-3">
                                         <div className="flex items-center gap-2.5">
                                             <div className="w-2 h-4 bg-indigo-600 rounded"></div>
                                             <h4 className="font-bold text-sm text-indigo-700 uppercase tracking-wider">
-                                                Section 1 : Rendements Piste par Période (Shifts)
+                                                Section 1 : Rendements Piste (Shifts)
                                             </h4>
                                         </div>
                                         <div className="text-xs font-bold font-mono text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">
@@ -765,7 +789,7 @@ export default function RevenueControlSection({
                                             return (
                                                 <div 
                                                     key={shift.id}
-                                                    className={`p-4 rounded-xl border transition-all ${
+                                                    className={`p-3.5 sm:p-4 rounded-xl border transition-all ${
                                                         shift.id === 'shift_1' 
                                                             ? 'border-indigo-100 bg-indigo-50/20' 
                                                             : shift.id === 'shift_2' 
@@ -787,17 +811,17 @@ export default function RevenueControlSection({
                                                         </span>
                                                     </div>
 
-                                                    {/* Attendants rows */}
+                                                    {/* Attendants rows (mobile responsive) */}
                                                     <div className="space-y-2.5">
                                                         {(shift.attendants || []).map((att) => (
-                                                            <div key={att.id} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-gray-100 shadow-2xs">
+                                                            <div key={att.id} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-100 shadow-2xs">
                                                                 {/* Pompiste Select */}
                                                                 <div className="flex-1 min-w-0">
                                                                     <div className="relative">
                                                                         <select
                                                                             value={att.attendantName}
                                                                             onChange={(e) => updateAttendantField(shift.id, att.id, 'attendantName', e.target.value)}
-                                                                            className="w-full text-xs font-semibold py-2 pl-3 pr-7 bg-gray-50/60 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 cursor-pointer"
+                                                                            className="w-full text-xs font-semibold py-2.5 sm:py-2 pl-3 pr-7 bg-gray-50/60 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 cursor-pointer"
                                                                         >
                                                                             <option value="">Sélectionner un pompiste...</option>
                                                                             {ATTENDANTS_LIST.map((name) => (
@@ -807,34 +831,33 @@ export default function RevenueControlSection({
                                                                     </div>
                                                                 </div>
 
-                                                                {/* Rendement input */}
-                                                                <div className="w-36 sm:w-44">
-                                                                    <div className="relative">
+                                                                {/* Rendement input & delete */}
+                                                                <div className="flex items-center gap-2 w-full sm:w-auto">
+                                                                    <div className="relative flex-1 sm:w-44">
                                                                         <input
                                                                             step="0.01"
                                                                             placeholder="0.00"
-                                                                            className="w-full pr-8 pl-3 py-1.5 text-xs font-mono font-bold text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                                            className="w-full pr-8 pl-3 py-2 text-xs font-mono font-bold text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
                                                                             {...getNumberInputProps(
                                                                                 att.amount,
                                                                                 (v) => updateAttendantField(shift.id, att.id, 'amount', v),
                                                                                 `att_${att.id}`
                                                                             )}
                                                                         />
-                                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">DH</span>
+                                                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">DH</span>
                                                                     </div>
-                                                                </div>
 
-                                                                {/* Delete row */}
-                                                                {(shift.attendants || []).length > 1 && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => removeAttendantRow(shift.id, att.id)}
-                                                                        className="p-1.5 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                                                        title="Supprimer ce pompiste"
-                                                                    >
-                                                                        <Trash2 size={13} />
-                                                                    </button>
-                                                                )}
+                                                                    {(shift.attendants || []).length > 1 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => removeAttendantRow(shift.id, att.id)}
+                                                                            className="p-2 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                                                                            title="Supprimer ce pompiste"
+                                                                        >
+                                                                            <Trash2 size={14} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -1331,73 +1354,36 @@ export default function RevenueControlSection({
                             Aucun contrôle enregistré pour les critères sélectionnés.
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse text-xs">
-                                <thead>
-                                    <tr className="border-b border-gray-100 bg-gray-50/50 text-gray-400 uppercase tracking-wider font-bold">
-                                        <th className="py-3 px-3">Date</th>
-                                        <th className="py-3 px-3 text-right">Rendement Piste</th>
-                                        <th className="py-3 px-3 text-right">Annexes</th>
-                                        <th className="py-3 px-3 text-right">Hors Espèces</th>
-                                        <th className="py-3 px-3 text-right">Solde Théo</th>
-                                        <th className="py-3 px-3 text-right">Espèces Réelles</th>
-                                        <th className="py-3 px-3 text-right">Écart</th>
-                                        <th className="py-3 px-3">Statut</th>
-                                        <th className="py-3 px-3">Notes</th>
-                                        <th className="py-3 px-3 text-center">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {displayedHistoryList.map((hist) => {
-                                        let histRend = 0;
-                                        if (hist.shifts_data && Array.isArray(hist.shifts_data)) {
-                                            hist.shifts_data.forEach(s => (s.attendants || []).forEach(a => histRend += Number(a.amount) || 0));
-                                        }
-                                        if (histRend === 0 && hist.total_rendement_piste) {
-                                            histRend = Number(hist.total_rendement_piste) || 0;
-                                        }
-                                        if (histRend === 0) {
-                                            histRend = (Number(hist.total_rendement_j_prev) - Number(hist.recette_8h_j_prev)) + Number(hist.recette_8h_j);
-                                        }
+                        <>
+                            {/* MOBILE VIEW : ADAPTIVE CARDS (Visible on mobile screens) */}
+                            <div className="md:hidden space-y-3">
+                                {displayedHistoryList.map((hist) => {
+                                    let histRend = 0;
+                                    if (hist.shifts_data && Array.isArray(hist.shifts_data)) {
+                                        hist.shifts_data.forEach(s => (s.attendants || []).forEach(a => histRend += Number(a.amount) || 0));
+                                    }
+                                    if (histRend === 0 && hist.total_rendement_piste) {
+                                        histRend = Number(hist.total_rendement_piste) || 0;
+                                    }
+                                    if (histRend === 0) {
+                                        histRend = (Number(hist.total_rendement_j_prev) - Number(hist.recette_8h_j_prev)) + Number(hist.recette_8h_j);
+                                    }
 
-                                        const histAnnexes = (Number(hist.shop_cafe) || 0) + (Number(hist.sce_bosch) || 0) + (Number(hist.lubrifiant) || 0);
-                                        const histHorsEsp = (Number(hist.tpe) || 0) + (Number(hist.petrom_card) || 0) + (Number(hist.bon_ste) || 0) + (Number(hist.bon_sntl) || 0);
-                                        const histTheo = (histRend + histAnnexes) - histHorsEsp;
-                                        const histReel = Number(hist.comptage_espece_total) || 0;
-                                        const histEcart = histReel - histTheo;
-                                        const histOk = Math.abs(histEcart) <= 0.50;
+                                    const histAnnexes = (Number(hist.shop_cafe) || 0) + (Number(hist.sce_bosch) || 0) + (Number(hist.lubrifiant) || 0);
+                                    const histHorsEsp = (Number(hist.tpe) || 0) + (Number(hist.petrom_card) || 0) + (Number(hist.bon_ste) || 0) + (Number(hist.bon_sntl) || 0);
+                                    const histTheo = (histRend + histAnnexes) - histHorsEsp;
+                                    const histReel = Number(hist.comptage_espece_total) || 0;
+                                    const histEcart = histReel - histTheo;
+                                    const histOk = Math.abs(histEcart) <= 0.50;
 
-                                        return (
-                                            <tr key={hist.id} className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors">
-                                                <td className="py-3 px-3 font-bold text-gray-800">
-                                                    {new Date(hist.date).toLocaleDateString('fr-FR')}
-                                                </td>
-                                                <td className="py-3 px-3 text-right text-indigo-600 font-mono font-medium">
-                                                    {histRend.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
-                                                </td>
-                                                <td className="py-3 px-3 text-right text-emerald-600 font-mono font-medium">
-                                                    {histAnnexes.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
-                                                </td>
-                                                <td className="py-3 px-3 text-right text-amber-600 font-mono font-medium">
-                                                    {histHorsEsp.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
-                                                </td>
-                                                <td className="py-3 px-3 text-right text-blue-600 font-mono font-bold">
-                                                    {histTheo.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
-                                                </td>
-                                                <td className="py-3 px-3 text-right text-rose-600 font-mono font-bold">
-                                                    {histReel.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
-                                                </td>
-                                                <td className={`py-3 px-3 text-right font-mono font-black ${
-                                                    histOk 
-                                                        ? 'text-emerald-600' 
-                                                        : histEcart > 0 
-                                                            ? 'text-blue-700 bg-blue-50/50' 
-                                                            : 'text-rose-700 bg-rose-50/50'
-                                                }`}>
-                                                    {histEcart >= 0 ? '+' : ''}{histEcart.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
-                                                </td>
-                                                <td className="py-3 px-3">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    return (
+                                        <div key={hist.id} className="p-4 rounded-2xl border border-gray-100 bg-white shadow-2xs space-y-3">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <div className="font-bold text-sm text-gray-800">
+                                                        {new Date(hist.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </div>
+                                                    <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                                         histOk 
                                                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
                                                             : histEcart > 0 
@@ -1406,26 +1392,159 @@ export default function RevenueControlSection({
                                                     }`}>
                                                         {histOk ? 'Équilibrée' : (histEcart > 0 ? 'Excédent' : 'Déficit')}
                                                     </span>
-                                                </td>
-                                                <td className="py-3 px-3 text-gray-500 max-w-xs truncate" title={hist.notes}>
-                                                    {hist.notes || '-'}
-                                                </td>
-                                                <td className="py-3 px-3 text-center">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSelectedDate(hist.date)}
-                                                        className="px-2.5 py-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
-                                                        title="Charger cette journée dans le formulaire"
-                                                    >
-                                                        Consulter
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                                                </div>
+
+                                                <div className="text-right">
+                                                    <span className="text-[10px] text-gray-400 font-bold uppercase block">Écart</span>
+                                                    <span className={`text-base font-black font-mono ${
+                                                        histOk ? 'text-emerald-600' : (histEcart > 0 ? 'text-blue-600' : 'text-rose-600')
+                                                    }`}>
+                                                        {histEcart >= 0 ? '+' : ''}{histEcart.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* 2x2 Breakdown Grid */}
+                                            <div className="grid grid-cols-2 gap-2 p-2.5 bg-gray-50/80 rounded-xl text-xs font-mono">
+                                                <div>
+                                                    <span className="text-[10px] text-gray-400 block font-sans">Rendement Piste</span>
+                                                    <span className="font-bold text-indigo-700">{histRend.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] text-gray-400 block font-sans">Ventes Annexes</span>
+                                                    <span className="font-bold text-emerald-700">{histAnnexes.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] text-gray-400 block font-sans">Hors Espèces</span>
+                                                    <span className="font-bold text-amber-700">{histHorsEsp.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] text-gray-400 block font-sans">Espèces Réelles</span>
+                                                    <span className="font-bold text-rose-700">{histReel.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH</span>
+                                                </div>
+                                            </div>
+
+                                            {hist.notes && (
+                                                <p className="text-[11px] text-gray-500 italic bg-amber-50/40 p-2 rounded-lg border border-amber-100">
+                                                    {hist.notes}
+                                                </p>
+                                            )}
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedDate(hist.date);
+                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                }}
+                                                className="w-full py-2.5 text-xs font-bold text-indigo-600 bg-indigo-50/80 hover:bg-indigo-100 rounded-xl transition-colors cursor-pointer text-center"
+                                            >
+                                                Consulter cette journée
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* DESKTOP VIEW : FULL TABULAR TABLE */}
+                            <div className="hidden md:block overflow-x-auto">
+                                <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr className="border-b border-gray-100 bg-gray-50/50 text-gray-400 uppercase tracking-wider font-bold">
+                                            <th className="py-3 px-3">Date</th>
+                                            <th className="py-3 px-3 text-right">Rendement Piste</th>
+                                            <th className="py-3 px-3 text-right">Annexes</th>
+                                            <th className="py-3 px-3 text-right">Hors Espèces</th>
+                                            <th className="py-3 px-3 text-right">Solde Théo</th>
+                                            <th className="py-3 px-3 text-right">Espèces Réelles</th>
+                                            <th className="py-3 px-3 text-right">Écart</th>
+                                            <th className="py-3 px-3">Statut</th>
+                                            <th className="py-3 px-3">Notes</th>
+                                            <th className="py-3 px-3 text-center">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {displayedHistoryList.map((hist) => {
+                                            let histRend = 0;
+                                            if (hist.shifts_data && Array.isArray(hist.shifts_data)) {
+                                                hist.shifts_data.forEach(s => (s.attendants || []).forEach(a => histRend += Number(a.amount) || 0));
+                                            }
+                                            if (histRend === 0 && hist.total_rendement_piste) {
+                                                histRend = Number(hist.total_rendement_piste) || 0;
+                                            }
+                                            if (histRend === 0) {
+                                                histRend = (Number(hist.total_rendement_j_prev) - Number(hist.recette_8h_j_prev)) + Number(hist.recette_8h_j);
+                                            }
+
+                                            const histAnnexes = (Number(hist.shop_cafe) || 0) + (Number(hist.sce_bosch) || 0) + (Number(hist.lubrifiant) || 0);
+                                            const histHorsEsp = (Number(hist.tpe) || 0) + (Number(hist.petrom_card) || 0) + (Number(hist.bon_ste) || 0) + (Number(hist.bon_sntl) || 0);
+                                            const histTheo = (histRend + histAnnexes) - histHorsEsp;
+                                            const histReel = Number(hist.comptage_espece_total) || 0;
+                                            const histEcart = histReel - histTheo;
+                                            const histOk = Math.abs(histEcart) <= 0.50;
+
+                                            return (
+                                                <tr key={hist.id} className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors">
+                                                    <td className="py-3 px-3 font-bold text-gray-800">
+                                                        {new Date(hist.date).toLocaleDateString('fr-FR')}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-indigo-600 font-mono font-medium">
+                                                        {histRend.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-emerald-600 font-mono font-medium">
+                                                        {histAnnexes.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-amber-600 font-mono font-medium">
+                                                        {histHorsEsp.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-blue-600 font-mono font-bold">
+                                                        {histTheo.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right text-rose-600 font-mono font-bold">
+                                                        {histReel.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                    </td>
+                                                    <td className={`py-3 px-3 text-right font-mono font-black ${
+                                                        histOk 
+                                                            ? 'text-emerald-600' 
+                                                            : histEcart > 0 
+                                                                ? 'text-blue-700 bg-blue-50/50' 
+                                                                : 'text-rose-700 bg-rose-50/50'
+                                                    }`}>
+                                                        {histEcart >= 0 ? '+' : ''}{histEcart.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                    </td>
+                                                    <td className="py-3 px-3">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                            histOk 
+                                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                                                : histEcart > 0 
+                                                                    ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                                                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                        }`}>
+                                                            {histOk ? 'Équilibrée' : (histEcart > 0 ? 'Excédent' : 'Déficit')}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-gray-500 max-w-xs truncate" title={hist.notes}>
+                                                        {hist.notes || '-'}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-center">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedDate(hist.date);
+                                                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                            }}
+                                                            className="px-2.5 py-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
+                                                            title="Charger cette journée dans le formulaire"
+                                                        >
+                                                            Consulter
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
                     )}
 
                     {/* Pagination Navigation Footer */}
