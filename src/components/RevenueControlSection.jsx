@@ -17,9 +17,11 @@ import {
     Filter,
     CheckCircle2,
     Copy,
-    Sparkles
+    Sparkles,
+    Pencil
 } from 'lucide-react';
 import { DateInput } from './ui/DateInput';
+import { Modal } from './ui/Modal';
 import { exportRevenueControlToExcel, exportRevenueControlHistoryToExcel } from '../utils/revenueControlExcelExport';
 
 export const ATTENDANTS_LIST = [
@@ -91,6 +93,13 @@ export default function RevenueControlSection({
 
     const [isDaySaved, setIsDaySaved] = useState(false);
     const [copyingPrevious, setCopyingPrevious] = useState(false);
+
+    // Edit Date & Delete in History States
+    const [isEditDateModalOpen, setIsEditDateModalOpen] = useState(false);
+    const [histToEditDate, setHistToEditDate] = useState(null);
+    const [newDateTarget, setNewDateTarget] = useState('');
+    const [savingNewDate, setSavingNewDate] = useState(false);
+    const [deletingHistoryId, setDeletingHistoryId] = useState(null);
 
     const [loadingData, setLoadingData] = useState(false);
     const [savingData, setSavingData] = useState(false);
@@ -233,6 +242,153 @@ export default function RevenueControlSection({
             showError('Erreur lors de la récupération des données de la veille.');
         } finally {
             setCopyingPrevious(false);
+        }
+    };
+
+    // Open edit date modal
+    const handleOpenEditDateModal = async (hist) => {
+        let item = hist;
+        if (!item?.id && item?.date) {
+            const found = historyList.find(h => h.date === item.date);
+            if (found) {
+                item = found;
+            } else {
+                const { data } = await supabase
+                    .from('daily_cash_closings')
+                    .select('*')
+                    .eq('date', item.date)
+                    .maybeSingle();
+                if (data) item = data;
+            }
+        }
+        setHistToEditDate(item);
+        setNewDateTarget(item?.date || selectedDate);
+        setIsEditDateModalOpen(true);
+    };
+
+    // Save modified date
+    const handleSaveModifiedDate = async (e) => {
+        if (e) e.preventDefault();
+        if (!histToEditDate || !histToEditDate.id) {
+            showError("Impossible de modifier la date : enregistrement introuvable.");
+            return;
+        }
+        if (!newDateTarget || newDateTarget.trim() === '') {
+            showError("Veuillez sélectionner une nouvelle date.");
+            return;
+        }
+        const oldDate = histToEditDate.date;
+        if (newDateTarget === oldDate) {
+            setIsEditDateModalOpen(false);
+            return;
+        }
+
+        setSavingNewDate(true);
+        try {
+            // Check if another record already exists for the new date
+            const { data: existingTarget, error: checkError } = await supabase
+                .from('daily_cash_closings')
+                .select('id, date')
+                .eq('date', newDateTarget)
+                .maybeSingle();
+
+            if (checkError) throw checkError;
+
+            if (existingTarget && existingTarget.id !== histToEditDate.id) {
+                const confirmOverwrite = window.confirm(
+                    `Un contrôle de recette existe déjà pour le ${newDateTarget}.\n\nVoulez-vous le remplacer par celui du ${oldDate} ?`
+                );
+                if (!confirmOverwrite) {
+                    setSavingNewDate(false);
+                    return;
+                }
+                // Delete conflicting entry
+                await supabase
+                    .from('daily_cash_closings')
+                    .delete()
+                    .eq('id', existingTarget.id);
+            }
+
+            // Update date in database
+            const { error: updateError } = await supabase
+                .from('daily_cash_closings')
+                .update({ date: newDateTarget })
+                .eq('id', histToEditDate.id);
+
+            if (updateError) throw updateError;
+
+            // Migrate localStorage draft if present
+            const oldDraft = localStorage.getItem(`draft_revenue_control_${oldDate}`);
+            if (oldDraft) {
+                localStorage.setItem(`draft_revenue_control_${newDateTarget}`, oldDraft);
+                localStorage.removeItem(`draft_revenue_control_${oldDate}`);
+            }
+
+            showSuccess(`Date modifiée avec succès : ${oldDate} ➔ ${newDateTarget}`);
+            setIsEditDateModalOpen(false);
+
+            // If current selected date was the old date, switch to new date
+            if (selectedDate === oldDate) {
+                setSelectedDate(newDateTarget);
+            } else {
+                fetchHistory();
+            }
+        } catch (err) {
+            console.error("Erreur lors de la modification de la date:", err);
+            showError(`Erreur lors de la modification de la date: ${err.message || 'Erreur inconnue'}`);
+        } finally {
+            setSavingNewDate(false);
+        }
+    };
+
+    // Delete a history day
+    const handleDeleteHistoryDay = async (hist) => {
+        if (!hist) return;
+        const dateLabel = formatDisplayDate(hist.date) || hist.date;
+        const confirmDelete = window.confirm(
+            `Êtes-vous sûr de vouloir supprimer définitivement le contrôle de recette du ${dateLabel} (${hist.date}) ?\n\nCette action est irréversible.`
+        );
+        if (!confirmDelete) return;
+
+        setDeletingHistoryId(hist.id);
+        try {
+            const { error } = await supabase
+                .from('daily_cash_closings')
+                .delete()
+                .eq('id', hist.id);
+
+            if (error) throw error;
+
+            localStorage.removeItem(`draft_revenue_control_${hist.date}`);
+            showSuccess(`Contrôle de recette du ${hist.date} supprimé avec succès.`);
+
+            if (selectedDate === hist.date) {
+                fetchDataForDate(true);
+            }
+            fetchHistory();
+        } catch (err) {
+            console.error("Erreur lors de la suppression:", err);
+            showError(`Erreur lors de la suppression: ${err.message || 'Erreur inconnue'}`);
+        } finally {
+            setDeletingHistoryId(null);
+        }
+    };
+
+    // Delete current loaded day
+    const handleDeleteCurrentDay = async () => {
+        let item = historyList.find(h => h.date === selectedDate);
+        if (!item) {
+            const { data } = await supabase
+                .from('daily_cash_closings')
+                .select('*')
+                .eq('date', selectedDate)
+                .maybeSingle();
+            if (data) item = data;
+        }
+        if (item) {
+            await handleDeleteHistoryDay(item);
+        } else {
+            showError("Aucune donnée enregistrée à supprimer pour cette date.");
         }
     };
 
@@ -800,10 +956,30 @@ export default function RevenueControlSection({
                             {/* Status Badge */}
                             <div className="flex items-center gap-2">
                                 {isDaySaved ? (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
-                                        <CheckCircle2 size={14} className="text-emerald-600" />
-                                        <span>Journée enregistrée (Modifiable)</span>
-                                    </span>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                                            <CheckCircle2 size={14} className="text-emerald-600" />
+                                            <span>Journée enregistrée</span>
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleOpenEditDateModal({ date: selectedDate })}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-all cursor-pointer shadow-2xs"
+                                            title="Modifier la date de ce contrôle"
+                                        >
+                                            <Pencil size={12} />
+                                            <span className="hidden sm:inline">Changer la date</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDeleteCurrentDay}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-2xs"
+                                            title="Supprimer ce contrôle définitivement"
+                                        >
+                                            <Trash2 size={12} />
+                                            <span className="hidden sm:inline">Supprimer</span>
+                                        </button>
+                                    </div>
                                 ) : (
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs animate-pulse">
                                         <Sparkles size={14} className="text-amber-600" />
@@ -1633,16 +1809,35 @@ export default function RevenueControlSection({
                                                 </p>
                                             )}
 
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedDate(hist.date);
-                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                }}
-                                                className="w-full py-2.5 text-xs font-bold text-indigo-600 bg-indigo-50/80 hover:bg-indigo-100 rounded-xl transition-colors cursor-pointer text-center"
-                                            >
-                                                Consulter cette journée
-                                            </button>
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedDate(hist.date);
+                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                    }}
+                                                    className="flex-1 py-2 text-xs font-bold text-indigo-600 bg-indigo-50/80 hover:bg-indigo-100 rounded-xl transition-colors cursor-pointer text-center"
+                                                >
+                                                    Consulter
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEditDateModal(hist)}
+                                                    className="p-2 text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl transition-colors cursor-pointer shrink-0"
+                                                    title="Changer la date de cette journée"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteHistoryDay(hist)}
+                                                    disabled={deletingHistoryId === hist.id}
+                                                    className="p-2 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                                                    title="Supprimer ce contrôle"
+                                                >
+                                                    {deletingHistoryId === hist.id ? <Loader2 size={14} className="animate-spin text-rose-600" /> : <Trash2 size={14} />}
+                                                </button>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -1728,18 +1923,37 @@ export default function RevenueControlSection({
                                                     <td className="py-3 px-3 text-gray-500 max-w-xs truncate" title={hist.notes}>
                                                         {hist.notes || '-'}
                                                     </td>
-                                                    <td className="py-3 px-3 text-center">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setSelectedDate(hist.date);
-                                                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                            }}
-                                                            className="px-2.5 py-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
-                                                            title="Charger cette journée dans le formulaire"
-                                                        >
-                                                            Consulter
-                                                        </button>
+                                                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSelectedDate(hist.date);
+                                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                                }}
+                                                                className="px-2.5 py-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+                                                                title="Charger cette journée dans le formulaire"
+                                                            >
+                                                                Consulter
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenEditDateModal(hist)}
+                                                                className="p-1 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                                                title="Changer la date de cette journée"
+                                                            >
+                                                                <Pencil size={13} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteHistoryDay(hist)}
+                                                                disabled={deletingHistoryId === hist.id}
+                                                                className="p-1 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                                                title="Supprimer définitivement ce contrôle"
+                                                            >
+                                                                {deletingHistoryId === hist.id ? <Loader2 size={13} className="animate-spin text-rose-600" /> : <Trash2 size={13} />}
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -1791,6 +2005,58 @@ export default function RevenueControlSection({
                     )}
                 </div>
             )}
+
+            {/* MODAL MODIFIER LA DATE */}
+            <Modal
+                isOpen={isEditDateModalOpen}
+                onClose={() => !savingNewDate && setIsEditDateModalOpen(false)}
+                title="Modifier la date du contrôle"
+                className="max-w-md"
+            >
+                <form onSubmit={handleSaveModifiedDate} className="space-y-4">
+                    <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-xl text-xs text-amber-800 space-y-1">
+                        <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                            <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                            <span>Déplacement de la date du contrôle</span>
+                        </div>
+                        <p className="leading-relaxed">
+                            Date actuelle enregistrée : <span className="font-bold font-mono text-gray-900">{histToEditDate?.date}</span> ({formatDisplayDate(histToEditDate?.date)}).
+                            <br />
+                            Toutes les données associées (shifts, pompistes, montants, hors-espèces, comptage) seront transférées vers la nouvelle date.
+                        </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-gray-700">
+                            Sélectionner la nouvelle date :
+                        </label>
+                        <DateInput
+                            value={newDateTarget}
+                            onChange={(e) => setNewDateTarget(e.target.value)}
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                        <button
+                            type="button"
+                            onClick={() => setIsEditDateModalOpen(false)}
+                            disabled={savingNewDate}
+                            className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                            Annuler
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={savingNewDate || !newDateTarget || newDateTarget === histToEditDate?.date}
+                            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+                        >
+                            {savingNewDate ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                            <span>{savingNewDate ? 'Modification...' : 'Confirmer le changement'}</span>
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 }
