@@ -14,8 +14,12 @@ import {
     Loader2,
     ChevronLeft,
     ChevronRight,
-    Filter
+    Filter,
+    CheckCircle2,
+    Copy,
+    Sparkles
 } from 'lucide-react';
+import { DateInput } from './ui/DateInput';
 import { exportRevenueControlToExcel, exportRevenueControlHistoryToExcel } from '../utils/revenueControlExcelExport';
 
 export const ATTENDANTS_LIST = [
@@ -85,6 +89,9 @@ export default function RevenueControlSection({
     const [comptageReel, setComptageReel] = useState(0);
     const [notes, setNotes] = useState('');
 
+    const [isDaySaved, setIsDaySaved] = useState(false);
+    const [copyingPrevious, setCopyingPrevious] = useState(false);
+
     const [loadingData, setLoadingData] = useState(false);
     const [savingData, setSavingData] = useState(false);
     const [exportingExcel, setExportingExcel] = useState(false);
@@ -136,6 +143,99 @@ export default function RevenueControlSection({
         return `${clean}\n\n<!--SHIFTS_DATA:${json}-->`.trim();
     };
 
+    // Date Navigation Helpers
+    const handlePrevDay = () => {
+        const [y, m, d] = selectedDate.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        dateObj.setDate(dateObj.getDate() - 1);
+        const newDateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+        setSelectedDate(newDateStr);
+    };
+
+    const handleNextDay = () => {
+        const [y, m, d] = selectedDate.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        dateObj.setDate(dateObj.getDate() + 1);
+        const newDateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+        setSelectedDate(newDateStr);
+    };
+
+    const handleToday = () => {
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        setSelectedDate(todayStr);
+    };
+
+    const formatDisplayDate = (dateStr) => {
+        if (!dateStr) return '';
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        const formatted = dateObj.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    };
+
+    // Copy attendants list from previous day with amounts set to 0
+    const handleCopyPreviousDayAttendants = async () => {
+        setCopyingPrevious(true);
+        try {
+            const [y, m, d] = selectedDate.split('-').map(Number);
+            const prevDate = new Date(y, m - 1, d);
+            prevDate.setDate(prevDate.getDate() - 1);
+            const prevDateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+
+            const { data: prevClosing, error } = await supabase
+                .from('daily_cash_closings')
+                .select('*')
+                .eq('date', prevDateStr)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (!prevClosing) {
+                showError(`Aucun contrôle trouvé pour la veille (${prevDateStr}).`);
+                return;
+            }
+
+            let sourceShifts = null;
+            if (prevClosing.shifts_data && Array.isArray(prevClosing.shifts_data) && prevClosing.shifts_data.length > 0) {
+                sourceShifts = prevClosing.shifts_data;
+            } else {
+                const { parsedShifts } = parseShiftsFromNotes(prevClosing.notes);
+                if (parsedShifts && Array.isArray(parsedShifts)) {
+                    sourceShifts = parsedShifts;
+                }
+            }
+
+            if (!sourceShifts || sourceShifts.length === 0) {
+                showError(`Aucune liste de pompistes trouvée pour le ${prevDateStr}.`);
+                return;
+            }
+
+            const copiedShifts = sourceShifts.map((s, sIdx) => ({
+                id: s.id || `shift_${sIdx + 1}`,
+                label: s.label || DEFAULT_SHIFTS[sIdx]?.label || `Shift ${sIdx + 1}`,
+                timeRange: s.timeRange || DEFAULT_SHIFTS[sIdx]?.timeRange || '',
+                color: s.color || DEFAULT_SHIFTS[sIdx]?.color || 'indigo',
+                attendants: (s.attendants && s.attendants.length > 0)
+                    ? s.attendants.map((att, aIdx) => ({
+                        id: `${s.id || `shift_${sIdx + 1}`}_a_${Date.now()}_${aIdx}`,
+                        attendantName: att.attendantName || '',
+                        amount: 0
+                    }))
+                    : [{ id: `${s.id || `shift_${sIdx + 1}`}_a_${Date.now()}`, attendantName: '', amount: 0 }]
+            }));
+
+            setShifts(copiedShifts);
+            saveLocalDraft({ shifts: copiedShifts, annexes, horsEspeces, comptageReel, notes });
+            showSuccess(`Équipe des pompistes du ${prevDateStr} reprise (montants à 0 DH) !`);
+        } catch (err) {
+            console.error('Erreur lors de la reprise des pompistes de la veille:', err);
+            showError('Erreur lors de la récupération des données de la veille.');
+        } finally {
+            setCopyingPrevious(false);
+        }
+    };
+
     // Calculate totals
     const totalRendementPiste = useMemo(() => {
         return shifts.reduce((shiftSum, shift) => {
@@ -177,24 +277,7 @@ export default function RevenueControlSection({
     const fetchDataForDate = async (ignoreDraft = false) => {
         setLoadingData(true);
         try {
-            // Check draft in localStorage first
-            const draft = localStorage.getItem(`draft_revenue_control_${selectedDate}`);
-            if (draft && !ignoreDraft) {
-                try {
-                    const parsed = JSON.parse(draft);
-                    if (parsed.shifts) setShifts(parsed.shifts);
-                    if (parsed.annexes) setAnnexes(parsed.annexes);
-                    if (parsed.horsEspeces) setHorsEspeces(parsed.horsEspeces);
-                    if (parsed.comptageReel !== undefined) setComptageReel(parsed.comptageReel);
-                    if (parsed.notes !== undefined) setNotes(parsed.notes);
-                    setLoadingData(false);
-                    return;
-                } catch (e) {
-                    console.error("Error parsing local draft:", e);
-                }
-            }
-
-            // Query database
+            // Query database first to know if the day is already recorded
             const { data: closing, error } = await supabase
                 .from('daily_cash_closings')
                 .select('*')
@@ -211,6 +294,7 @@ export default function RevenueControlSection({
             setTableError(false);
 
             if (closing) {
+                setIsDaySaved(true);
                 // Restore shifts
                 let restoredShifts = null;
                 if (closing.shifts_data && Array.isArray(closing.shifts_data) && closing.shifts_data.length > 0) {
@@ -255,7 +339,8 @@ export default function RevenueControlSection({
                 const { cleanNotes } = parseShiftsFromNotes(closing.notes);
                 setNotes(cleanNotes || '');
             } else {
-                // New day default
+                // New day: clean fresh default
+                setIsDaySaved(false);
                 setShifts(DEFAULT_SHIFTS);
                 setAnnexes({ shop_cafe: 0, sce_bosch: 0, lubrifiant: 0 });
                 setHorsEspeces({ tpe: 0, petrom_card: 0, bon_ste: 0, bon_sntl: 0 });
@@ -277,6 +362,21 @@ export default function RevenueControlSection({
                     setComptageReel(Number(counting.total_calc) || 0);
                 } else {
                     setComptageReel(0);
+                }
+            }
+
+            // Check draft in localStorage to overlay unsaved work if present
+            const draft = localStorage.getItem(`draft_revenue_control_${selectedDate}`);
+            if (draft && !ignoreDraft) {
+                try {
+                    const parsed = JSON.parse(draft);
+                    if (parsed.shifts) setShifts(parsed.shifts);
+                    if (parsed.annexes) setAnnexes(parsed.annexes);
+                    if (parsed.horsEspeces) setHorsEspeces(parsed.horsEspeces);
+                    if (parsed.comptageReel !== undefined) setComptageReel(parsed.comptageReel);
+                    if (parsed.notes !== undefined) setNotes(parsed.notes);
+                } catch (e) {
+                    console.error("Error parsing local draft:", e);
                 }
             }
         } catch (err) {
@@ -682,55 +782,144 @@ export default function RevenueControlSection({
             {!tableError && (
                 <form onSubmit={handleSaveControl} className="space-y-8">
                     {/* TOP BAR / HEADER */}
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-50/70 p-4 sm:p-5 rounded-2xl border border-gray-100">
-                        <div className="w-full md:w-auto">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-3 h-3 rounded-full bg-cyan-500 shadow-sm shadow-cyan-500/50"></div>
-                                <h3 className="font-bold text-lg sm:text-xl text-gray-800 tracking-tight">
-                                    Contrôle des Recettes
-                                </h3>
+                    <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-4">
+                        {/* Title & Status Badge row */}
+                        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-3.5 h-3.5 rounded-full bg-cyan-500 shadow-sm shadow-cyan-500/50"></div>
+                                <div>
+                                    <h3 className="font-bold text-lg sm:text-xl text-gray-800 tracking-tight">
+                                        Contrôle des Recettes
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                        {formatDisplayDate(selectedDate)}
+                                    </p>
+                                </div>
                             </div>
-                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-                                <Calendar size={13} className="text-gray-400" />
-                                <span>Journée du {new Date(selectedDate).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                            </p>
+
+                            {/* Status Badge */}
+                            <div className="flex items-center gap-2">
+                                {isDaySaved ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                                        <CheckCircle2 size={14} className="text-emerald-600" />
+                                        <span>Journée enregistrée (Modifiable)</span>
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs animate-pulse">
+                                        <Sparkles size={14} className="text-amber-600" />
+                                        <span>Nouvelle journée vierge à calculer</span>
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
-                        {/* Action Buttons: Responsive Grid on Mobile, Flex on Desktop */}
-                        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full md:w-auto">
-                            {/* Reset Button */}
-                            <button
-                                type="button"
-                                onClick={handleReset}
-                                disabled={loadingData || savingData}
-                                className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border border-rose-200 text-rose-600 bg-rose-50/40 hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
-                                title="Réinitialiser la saisie"
-                            >
-                                <Trash2 size={15} />
-                                <span>RAZ</span>
-                            </button>
+                        {/* Date Navigation Bar & Action Buttons */}
+                        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3 pt-3 border-t border-gray-100">
+                            {/* Date Picker + Quick Navigation buttons */}
+                            <div className="flex flex-wrap items-center gap-1.5 bg-gray-50/80 p-1.5 rounded-2xl border border-gray-200/80">
+                                <button
+                                    type="button"
+                                    onClick={handlePrevDay}
+                                    className="flex items-center gap-1 px-2.5 py-2 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100/80 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                    title="Aller au jour précédent (J-1)"
+                                >
+                                    <ChevronLeft size={14} />
+                                    <span>J-1</span>
+                                </button>
 
-                            {/* Export Excel Button */}
-                            <button
-                                type="button"
-                                onClick={handleExportExcel}
-                                disabled={loadingData || savingData || exportingExcel}
-                                className="flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
-                            >
-                                {exportingExcel ? <Loader2 size={15} className="animate-spin text-emerald-600" /> : <FileSpreadsheet size={15} className="text-emerald-600" />}
-                                <span>Excel</span>
-                            </button>
+                                <div className="w-36 sm:w-40">
+                                    <DateInput
+                                        value={selectedDate}
+                                        onChange={(e) => setSelectedDate(e.target.value)}
+                                        className="w-full"
+                                    />
+                                </div>
 
-                            {/* Save Button */}
-                            <button
-                                type="submit"
-                                disabled={loadingData || savingData}
-                                className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
-                            >
-                                {savingData ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                <span>{savingData ? 'Enregistrement...' : 'Enregistrer le contrôle'}</span>
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={handleNextDay}
+                                    className="flex items-center gap-1 px-2.5 py-2 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100/80 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                    title="Aller au jour suivant (J+1)"
+                                >
+                                    <span>J+1</span>
+                                    <ChevronRight size={14} />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleToday}
+                                    className="px-2.5 py-2 text-xs font-semibold text-cyan-700 bg-cyan-50 hover:bg-cyan-100/80 rounded-xl border border-cyan-200 transition-all cursor-pointer shadow-2xs"
+                                    title="Revenir à aujourd'hui"
+                                >
+                                    Aujourd'hui
+                                </button>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+                                {/* Option: Reprendre les pompistes de la veille (J-1) */}
+                                <button
+                                    type="button"
+                                    onClick={handleCopyPreviousDayAttendants}
+                                    disabled={copyingPrevious || loadingData}
+                                    className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+                                    title="Reprendre les mêmes pompistes que la veille avec montants à 0 DH"
+                                >
+                                    {copyingPrevious ? <Loader2 size={14} className="animate-spin text-indigo-600" /> : <Copy size={14} className="text-indigo-600" />}
+                                    <span>{copyingPrevious ? 'Copie...' : 'Équipe de la veille'}</span>
+                                </button>
+
+                                {/* Reset Button */}
+                                <button
+                                    type="button"
+                                    onClick={handleReset}
+                                    disabled={loadingData || savingData}
+                                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-rose-200 text-rose-600 bg-rose-50/40 hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
+                                    title="Réinitialiser la saisie"
+                                >
+                                    <Trash2 size={14} />
+                                    <span>RAZ</span>
+                                </button>
+
+                                {/* Export Excel Button */}
+                                <button
+                                    type="button"
+                                    onClick={handleExportExcel}
+                                    disabled={loadingData || savingData || exportingExcel}
+                                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                                >
+                                    {exportingExcel ? <Loader2 size={14} className="animate-spin text-emerald-600" /> : <FileSpreadsheet size={14} className="text-emerald-600" />}
+                                    <span>Excel</span>
+                                </button>
+
+                                {/* Save Button */}
+                                <button
+                                    type="submit"
+                                    disabled={loadingData || savingData}
+                                    className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
+                                >
+                                    {savingData ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                                    <span>{savingData ? 'Enregistrement...' : (isDaySaved ? `Mettre à jour (${selectedDate})` : `Enregistrer (${selectedDate})`)}</span>
+                                </button>
+                            </div>
                         </div>
+
+                        {/* Safety notice banner */}
+                        {isDaySaved ? (
+                            <div className="px-3.5 py-2 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-[11px] text-emerald-800 flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-1.5 font-medium">
+                                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                                    Cette journée du <b>{selectedDate}</b> est enregistrée en base. Pour calculer le <b>jour suivant</b> (ex: week-end), cliquez sur <b>J+1 ▶</b> ou choisissez la date dans le calendrier ci-dessus.
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="px-3.5 py-2 bg-blue-50/70 border border-blue-200/80 rounded-xl text-[11px] text-blue-800 flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-1.5 font-medium">
+                                    <Sparkles size={13} className="text-blue-600 shrink-0" />
+                                    Vous saisissez une nouvelle journée pour le <b>{selectedDate}</b>. Vos données des autres dates restent intactes et protégées.
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* MOBILE QUICK RESULT BANNER (Visible on mobile/tablet, hidden on desktop lg) */}
@@ -775,8 +964,22 @@ export default function RevenueControlSection({
                                                 Section 1 : Rendements Piste (Shifts)
                                             </h4>
                                         </div>
-                                        <div className="text-xs font-bold font-mono text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">
-                                            Total Piste : {totalRendementPiste.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                        <div className="flex items-center gap-2">
+                                            {!isDaySaved && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCopyPreviousDayAttendants}
+                                                    disabled={copyingPrevious || loadingData}
+                                                    className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg border border-indigo-200 transition-all cursor-pointer disabled:opacity-50"
+                                                    title="Reprendre les mêmes pompistes que la veille (montants à 0 DH)"
+                                                >
+                                                    <Copy size={12} />
+                                                    <span>Copier équipe J-1</span>
+                                                </button>
+                                            )}
+                                            <div className="text-xs font-bold font-mono text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">
+                                                Total Piste : {totalRendementPiste.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                            </div>
                                         </div>
                                     </div>
 
