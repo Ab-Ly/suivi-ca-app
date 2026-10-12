@@ -18,11 +18,13 @@ import {
     CheckCircle2,
     Copy,
     Sparkles,
-    Pencil
+    Pencil,
+    Printer
 } from 'lucide-react';
 import { DateInput } from './ui/DateInput';
 import { Modal } from './ui/Modal';
 import { exportRevenueControlToExcel, exportRevenueControlHistoryToExcel } from '../utils/revenueControlExcelExport';
+import { printRevenueControlSheet } from '../utils/revenueControlPrint';
 
 export const ATTENDANTS_LIST = [
     "BILAL ELBOUKHARY",
@@ -818,6 +820,81 @@ export default function RevenueControlSection({
         }
     };
 
+    // Imprimer la fiche de contrôle de la journée en cours
+    const handlePrintCurrentDay = () => {
+        printRevenueControlSheet({
+            date: selectedDate,
+            shifts,
+            annexes,
+            horsEspeces,
+            comptageReel,
+            totalRendement: totalRendementPiste,
+            totalAnnexes: totalVentesAnnexes,
+            totalRecettes: totalRecettesBrutes,
+            totalHorsEspeces: totalHorsEspeces,
+            soldeTheorique: soldeTheoriqueEspeces,
+            ecart: ecartFinal,
+            notes
+        });
+    };
+
+    // Imprimer la fiche de contrôle d'une journée de l'historique
+    const handlePrintHistoryDay = (hist) => {
+        if (!hist) return;
+        let histRend = 0;
+        let histShifts = hist.shifts_data && Array.isArray(hist.shifts_data) ? hist.shifts_data : [];
+        if (histShifts.length > 0) {
+            histShifts.forEach(s => (s.attendants || []).forEach(a => histRend += Number(a.amount) || 0));
+        } else {
+            histRend = Number(hist.total_rendement_piste) || 0;
+            if (histRend === 0) {
+                histRend = (Number(hist.total_rendement_j_prev) - Number(hist.recette_8h_j_prev)) + Number(hist.recette_8h_j);
+            }
+            histShifts = [
+                {
+                    id: 'shift_1',
+                    label: 'Shift 1 : Nuit',
+                    timeRange: '00h00 à 08h00',
+                    attendants: [{ id: 's1', attendantName: 'Équipe de piste', amount: histRend }]
+                }
+            ];
+        }
+
+        const histAnnexes = {
+            shop_cafe: Number(hist.shop_cafe) || 0,
+            sce_bosch: Number(hist.sce_bosch) || 0,
+            lubrifiant: Number(hist.lubrifiant) || 0
+        };
+        const histHorsEsp = {
+            tpe: Number(hist.tpe) || 0,
+            petrom_card: Number(hist.petrom_card) || 0,
+            bon_ste: Number(hist.bon_ste) || 0,
+            bon_sntl: Number(hist.bon_sntl) || 0
+        };
+
+        const totAnnexes = histAnnexes.shop_cafe + histAnnexes.sce_bosch + histAnnexes.lubrifiant;
+        const totRecettes = histRend + totAnnexes;
+        const totHorsEsp = histHorsEsp.tpe + histHorsEsp.petrom_card + histHorsEsp.bon_ste + histHorsEsp.bon_sntl;
+        const soldeTheo = totRecettes - totHorsEsp;
+        const comptage = Number(hist.comptage_espece_total) || 0;
+        const ec = comptage - soldeTheo;
+
+        printRevenueControlSheet({
+            date: hist.date,
+            shifts: histShifts,
+            annexes: histAnnexes,
+            horsEspeces: histHorsEsp,
+            comptageReel: comptage,
+            totalRendement: histRend,
+            totalAnnexes: totAnnexes,
+            totalRecettes: totRecettes,
+            totalHorsEspeces: totHorsEsp,
+            soldeTheorique: soldeTheo,
+            ecart: ec,
+            notes: hist.notes || ''
+        });
+    };
+
     // Export history to Excel (full month or current selection)
     const handleExportHistoryExcel = async () => {
         try {
@@ -1066,6 +1143,18 @@ export default function RevenueControlSection({
                                 >
                                     {exportingExcel ? <Loader2 size={14} className="animate-spin text-emerald-600" /> : <FileSpreadsheet size={14} className="text-emerald-600" />}
                                     <span>Excel</span>
+                                </button>
+
+                                {/* Print Button */}
+                                <button
+                                    type="button"
+                                    onClick={handlePrintCurrentDay}
+                                    disabled={loadingData}
+                                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-sky-200 text-sky-700 bg-sky-50/80 hover:bg-sky-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                                    title="Imprimer la fiche de contrôle du jour avec mise en page professionnelle"
+                                >
+                                    <Printer size={14} className="text-sky-600" />
+                                    <span>Imprimer</span>
                                 </button>
 
                                 {/* Save Button */}
@@ -1822,6 +1911,14 @@ export default function RevenueControlSection({
                                                 </button>
                                                 <button
                                                     type="button"
+                                                    onClick={() => handlePrintHistoryDay(hist)}
+                                                    className="p-2 text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 rounded-xl transition-colors cursor-pointer shrink-0"
+                                                    title="Imprimer cette fiche de contrôle"
+                                                >
+                                                    <Printer size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     onClick={() => handleOpenEditDateModal(hist)}
                                                     className="p-2 text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl transition-colors cursor-pointer shrink-0"
                                                     title="Changer la date de cette journée"
@@ -1935,6 +2032,14 @@ export default function RevenueControlSection({
                                                                 title="Charger cette journée dans le formulaire"
                                                             >
                                                                 Consulter
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handlePrintHistoryDay(hist)}
+                                                                className="p-1 text-gray-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                                                                title="Imprimer cette fiche de contrôle"
+                                                            >
+                                                                <Printer size={13} />
                                                             </button>
                                                             <button
                                                                 type="button"
