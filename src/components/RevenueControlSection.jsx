@@ -21,7 +21,10 @@ import {
     Pencil,
     Printer,
     ShieldCheck,
-    Info
+    Info,
+    Banknote,
+    ArrowRight,
+    CheckCheck
 } from 'lucide-react';
 import { DateInput } from './ui/DateInput';
 import { Modal } from './ui/Modal';
@@ -105,6 +108,7 @@ export default function RevenueControlSection({
         date: ''
     });
     const [showPrevShiftDetails, setShowPrevShiftDetails] = useState(false);
+    const [activeControlTab, setActiveControlTab] = useState('cash_control'); // 'cash_control' | 'system_reconciliation'
 
     const [isDaySaved, setIsDaySaved] = useState(false);
     const [copyingPrevious, setCopyingPrevious] = useState(false);
@@ -1352,12 +1356,71 @@ export default function RevenueControlSection({
                         </div>
                     </div>
 
+                    {/* TABS SELECTOR : SÉPARATION ARRÊTÉ DE RECOUVREMENT & CONTRÔLE RENDEMENT SYSTÈME */}
+                    <div className="flex flex-col sm:flex-row items-stretch gap-2 p-1.5 bg-gray-100/90 rounded-2xl border border-gray-200 shadow-2xs">
+                        <button
+                            type="button"
+                            onClick={() => setActiveControlTab('cash_control')}
+                            className={`flex-1 flex items-center justify-between sm:justify-center gap-3 px-4 py-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                                activeControlTab === 'cash_control'
+                                    ? 'bg-white text-indigo-700 shadow-sm border border-gray-200/80 ring-1 ring-black/5'
+                                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2.5">
+                                <Banknote size={18} className={activeControlTab === 'cash_control' ? 'text-indigo-600' : 'text-gray-400'} />
+                                <div className="text-left">
+                                    <div className="font-bold leading-tight">1. Arrêté de Recette & Caisse</div>
+                                    <div className="text-[10px] font-normal text-gray-500 hidden sm:block">Workflow complet · Piste, Annexes & Comptage Réel</div>
+                                </div>
+                            </div>
+                            <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-bold shrink-0 ${
+                                isOk 
+                                    ? 'bg-emerald-100 text-emerald-800' 
+                                    : ecartFinal > 0 
+                                        ? 'bg-blue-100 text-blue-800' 
+                                        : 'bg-rose-100 text-rose-800'
+                            }`}>
+                                {ecartFinal >= 0 ? '+' : ''}{ecartFinal.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} DH
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveControlTab('system_reconciliation')}
+                            className={`flex-1 flex items-center justify-between sm:justify-center gap-3 px-4 py-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                                activeControlTab === 'system_reconciliation'
+                                    ? 'bg-white text-cyan-800 shadow-sm border border-gray-200/80 ring-1 ring-black/5'
+                                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2.5">
+                                <ShieldCheck size={18} className={activeControlTab === 'system_reconciliation' ? 'text-cyan-600' : 'text-gray-400'} />
+                                <div className="text-left">
+                                    <div className="font-bold leading-tight">2. Contrôle Rendement Système Istiraha</div>
+                                    <div className="text-[10px] font-normal text-gray-500 hidden sm:block">Reconstitution 24h (00h00 - 23h59) de {prevDateStr ? formatDisplayDate(prevDateStr) : 'J-1'}</div>
+                                </div>
+                            </div>
+                            <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md font-bold shrink-0 ${
+                                Number(systemRendementPrev) > 0
+                                    ? isSystemJPrevOk
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-rose-100 text-rose-800'
+                                    : 'bg-gray-200/80 text-gray-600'
+                            }`}>
+                                {Number(systemRendementPrev) > 0
+                                    ? (isSystemJPrevOk ? '✅ Conforme (0 DH)' : `⚠️ ${ecartSystemeJPrev >= 0 ? '+' : ''}${(Number(ecartSystemeJPrev) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH`)
+                                    : 'À vérifier'}
+                            </span>
+                        </button>
+                    </div>
+
                     {loadingData ? (
                         <div className="flex flex-col items-center justify-center py-24 space-y-3">
                             <Loader2 size={36} className="animate-spin text-cyan-600" />
                             <p className="text-xs text-gray-400 font-medium">Chargement des données de contrôle...</p>
                         </div>
-                    ) : (
+                    ) : activeControlTab === 'cash_control' ? (
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                             {/* LEFT COLUMN : DATA ENTRY */}
                             <div className="lg:col-span-7 space-y-6">
@@ -1486,195 +1549,6 @@ export default function RevenueControlSection({
                                                 </div>
                                             );
                                         })}
-                                    </div>
-                                </div>
-
-                                {/* BLOC CONTRÔLE DU RENDEMENT TOTAL SYSTÈME (00h00 à 23h59 — JOURNÉE J-1) */}
-                                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-indigo-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-4 relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-indigo-500 to-purple-600"></div>
-
-                                    {/* En-tête */}
-                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-gray-100 pb-3">
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
-                                                <ShieldCheck size={18} />
-                                            </div>
-                                            <div>
-                                                <h4 className="font-bold text-sm text-gray-900 uppercase tracking-wider flex items-center gap-2">
-                                                    Contrôle Rendement Total Système (00h00 à 23h59)
-                                                </h4>
-                                                <p className="text-[11px] text-gray-500">
-                                                    Rapprochement de la journée complète de la veille (J-1 : <span className="font-semibold text-gray-700">{formatDisplayDate(prevDateStr)}</span>)
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Actions & Badge */}
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => fetchPrevDayShift1(selectedDate)}
-                                                disabled={prevShift1Data.loading}
-                                                className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg border border-indigo-200 transition-all cursor-pointer disabled:opacity-50"
-                                                title="Actualiser le Shift 1 de la veille"
-                                            >
-                                                <RefreshCw size={12} className={prevShift1Data.loading ? 'animate-spin' : ''} />
-                                                <span>Actualiser J-1</span>
-                                            </button>
-                                            <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">
-                                                Piste Reconstituée : {totalReconstitueJPrev.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Formule explicative */}
-                                    <div className="text-[11px] text-indigo-900 bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100 flex items-start gap-2">
-                                        <Info size={14} className="text-indigo-600 shrink-0 mt-0.5" />
-                                        <div>
-                                            <span className="font-bold">Règle de reconstitution des 24h (00h00 à 23h59) :</span>{' '}
-                                            Shift Nuit (00h00 à 08h00 relevé à J-1) + Shift Journée (08h00 à 18h00) + Shift Soirée (18h00 à 00h00).
-                                        </div>
-                                    </div>
-
-                                    {/* Les 3 Blocs de Shifts composant les 24h de J-1 */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        {/* Shift 1 Nuit Veille */}
-                                        <div className="p-3 bg-indigo-50/30 rounded-xl border border-indigo-100 space-y-1.5">
-                                            <div className="flex justify-between items-center text-[11px]">
-                                                <span className="font-bold text-indigo-900">Shift 1 : Nuit (Veille J-1)</span>
-                                                <span className="text-[10px] text-indigo-600 font-mono bg-white px-1.5 py-0.5 rounded border border-indigo-100">00h00 - 08h00</span>
-                                            </div>
-                                            <div className="flex justify-between items-end">
-                                                <span className="font-mono font-bold text-sm text-indigo-700">
-                                                    {formatNumber(prevShift1Data.amount)} DH
-                                                </span>
-                                                {prevShift1Data.attendants && prevShift1Data.attendants.length > 0 && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowPrevShiftDetails(!showPrevShiftDetails)}
-                                                        className="text-[10px] text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
-                                                    >
-                                                        {showPrevShiftDetails ? 'Masquer' : `${prevShift1Data.attendants.length} pompiste(s)`}
-                                                    </button>
-                                                )}
-                                            </div>
-                                            <div className="text-[10px] text-gray-500 truncate">
-                                                {prevShift1Data.loading ? 'Chargement...' : `Date : ${prevDateStr}`}
-                                            </div>
-                                        </div>
-
-                                        {/* Shift 2 Journée */}
-                                        <div className="p-3 bg-amber-50/30 rounded-xl border border-amber-100 space-y-1.5">
-                                            <div className="flex justify-between items-center text-[11px]">
-                                                <span className="font-bold text-amber-900">Shift 2 : Journée</span>
-                                                <span className="text-[10px] text-amber-600 font-mono bg-white px-1.5 py-0.5 rounded border border-amber-100">08h00 - 18h00</span>
-                                            </div>
-                                            <div className="font-mono font-bold text-sm text-amber-700">
-                                                {formatNumber(shift2Amount)} DH
-                                            </div>
-                                            <div className="text-[10px] text-gray-500">
-                                                Fiche en cours
-                                            </div>
-                                        </div>
-
-                                        {/* Shift 3 Soirée */}
-                                        <div className="p-3 bg-purple-50/30 rounded-xl border border-purple-100 space-y-1.5">
-                                            <div className="flex justify-between items-center text-[11px]">
-                                                <span className="font-bold text-purple-900">Shift 3 : Soirée</span>
-                                                <span className="text-[10px] text-purple-600 font-mono bg-white px-1.5 py-0.5 rounded border border-purple-100">18h00 - 00h00</span>
-                                            </div>
-                                            <div className="font-mono font-bold text-sm text-purple-700">
-                                                {formatNumber(shift3Amount)} DH
-                                            </div>
-                                            <div className="text-[10px] text-gray-500">
-                                                Fiche en cours
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Détail déroulant des pompistes du Shift 1 de la veille */}
-                                    {showPrevShiftDetails && prevShift1Data.attendants && prevShift1Data.attendants.length > 0 && (
-                                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs space-y-1.5">
-                                            <div className="font-bold text-gray-700 text-[11px] uppercase tracking-wider mb-1">
-                                                Pompistes du Shift Nuit ({prevDateStr}) :
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                                {prevShift1Data.attendants.map((att, idx) => (
-                                                    <div key={idx} className="flex justify-between items-center bg-white p-1.5 px-2.5 rounded border border-gray-100">
-                                                        <span className="font-medium text-gray-800">{att.attendantName || 'Pompiste'}</span>
-                                                        <span className="font-mono font-bold text-gray-900">{formatNumber(att.amount)} DH</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Saisie Rapport Système Istiraha et Comparaison */}
-                                    <div className="p-4 bg-gray-50/80 rounded-xl border border-gray-200 space-y-3">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                            <div>
-                                                <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
-                                                    Rapport Rendement Système Istiraha (00h00 - 23h59)
-                                                </label>
-                                                <span className="text-[10px] text-gray-500">
-                                                    Montant total prévu sur le rapport Istiraha pour la journée du {formatDisplayDate(prevDateStr)}
-                                                </span>
-                                            </div>
-                                            
-                                            <div className="relative w-full sm:w-56">
-                                                <input
-                                                    step="0.01"
-                                                    placeholder="ex: 341 230.18"
-                                                    className="w-full pr-9 pl-3 py-2 text-sm font-mono font-bold text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-2xs"
-                                                    {...getNumberInputProps(
-                                                        systemRendementPrev,
-                                                        (v) => setSystemRendementPrev(v),
-                                                        'systemRendementPrev'
-                                                    )}
-                                                />
-                                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">DH</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Résultat du contrôle & Écart */}
-                                        {Number(systemRendementPrev) > 0 ? (
-                                            <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                                                isSystemJPrevOk
-                                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                                                    : 'bg-rose-50 border-rose-200 text-rose-900'
-                                            }`}>
-                                                <div className="flex items-center gap-2">
-                                                    <CheckCircle2 size={18} className={isSystemJPrevOk ? 'text-emerald-600' : 'text-rose-600'} />
-                                                    <div>
-                                                        <div className="font-bold text-xs uppercase tracking-wider">
-                                                            {isSystemJPrevOk ? 'Contrôle Validé — 100% Conforme' : 'Écart Détecté'}
-                                                        </div>
-                                                        <div className="text-[11px] opacity-90">
-                                                            {isSystemJPrevOk
-                                                                ? 'Le total des 3 shifts (Piste) correspond exactement au montant prévu du rapport Istiraha.'
-                                                                : ecartSystemeJPrev > 0
-                                                                    ? `Le rapport système est supérieur à la piste de +${formatNumber(ecartSystemeJPrev)} DH.`
-                                                                    : `Le total piste est supérieur au système de ${formatNumber(ecartSystemeJPrev)} DH.`
-                                                            }
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="text-right sm:shrink-0">
-                                                    <span className="text-[10px] uppercase font-bold block opacity-75">Écart Système / Piste</span>
-                                                    <span className="font-mono font-black text-sm">
-                                                        {ecartSystemeJPrev >= 0 ? '+' : ''}{formatNumber(ecartSystemeJPrev)} DH
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="text-[11px] text-gray-500 italic bg-white p-2.5 rounded-lg border border-gray-200 flex items-center gap-2">
-                                                <Info size={14} className="text-gray-400 shrink-0" />
-                                                <span>
-                                                    Saisissez le montant total du rapport Istiraha ci-dessus (ex: 341 230,18 DH) pour valider l'écart avec les 3 shifts.
-                                                </span>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
 
@@ -2043,6 +1917,321 @@ export default function RevenueControlSection({
                                             </span>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        /* ONGLET 2 : CONTRÔLE RENDEMENT SYSTÈME ISTIRAHA (J-1 : 00h00 à 23h59) */
+                        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-gray-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-8 animate-fade-in">
+                            {/* Header Banner */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-6">
+                                <div className="space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2.5">
+                                        <div className="w-2.5 h-6 bg-cyan-600 rounded"></div>
+                                        <h4 className="font-bold text-base sm:text-lg text-gray-900 tracking-tight">
+                                            Contrôle du Rendement Total Système Istiraha
+                                        </h4>
+                                        <span className="text-xs bg-cyan-50 text-cyan-800 border border-cyan-200 px-2.5 py-0.5 rounded-full font-bold">
+                                            Journée {prevDateStr ? formatDisplayDate(prevDateStr) : 'J-1'} (00h00 - 23h59)
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 max-w-2xl leading-relaxed">
+                                        Vérification de la conformité entre le chiffre d'affaires 24h édité sur le rapport de la station Istiraha et la reconstitution des 3 shifts carburant réalisés sur la piste.
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => fetchPrevDayShift1(selectedDate)}
+                                        disabled={prevShift1Data.loading}
+                                        className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-2xs"
+                                        title="Actualiser la récupération du Shift 1 de la veille"
+                                    >
+                                        <RefreshCw size={13} className={prevShift1Data.loading ? 'animate-spin text-cyan-600' : ''} />
+                                        <span>Actualiser J-1</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveControl}
+                                        disabled={savingData}
+                                        className="flex items-center gap-1.5 text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
+                                    >
+                                        {savingData ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                        <span>Enregistrer</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Explication du Principe de Reconstitution */}
+                            <div className="p-4 sm:p-5 bg-gradient-to-r from-cyan-50/70 via-blue-50/50 to-indigo-50/40 rounded-2xl border border-cyan-100/80 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                                <div className="w-10 h-10 rounded-xl bg-cyan-600/10 text-cyan-700 flex items-center justify-center shrink-0">
+                                    <Info size={20} />
+                                </div>
+                                <div className="space-y-1 text-xs text-gray-700 leading-relaxed">
+                                    <div className="font-bold text-cyan-900 text-sm">
+                                        Règle de reconstitution du cycle 24h (00h00 à 23h59) :
+                                    </div>
+                                    <p>
+                                        L'arrêté de caisse est relevé chaque matin à <strong>08h00</strong>. Le shift 00h-08h de la fiche du jour appartenant au cycle civil suivant, le rendement 24h de la veille est reconstitué par l'addition de :
+                                    </p>
+                                    <div className="font-mono font-semibold text-cyan-950 text-[11px] pt-0.5">
+                                        [ Shift 1 Nuit J-1 (00h-08h) ] + [ Shift 2 Journée (08h-18h) ] + [ Shift 3 Soirée (18h-00h) ] = <span className="underline decoration-cyan-500 font-bold">Total Piste 24h</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* LES 3 SHIFTS COMPOSANTS LE CYCLE 24H */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                                        1. Détail des 3 Shifts de la Journée Civile
+                                    </span>
+                                    <span className="text-xs text-gray-400">
+                                        Date cible : <strong>{prevDateStr}</strong>
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {/* SHIFT 1 (VEILLE 00H-08H) */}
+                                    <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/30 flex flex-col justify-between space-y-3 relative overflow-hidden">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-md">
+                                                    Shift 1 · Nuit (00h-08h)
+                                                </span>
+                                                <div className="text-xs text-gray-500 mt-1">
+                                                    Relevé à J-1 ({prevDateStr})
+                                                </div>
+                                            </div>
+                                            <Clock size={16} className="text-indigo-400 shrink-0" />
+                                        </div>
+
+                                        <div>
+                                            <div className="flex items-baseline justify-between">
+                                                <span className="text-xs text-gray-600 font-medium">Montant Shift :</span>
+                                                <div className="text-lg font-black font-mono text-indigo-950">
+                                                    {(Number(prevShift1Data.amount) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                </div>
+                                            </div>
+
+                                            {prevShift1Data.attendants && prevShift1Data.attendants.length > 0 ? (
+                                                <div className="mt-2 pt-2 border-t border-indigo-100/60">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowPrevShiftDetails(!showPrevShiftDetails)}
+                                                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer flex items-center justify-between w-full"
+                                                    >
+                                                        <span>{prevShift1Data.attendants.length} pompiste(s) enregistré(s)</span>
+                                                        <span>{showPrevShiftDetails ? '▲ Masquer' : '▼ Voir'}</span>
+                                                    </button>
+                                                    {showPrevShiftDetails && (
+                                                        <div className="mt-1.5 space-y-1 bg-white p-2 rounded-lg border border-indigo-100 text-[11px]">
+                                                            {prevShift1Data.attendants.map((a, idx) => (
+                                                                <div key={idx} className="flex justify-between items-center text-gray-700">
+                                                                    <span className="truncate pr-1">{a.attendantName || 'Pompiste'}</span>
+                                                                    <span className="font-mono font-bold">{(Number(a.amount) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="mt-2 text-[10px] text-gray-400 italic">
+                                                    {prevShift1Data.loading ? 'Chargement...' : 'Montant shift récupéré'}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* SHIFT 2 (JOURNÉE 08H-18H) */}
+                                    <div className="p-4 rounded-xl border border-amber-100 bg-amber-50/30 flex flex-col justify-between space-y-3">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-md">
+                                                    Shift 2 · Journée (08h-18h)
+                                                </span>
+                                                <div className="text-xs text-gray-500 mt-1">
+                                                    Fiche en cours ({selectedDate})
+                                                </div>
+                                            </div>
+                                            <Clock size={16} className="text-amber-500 shrink-0" />
+                                        </div>
+
+                                        <div>
+                                            <div className="flex items-baseline justify-between">
+                                                <span className="text-xs text-gray-600 font-medium">Montant Shift :</span>
+                                                <div className="text-lg font-black font-mono text-amber-950">
+                                                    {shift2Amount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                </div>
+                                            </div>
+                                            <div className="mt-2 pt-2 border-t border-amber-100/60 text-[10px] text-gray-500">
+                                                Synchronisé depuis la Section 1 (Piste)
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* SHIFT 3 (SOIRÉE 18H-00H) */}
+                                    <div className="p-4 rounded-xl border border-purple-100 bg-purple-50/30 flex flex-col justify-between space-y-3">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-800 bg-purple-100/70 px-2 py-0.5 rounded-md">
+                                                    Shift 3 · Soirée (18h-00h)
+                                                </span>
+                                                <div className="text-xs text-gray-500 mt-1">
+                                                    Fiche en cours ({selectedDate})
+                                                </div>
+                                            </div>
+                                            <Clock size={16} className="text-purple-400 shrink-0" />
+                                        </div>
+
+                                        <div>
+                                            <div className="flex items-baseline justify-between">
+                                                <span className="text-xs text-gray-600 font-medium">Montant Shift :</span>
+                                                <div className="text-lg font-black font-mono text-purple-950">
+                                                    {shift3Amount.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                                </div>
+                                            </div>
+                                            <div className="mt-2 pt-2 border-t border-purple-100/60 text-[10px] text-gray-500">
+                                                Synchronisé depuis la Section 1 (Piste)
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* COMPARAISON & VALIDATION SYSTÈME ISTIRAHA */}
+                            <div className="p-5 sm:p-6 bg-gray-50 rounded-2xl border border-gray-200/80 space-y-6">
+                                <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-gray-700">
+                                        2. Rapprochement avec le Rapport Système Istiraha
+                                    </span>
+                                    <span className="text-[11px] font-medium text-gray-500">
+                                        Cycle 00h00 à 23h59
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                                    {/* BLOC 1 : TOTAL PISTE RECONSTITUÉ */}
+                                    <div className="p-4 sm:p-5 bg-white rounded-xl border border-gray-200 shadow-2xs space-y-2">
+                                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">
+                                            Total 24h Piste Reconstitué (3 Shifts)
+                                        </span>
+                                        <div className="text-2xl sm:text-3xl font-black font-mono text-gray-900">
+                                            {totalReconstitueJPrev.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                        </div>
+                                        <div className="text-[11px] text-gray-500 font-mono">
+                                            {(Number(prevShift1Data.amount) || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} + {shift2Amount.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} + {shift3Amount.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} DH
+                                        </div>
+                                    </div>
+
+                                    {/* BLOC 2 : SAISIE RAPPORT SYSTÈME ISTIRAHA */}
+                                    <div className="p-4 sm:p-5 bg-white rounded-xl border border-cyan-200 shadow-2xs space-y-2">
+                                        <label htmlFor="systemRendementInput" className="text-[11px] font-bold text-cyan-900 uppercase tracking-wider block">
+                                            Montant Total Rapport Système Istiraha
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                id="systemRendementInput"
+                                                step="0.01"
+                                                placeholder="ex: 341 230.18"
+                                                className="w-full pr-10 pl-3.5 py-2.5 text-base sm:text-lg font-mono font-bold text-right border-2 border-cyan-200 focus:border-cyan-500 rounded-xl focus:outline-none bg-cyan-50/20 shadow-inner"
+                                                {...getNumberInputProps(
+                                                    systemRendementPrev,
+                                                    (v) => {
+                                                        setSystemRendementPrev(v);
+                                                        saveLocalDraft({ shifts, annexes, horsEspeces, comptageReel, notes, systemRendementPrev: v });
+                                                    },
+                                                    'systemRendementPrev'
+                                                )}
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-cyan-600 pointer-events-none">DH</span>
+                                        </div>
+                                        <div className="text-[10px] text-gray-400">
+                                            Saisissez le total imprimé sur le rapport de fin de journée Istiraha
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* VERDICT BANNER */}
+                                {Number(systemRendementPrev) > 0 ? (
+                                    <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all shadow-sm ${
+                                        isSystemJPrevOk
+                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                                            : 'bg-rose-50 border-rose-300 text-rose-950'
+                                    }`}>
+                                        <div className="flex items-start sm:items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                                isSystemJPrevOk ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                                            }`}>
+                                                {isSystemJPrevOk ? <CheckCheck size={22} /> : <AlertTriangle size={22} />}
+                                            </div>
+                                            <div>
+                                                <div className="font-black text-sm uppercase tracking-wide">
+                                                    {isSystemJPrevOk
+                                                        ? '✅ CONTRÔLE VALIDÉ — 100% CONFORME (ÉCART : 0,00 DH)'
+                                                        : '⚠️ ÉCART DÉTECTÉ ENTRE LE SYSTÈME ET LA PISTE'
+                                                    }
+                                                </div>
+                                                <div className="text-xs opacity-90 mt-0.5 leading-relaxed">
+                                                    {isSystemJPrevOk
+                                                        ? 'Le total reconstitué des 3 shifts piste correspond au centime près au chiffre d\'affaires édité par le système Istiraha.'
+                                                        : ecartSystemeJPrev > 0
+                                                            ? `Le système Istiraha affiche +${(Number(ecartSystemeJPrev) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH de plus que les 3 shifts déclarés.`
+                                                            : `Les 3 shifts déclarés dépassent le système de ${(Math.abs(Number(ecartSystemeJPrev)) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH.`
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="text-right shrink-0 bg-white/70 px-4 py-2.5 rounded-xl border border-black/5">
+                                            <span className="text-[10px] uppercase font-bold text-gray-500 block">Écart Système - Piste</span>
+                                            <span className={`font-mono font-black text-lg ${
+                                                isSystemJPrevOk ? 'text-emerald-700' : 'text-rose-700'
+                                            }`}>
+                                                {ecartSystemeJPrev >= 0 ? '+' : ''}{(Number(ecartSystemeJPrev) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                            </span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="p-4 bg-white rounded-xl border border-dashed border-gray-300 text-xs text-gray-500 flex items-center gap-2.5">
+                                        <Info size={16} className="text-cyan-600 shrink-0" />
+                                        <span>
+                                            Veuillez renseigner le <strong>Montant Total Rapport Système Istiraha</strong> ci-dessus pour calculer et valider l'écart avec les 3 shifts.
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* FOOTER ACTIONS */}
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-gray-100">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveControlTab('cash_control')}
+                                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all cursor-pointer"
+                                >
+                                    <Banknote size={15} />
+                                    <span>← Retour à l'Arrêté de Recette & Caisse</span>
+                                </button>
+
+                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={handlePrintCurrentDay}
+                                        className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-gray-700 hover:text-gray-900 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all cursor-pointer shadow-2xs"
+                                    >
+                                        <Printer size={14} />
+                                        <span>Imprimer fiche A4</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveControl}
+                                        disabled={savingData}
+                                        className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
+                                    >
+                                        {savingData ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                        <span>Enregistrer le contrôle</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
