@@ -26,7 +26,11 @@ export const exportRevenueControlToExcel = async (controlData) => {
         totalHorsEspeces = 0,
         soldeTheorique = 0,
         ecart = 0,
-        notes = ''
+        notes = '',
+        systemRendementPrev = 0,
+        totalReconstitueJPrev = 0,
+        ecartSystemeJPrev = null,
+        prevDateStr = ''
     } = controlData;
 
     const ExcelJS = (await import('exceljs')).default;
@@ -133,6 +137,22 @@ export const exportRevenueControlToExcel = async (controlData) => {
     rowTotRend.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
     rowTotRend.getCell(3).numFmt = '#,##0.00 "DH"';
     sheet.mergeCells(`A${rowIndex}:B${rowIndex}`);
+    
+    if (Number(systemRendementPrev) > 0) {
+        rowIndex++;
+        const rowSys = sheet.getRow(rowIndex);
+        const isSysOk = ecartSystemeJPrev !== null && Math.abs(ecartSystemeJPrev) <= 0.05;
+        rowSys.values = [
+            `CONTRÔLE SYSTÈME (J-1: ${prevDateStr || ''})`,
+            `Reconstitué: ${Number(totalReconstitueJPrev).toFixed(2)} DH | Istiraha: ${Number(systemRendementPrev).toFixed(2)} DH`,
+            ecartSystemeJPrev,
+            isSysOk ? 'CONFORME' : 'ÉCART'
+        ];
+        rowSys.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: isSysOk ? 'FF065F46' : 'FF991B1B' } };
+        rowSys.fill = isSysOk ? SUCCESS_FILL : DANGER_FILL;
+        rowSys.getCell(3).numFmt = '#,##0.00 "DH"';
+    }
+
     rowIndex += 2;
 
     // SECTION 2 : VENTES HORS CARBURANT (ANNEXES)

@@ -19,7 +19,9 @@ import {
     Copy,
     Sparkles,
     Pencil,
-    Printer
+    Printer,
+    ShieldCheck,
+    Info
 } from 'lucide-react';
 import { DateInput } from './ui/DateInput';
 import { Modal } from './ui/Modal';
@@ -92,6 +94,17 @@ export default function RevenueControlSection({
     });
     const [comptageReel, setComptageReel] = useState(0);
     const [notes, setNotes] = useState('');
+
+    // Contrôle Rendement Total Système (00h00 à 23h59 de J-1)
+    const [systemRendementPrev, setSystemRendementPrev] = useState(0);
+    const [prevShift1Data, setPrevShift1Data] = useState({
+        amount: 0,
+        attendants: [],
+        loading: false,
+        loaded: false,
+        date: ''
+    });
+    const [showPrevShiftDetails, setShowPrevShiftDetails] = useState(false);
 
     const [isDaySaved, setIsDaySaved] = useState(false);
     const [copyingPrevious, setCopyingPrevious] = useState(false);
@@ -183,6 +196,72 @@ export default function RevenueControlSection({
         const dateObj = new Date(y, m - 1, d);
         const formatted = dateObj.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    };
+
+    // Date précédente (J-1)
+    const getPreviousDayDateStr = (dateStr) => {
+        if (!dateStr) return '';
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        dateObj.setDate(dateObj.getDate() - 1);
+        return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+    };
+
+    // Récupérer le shift 1 (00h00 à 08h00) de la veille pour le contrôle des 24h
+    const fetchPrevDayShift1 = async (targetDate) => {
+        if (!targetDate) return;
+        const prevDateStr = getPreviousDayDateStr(targetDate);
+        setPrevShift1Data(prev => ({ ...prev, loading: true, date: prevDateStr }));
+        try {
+            const { data: prevClosing, error } = await supabase
+                .from('daily_cash_closings')
+                .select('shifts_data, notes, recette_8h_j, total_rendement_piste')
+                .eq('date', prevDateStr)
+                .maybeSingle();
+
+            if (error) {
+                console.warn('Could not fetch prev day closing:', error);
+                setPrevShift1Data({
+                    amount: 0,
+                    attendants: [],
+                    loading: false,
+                    loaded: true,
+                    date: prevDateStr
+                });
+                return;
+            }
+
+            let sData = null;
+            if (prevClosing?.shifts_data && Array.isArray(prevClosing.shifts_data)) {
+                sData = prevClosing.shifts_data;
+            } else if (prevClosing?.notes) {
+                const { parsedShifts } = parseShiftsFromNotes(prevClosing.notes);
+                if (parsedShifts) sData = parsedShifts;
+            }
+
+            let s1Amount = 0;
+            let s1Attendants = [];
+            if (sData && sData.length > 0) {
+                const s1 = sData.find(s => s.id === 'shift_1') || sData[0];
+                if (s1 && Array.isArray(s1.attendants)) {
+                    s1Attendants = s1.attendants;
+                    s1Amount = s1Attendants.reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+                }
+            } else if (prevClosing?.recette_8h_j) {
+                s1Amount = Number(prevClosing.recette_8h_j) || 0;
+            }
+
+            setPrevShift1Data({
+                amount: s1Amount,
+                attendants: s1Attendants,
+                loading: false,
+                loaded: true,
+                date: prevDateStr
+            });
+        } catch (err) {
+            console.error('Error fetching prev day shift 1:', err);
+            setPrevShift1Data(prev => ({ ...prev, loading: false }));
+        }
     };
 
     // Copy attendants list from previous day with amounts set to 0
@@ -422,10 +501,50 @@ export default function RevenueControlSection({
         return (Number(comptageReel) || 0) - soldeTheoriqueEspeces;
     }, [comptageReel, soldeTheoriqueEspeces]);
 
+    // --- CONTRÔLE RENDEMENT TOTAL SYSTÈME (JOURNÉE J-1 : 00h00 à 23h59) ---
+    // Date de la veille J-1
+    const prevDateStr = useMemo(() => {
+        return getPreviousDayDateStr(selectedDate);
+    }, [selectedDate]);
+
+    // Shift 2 amount (Journée 08h-18h) sur la fiche en cours
+    const shift2Amount = useMemo(() => {
+        const s2 = shifts.find(s => s.id === 'shift_2');
+        return (s2?.attendants || []).reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+    }, [shifts]);
+
+    // Shift 3 amount (Soirée 18h-00h) sur la fiche en cours
+    const shift3Amount = useMemo(() => {
+        const s3 = shifts.find(s => s.id === 'shift_3');
+        return (s3?.attendants || []).reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+    }, [shifts]);
+
+    // Total Reconstitué Piste de la veille J-1 (00h00 à 23h59) :
+    // = Shift 1 Nuit Veille (00h-08h) + Shift 2 Journée (08h-18h) + Shift 3 Soirée (18h-00h)
+    const totalReconstitueJPrev = useMemo(() => {
+        return (Number(prevShift1Data.amount) || 0) + shift2Amount + shift3Amount;
+    }, [prevShift1Data.amount, shift2Amount, shift3Amount]);
+
+    // Écart Contrôle Système Istiraha vs Piste Reconstituée
+    const ecartSystemeJPrev = useMemo(() => {
+        const sysVal = Number(systemRendementPrev) || 0;
+        if (sysVal === 0) return null;
+        return sysVal - totalReconstitueJPrev;
+    }, [systemRendementPrev, totalReconstitueJPrev]);
+
+    const isSystemJPrevOk = useMemo(() => {
+        return ecartSystemeJPrev !== null && Math.abs(ecartSystemeJPrev) <= 0.05;
+    }, [ecartSystemeJPrev]);
+
     // Save draft locally
     const saveLocalDraft = (stateToSave) => {
         try {
-            localStorage.setItem(`draft_revenue_control_${selectedDate}`, JSON.stringify(stateToSave));
+            const dataWithSystem = {
+                ...stateToSave,
+                systemRendementPrev: Number(systemRendementPrev) || 0,
+                prevShift1Amount: Number(prevShift1Data.amount) || 0
+            };
+            localStorage.setItem(`draft_revenue_control_${selectedDate}`, JSON.stringify(dataWithSystem));
         } catch (e) {
             console.error("Error saving draft to local storage:", e);
         }
@@ -435,6 +554,9 @@ export default function RevenueControlSection({
     const fetchDataForDate = async (ignoreDraft = false) => {
         setLoadingData(true);
         try {
+            // Toujours récupérer le Shift 1 (00h-08h) de la veille J-1 pour le contrôle
+            await fetchPrevDayShift1(selectedDate);
+
             // Query database first to know if the day is already recorded
             const { data: closing, error } = await supabase
                 .from('daily_cash_closings')
@@ -494,6 +616,13 @@ export default function RevenueControlSection({
                 });
 
                 setComptageReel(Number(closing.comptage_espece_total) || 0);
+                setSystemRendementPrev(Number(closing.total_rendement_j_prev) || 0);
+
+                // Si recette_8h_j_prev est déjà sauvegardé en base pour ce jour, on peut l'utiliser
+                if (closing.recette_8h_j_prev && Number(closing.recette_8h_j_prev) > 0) {
+                    setPrevShift1Data(prev => ({ ...prev, amount: Number(closing.recette_8h_j_prev) }));
+                }
+
                 const { cleanNotes } = parseShiftsFromNotes(closing.notes);
                 setNotes(cleanNotes || '');
             } else {
@@ -502,6 +631,7 @@ export default function RevenueControlSection({
                 setShifts(DEFAULT_SHIFTS);
                 setAnnexes({ shop_cafe: 0, sce_bosch: 0, lubrifiant: 0 });
                 setHorsEspeces({ tpe: 0, petrom_card: 0, bon_ste: 0, bon_sntl: 0 });
+                setSystemRendementPrev(0);
                 setNotes('');
 
                 // Try to auto-fetch cash counting for the day
@@ -532,6 +662,10 @@ export default function RevenueControlSection({
                     if (parsed.annexes) setAnnexes(parsed.annexes);
                     if (parsed.horsEspeces) setHorsEspeces(parsed.horsEspeces);
                     if (parsed.comptageReel !== undefined) setComptageReel(parsed.comptageReel);
+                    if (parsed.systemRendementPrev !== undefined) setSystemRendementPrev(parsed.systemRendementPrev);
+                    if (parsed.prevShift1Amount !== undefined && Number(parsed.prevShift1Amount) > 0) {
+                        setPrevShift1Data(prev => ({ ...prev, amount: Number(parsed.prevShift1Amount) }));
+                    }
                     if (parsed.notes !== undefined) setNotes(parsed.notes);
                 } catch (e) {
                     console.error("Error parsing local draft:", e);
@@ -720,8 +854,8 @@ export default function RevenueControlSection({
                 date: selectedDate,
                 total_rendement_piste: totalRendementPiste,
                 recette_8h_j: totalRendementPiste, // For legacy compatibility
-                recette_8h_j_prev: 0,
-                total_rendement_j_prev: 0,
+                recette_8h_j_prev: Number(prevShift1Data.amount) || 0,
+                total_rendement_j_prev: Number(systemRendementPrev) || 0,
                 shop_cafe: Number(annexes.shop_cafe) || 0,
                 sce_bosch: Number(annexes.sce_bosch) || 0,
                 lubrifiant: Number(annexes.lubrifiant) || 0,
@@ -749,8 +883,8 @@ export default function RevenueControlSection({
                     const fallbackPayload = {
                         date: selectedDate,
                         recette_8h_j: totalRendementPiste,
-                        recette_8h_j_prev: 0,
-                        total_rendement_j_prev: 0,
+                        recette_8h_j_prev: Number(prevShift1Data.amount) || 0,
+                        total_rendement_j_prev: Number(systemRendementPrev) || 0,
                         shop_cafe: Number(annexes.shop_cafe) || 0,
                         sce_bosch: Number(annexes.sce_bosch) || 0,
                         lubrifiant: Number(annexes.lubrifiant) || 0,
@@ -809,7 +943,11 @@ export default function RevenueControlSection({
                 totalHorsEspeces: totalHorsEspeces,
                 soldeTheorique: soldeTheoriqueEspeces,
                 ecart: ecartFinal,
-                notes
+                notes,
+                systemRendementPrev: Number(systemRendementPrev) || 0,
+                totalReconstitueJPrev,
+                ecartSystemeJPrev,
+                prevDateStr
             });
             showSuccess('Export Excel généré avec succès !');
         } catch (err) {
@@ -834,7 +972,11 @@ export default function RevenueControlSection({
             totalHorsEspeces: totalHorsEspeces,
             soldeTheorique: soldeTheoriqueEspeces,
             ecart: ecartFinal,
-            notes
+            notes,
+            systemRendementPrev: Number(systemRendementPrev) || 0,
+            totalReconstitueJPrev,
+            ecartSystemeJPrev,
+            prevDateStr
         });
     };
 
@@ -1344,6 +1486,195 @@ export default function RevenueControlSection({
                                                 </div>
                                             );
                                         })}
+                                    </div>
+                                </div>
+
+                                {/* BLOC CONTRÔLE DU RENDEMENT TOTAL SYSTÈME (00h00 à 23h59 — JOURNÉE J-1) */}
+                                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-indigo-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] space-y-4 relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-indigo-500 to-purple-600"></div>
+
+                                    {/* En-tête */}
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-gray-100 pb-3">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                                                <ShieldCheck size={18} />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-sm text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                                                    Contrôle Rendement Total Système (00h00 à 23h59)
+                                                </h4>
+                                                <p className="text-[11px] text-gray-500">
+                                                    Rapprochement de la journée complète de la veille (J-1 : <span className="font-semibold text-gray-700">{formatDisplayDate(prevDateStr)}</span>)
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Actions & Badge */}
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => fetchPrevDayShift1(selectedDate)}
+                                                disabled={prevShift1Data.loading}
+                                                className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg border border-indigo-200 transition-all cursor-pointer disabled:opacity-50"
+                                                title="Actualiser le Shift 1 de la veille"
+                                            >
+                                                <RefreshCw size={12} className={prevShift1Data.loading ? 'animate-spin' : ''} />
+                                                <span>Actualiser J-1</span>
+                                            </button>
+                                            <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">
+                                                Piste Reconstituée : {totalReconstitueJPrev.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Formule explicative */}
+                                    <div className="text-[11px] text-indigo-900 bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100 flex items-start gap-2">
+                                        <Info size={14} className="text-indigo-600 shrink-0 mt-0.5" />
+                                        <div>
+                                            <span className="font-bold">Règle de reconstitution des 24h (00h00 à 23h59) :</span>{' '}
+                                            Shift Nuit (00h00 à 08h00 relevé à J-1) + Shift Journée (08h00 à 18h00) + Shift Soirée (18h00 à 00h00).
+                                        </div>
+                                    </div>
+
+                                    {/* Les 3 Blocs de Shifts composant les 24h de J-1 */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        {/* Shift 1 Nuit Veille */}
+                                        <div className="p-3 bg-indigo-50/30 rounded-xl border border-indigo-100 space-y-1.5">
+                                            <div className="flex justify-between items-center text-[11px]">
+                                                <span className="font-bold text-indigo-900">Shift 1 : Nuit (Veille J-1)</span>
+                                                <span className="text-[10px] text-indigo-600 font-mono bg-white px-1.5 py-0.5 rounded border border-indigo-100">00h00 - 08h00</span>
+                                            </div>
+                                            <div className="flex justify-between items-end">
+                                                <span className="font-mono font-bold text-sm text-indigo-700">
+                                                    {formatNumber(prevShift1Data.amount)} DH
+                                                </span>
+                                                {prevShift1Data.attendants && prevShift1Data.attendants.length > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowPrevShiftDetails(!showPrevShiftDetails)}
+                                                        className="text-[10px] text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                                                    >
+                                                        {showPrevShiftDetails ? 'Masquer' : `${prevShift1Data.attendants.length} pompiste(s)`}
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="text-[10px] text-gray-500 truncate">
+                                                {prevShift1Data.loading ? 'Chargement...' : `Date : ${prevDateStr}`}
+                                            </div>
+                                        </div>
+
+                                        {/* Shift 2 Journée */}
+                                        <div className="p-3 bg-amber-50/30 rounded-xl border border-amber-100 space-y-1.5">
+                                            <div className="flex justify-between items-center text-[11px]">
+                                                <span className="font-bold text-amber-900">Shift 2 : Journée</span>
+                                                <span className="text-[10px] text-amber-600 font-mono bg-white px-1.5 py-0.5 rounded border border-amber-100">08h00 - 18h00</span>
+                                            </div>
+                                            <div className="font-mono font-bold text-sm text-amber-700">
+                                                {formatNumber(shift2Amount)} DH
+                                            </div>
+                                            <div className="text-[10px] text-gray-500">
+                                                Fiche en cours
+                                            </div>
+                                        </div>
+
+                                        {/* Shift 3 Soirée */}
+                                        <div className="p-3 bg-purple-50/30 rounded-xl border border-purple-100 space-y-1.5">
+                                            <div className="flex justify-between items-center text-[11px]">
+                                                <span className="font-bold text-purple-900">Shift 3 : Soirée</span>
+                                                <span className="text-[10px] text-purple-600 font-mono bg-white px-1.5 py-0.5 rounded border border-purple-100">18h00 - 00h00</span>
+                                            </div>
+                                            <div className="font-mono font-bold text-sm text-purple-700">
+                                                {formatNumber(shift3Amount)} DH
+                                            </div>
+                                            <div className="text-[10px] text-gray-500">
+                                                Fiche en cours
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Détail déroulant des pompistes du Shift 1 de la veille */}
+                                    {showPrevShiftDetails && prevShift1Data.attendants && prevShift1Data.attendants.length > 0 && (
+                                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs space-y-1.5">
+                                            <div className="font-bold text-gray-700 text-[11px] uppercase tracking-wider mb-1">
+                                                Pompistes du Shift Nuit ({prevDateStr}) :
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                                {prevShift1Data.attendants.map((att, idx) => (
+                                                    <div key={idx} className="flex justify-between items-center bg-white p-1.5 px-2.5 rounded border border-gray-100">
+                                                        <span className="font-medium text-gray-800">{att.attendantName || 'Pompiste'}</span>
+                                                        <span className="font-mono font-bold text-gray-900">{formatNumber(att.amount)} DH</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Saisie Rapport Système Istiraha et Comparaison */}
+                                    <div className="p-4 bg-gray-50/80 rounded-xl border border-gray-200 space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
+                                                    Rapport Rendement Système Istiraha (00h00 - 23h59)
+                                                </label>
+                                                <span className="text-[10px] text-gray-500">
+                                                    Montant total prévu sur le rapport Istiraha pour la journée du {formatDisplayDate(prevDateStr)}
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="relative w-full sm:w-56">
+                                                <input
+                                                    step="0.01"
+                                                    placeholder="ex: 341 230.18"
+                                                    className="w-full pr-9 pl-3 py-2 text-sm font-mono font-bold text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-2xs"
+                                                    {...getNumberInputProps(
+                                                        systemRendementPrev,
+                                                        (v) => setSystemRendementPrev(v),
+                                                        'systemRendementPrev'
+                                                    )}
+                                                />
+                                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">DH</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Résultat du contrôle & Écart */}
+                                        {Number(systemRendementPrev) > 0 ? (
+                                            <div className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                                                isSystemJPrevOk
+                                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                                                    : 'bg-rose-50 border-rose-200 text-rose-900'
+                                            }`}>
+                                                <div className="flex items-center gap-2">
+                                                    <CheckCircle2 size={18} className={isSystemJPrevOk ? 'text-emerald-600' : 'text-rose-600'} />
+                                                    <div>
+                                                        <div className="font-bold text-xs uppercase tracking-wider">
+                                                            {isSystemJPrevOk ? 'Contrôle Validé — 100% Conforme' : 'Écart Détecté'}
+                                                        </div>
+                                                        <div className="text-[11px] opacity-90">
+                                                            {isSystemJPrevOk
+                                                                ? 'Le total des 3 shifts (Piste) correspond exactement au montant prévu du rapport Istiraha.'
+                                                                : ecartSystemeJPrev > 0
+                                                                    ? `Le rapport système est supérieur à la piste de +${formatNumber(ecartSystemeJPrev)} DH.`
+                                                                    : `Le total piste est supérieur au système de ${formatNumber(ecartSystemeJPrev)} DH.`
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-right sm:shrink-0">
+                                                    <span className="text-[10px] uppercase font-bold block opacity-75">Écart Système / Piste</span>
+                                                    <span className="font-mono font-black text-sm">
+                                                        {ecartSystemeJPrev >= 0 ? '+' : ''}{formatNumber(ecartSystemeJPrev)} DH
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-[11px] text-gray-500 italic bg-white p-2.5 rounded-lg border border-gray-200 flex items-center gap-2">
+                                                <Info size={14} className="text-gray-400 shrink-0" />
+                                                <span>
+                                                    Saisissez le montant total du rapport Istiraha ci-dessus (ex: 341 230,18 DH) pour valider l'écart avec les 3 shifts.
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

@@ -34,8 +34,15 @@ export const printRevenueControlSheet = (controlData) => {
         totalHorsEspeces = 0,
         soldeTheorique = 0,
         ecart = 0,
-        notes = ''
+        notes = '',
+        systemRendementPrev = 0,
+        totalReconstitueJPrev = 0,
+        ecartSystemeJPrev = null,
+        prevDateStr = ''
     } = controlData;
+
+    const hasSystemControl = Number(systemRendementPrev) > 0;
+    const isSystemOk = hasSystemControl && ecartSystemeJPrev !== null && Math.abs(ecartSystemeJPrev) <= 0.05;
 
     const isOk = Math.abs(ecart) <= 0.50;
     const formattedDate = formatFrenchDate(date);
@@ -522,6 +529,20 @@ export const printRevenueControlSheet = (controlData) => {
                             ${shiftsHtml}
                         </tbody>
                     </table>
+                    ${hasSystemControl ? `
+                    <div style="margin-top: 10px; padding: 10px 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 11px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 4px;">
+                            <span style="color: #1e293b; text-transform: uppercase;">Contrôle Rendement Total Système (00h00 à 23h59) — Veille ${prevDateStr}</span>
+                            <span style="color: ${isSystemOk ? '#059669' : '#dc2626'}; font-family: monospace;">
+                                Écart : ${ecartSystemeJPrev >= 0 ? '+' : ''}${formatPrice(ecartSystemeJPrev)} (${isSystemOk ? '100% Conforme' : 'Écart Détecté'})
+                            </span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; color: #475569; font-size: 10px;">
+                            <span>Piste Reconstituée (3 shifts) : <strong style="font-family: monospace; color: #1e293b;">${formatPrice(totalReconstitueJPrev)}</strong></span>
+                            <span>Rapport Système Istiraha : <strong style="font-family: monospace; color: #1e293b;">${formatPrice(systemRendementPrev)}</strong></span>
+                        </div>
+                    </div>
+                    ` : ''}
                 </div>
 
                 <!-- DUAL GRID : SECTION 2 (ANNEXES) & SECTION 3 (HORS ESPÈCES) -->
