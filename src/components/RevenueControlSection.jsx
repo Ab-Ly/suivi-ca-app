@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
     Save, 
     Trash2, 
@@ -14,6 +14,7 @@ import {
     Loader2,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     Filter,
     CheckCircle2,
     Copy,
@@ -136,6 +137,24 @@ export default function RevenueControlSection({
     const [showAttendantPrintModal, setShowAttendantPrintModal] = useState(false);
     const [attendantPrintName, setAttendantPrintName] = useState('');
     const [attendantPrintShift, setAttendantPrintShift] = useState('');
+
+    // Menu Déroulant Impression
+    const [isPrintMenuOpen, setIsPrintMenuOpen] = useState(false);
+    const printMenuRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (printMenuRef.current && !printMenuRef.current.contains(event.target)) {
+                setIsPrintMenuOpen(false);
+            }
+        };
+        if (isPrintMenuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isPrintMenuOpen]);
 
     // History Server-Side Pagination & Filtering
     const [historyPage, setHistoryPage] = useState(1);
@@ -1230,115 +1249,157 @@ export default function RevenueControlSection({
                         </div>
 
                         {/* Date Navigation Bar & Action Buttons */}
-                        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3 pt-3 border-t border-gray-100">
-                            {/* Date Picker + Quick Navigation buttons */}
-                            <div className="flex flex-wrap items-center gap-1.5 bg-gray-50/80 p-1.5 rounded-2xl border border-gray-200/80">
+                        <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3 pt-3 border-t border-gray-100">
+                            {/* Date Picker + Quick Navigation buttons (Toujours sur une seule ligne) */}
+                            <div className="inline-flex items-center gap-1 bg-gray-50/90 p-1.5 rounded-2xl border border-gray-200/80 shrink-0 self-start xl:self-auto shadow-2xs">
                                 <button
                                     type="button"
                                     onClick={handlePrevDay}
-                                    className="flex items-center gap-1 px-2.5 py-2 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100/80 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                    className="flex items-center gap-0.5 px-2.5 py-1.5 text-xs font-bold text-gray-700 bg-white hover:bg-gray-100 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-2xs active:scale-95"
                                     title="Aller au jour précédent (J-1)"
                                 >
                                     <ChevronLeft size={14} />
                                     <span>J-1</span>
                                 </button>
 
-                                <div className="w-36 sm:w-40">
+                                <div className="w-32 sm:w-36">
                                     <DateInput
                                         value={selectedDate}
                                         onChange={(e) => setSelectedDate(e.target.value)}
-                                        className="w-full"
+                                        className="w-full text-xs font-semibold"
                                     />
                                 </div>
 
                                 <button
                                     type="button"
                                     onClick={handleNextDay}
-                                    className="flex items-center gap-1 px-2.5 py-2 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100/80 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                    className="flex items-center gap-0.5 px-2.5 py-1.5 text-xs font-bold text-gray-700 bg-white hover:bg-gray-100 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-2xs active:scale-95"
                                     title="Aller au jour suivant (J+1)"
                                 >
                                     <span>J+1</span>
                                     <ChevronRight size={14} />
                                 </button>
 
+                                <div className="h-5 w-px bg-gray-200 mx-0.5 hidden sm:block"></div>
+
                                 <button
                                     type="button"
                                     onClick={handleToday}
-                                    className="px-2.5 py-2 text-xs font-semibold text-cyan-700 bg-cyan-50 hover:bg-cyan-100/80 rounded-xl border border-cyan-200 transition-all cursor-pointer shadow-2xs"
+                                    className="px-2.5 py-1.5 text-xs font-bold text-cyan-700 bg-cyan-50/90 hover:bg-cyan-100 rounded-xl border border-cyan-200/90 transition-all cursor-pointer shadow-2xs"
                                     title="Revenir à aujourd'hui"
                                 >
                                     Aujourd'hui
                                 </button>
                             </div>
 
-                            {/* Action Buttons */}
-                            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
-                                {/* Option: Reprendre les pompistes de la veille (J-1) */}
-                                <button
-                                    type="button"
-                                    onClick={handleCopyPreviousDayAttendants}
-                                    disabled={copyingPrevious || loadingData}
-                                    className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/80 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
-                                    title="Reprendre les mêmes pompistes que la veille avec montants à 0 DH"
-                                >
-                                    {copyingPrevious ? <Loader2 size={14} className="animate-spin text-indigo-600" /> : <Copy size={14} className="text-indigo-600" />}
-                                    <span>{copyingPrevious ? 'Copie...' : 'Équipe de la veille'}</span>
-                                </button>
+                            {/* Action Buttons Toolbar - Groupés & Harmonisés */}
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                {/* Outils de saisie */}
+                                {!isDaySaved && (
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyPreviousDayAttendants}
+                                        disabled={copyingPrevious || loadingData}
+                                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+                                        title="Reprendre les mêmes pompistes que la veille avec montants à 0 DH"
+                                    >
+                                        {copyingPrevious ? <Loader2 size={13} className="animate-spin text-indigo-600" /> : <Copy size={13} className="text-indigo-600" />}
+                                        <span className="hidden sm:inline">{copyingPrevious ? 'Copie...' : 'Équipe veille'}</span>
+                                    </button>
+                                )}
 
-                                {/* Reset Button */}
                                 <button
                                     type="button"
                                     onClick={handleReset}
                                     disabled={loadingData || savingData}
-                                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-rose-200 text-rose-600 bg-rose-50/40 hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
+                                    className="inline-flex items-center gap-1 px-2.5 py-2 text-xs font-semibold rounded-xl border border-gray-200 text-gray-600 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
                                     title="Réinitialiser la saisie"
                                 >
-                                    <Trash2 size={14} />
+                                    <Trash2 size={13} />
                                     <span>RAZ</span>
                                 </button>
 
-                                {/* Export Excel Button */}
+                                <div className="h-6 w-px bg-gray-200 mx-0.5 hidden sm:block"></div>
+
+                                {/* Export Excel */}
                                 <button
                                     type="button"
                                     onClick={handleExportExcel}
                                     disabled={loadingData || savingData || exportingExcel}
-                                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-emerald-200 text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+                                    title="Exporter les données du contrôle sous Excel (.xlsx)"
                                 >
                                     {exportingExcel ? <Loader2 size={14} className="animate-spin text-emerald-600" /> : <FileSpreadsheet size={14} className="text-emerald-600" />}
                                     <span>Excel</span>
                                 </button>
 
-                                {/* Print Button */}
-                                <button
-                                    type="button"
-                                    onClick={handlePrintCurrentDay}
-                                    disabled={loadingData}
-                                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-sky-200 text-sky-700 bg-sky-50/80 hover:bg-sky-100/70 transition-all cursor-pointer disabled:opacity-50 shadow-xs"
-                                    title="Imprimer la fiche de contrôle du jour avec mise en page professionnelle"
-                                >
-                                    <Printer size={14} className="text-sky-600" />
-                                    <span>Imprimer Journée</span>
-                                </button>
+                                {/* Menu Déroulant Impression Unifié */}
+                                <div className="relative" ref={printMenuRef}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPrintMenuOpen(!isPrintMenuOpen)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-sky-200 text-sky-700 bg-sky-50/90 hover:bg-sky-100 transition-all cursor-pointer shadow-2xs"
+                                        title="Imprimer les documents de contrôle A4"
+                                    >
+                                        <Printer size={14} className="text-sky-600" />
+                                        <span>Imprimer</span>
+                                        <ChevronDown size={13} className={`text-sky-600 transition-transform ${isPrintMenuOpen ? 'rotate-180' : ''}`} />
+                                    </button>
 
-                                {/* Print Attendant Sheet Button */}
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAttendantPrintModal(true)}
-                                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100/70 transition-all cursor-pointer shadow-xs"
-                                    title="Imprimer une feuille de comptage et rendement pompiste A4 avec date manuelle"
-                                >
-                                    <ClipboardList size={14} className="text-indigo-600" />
-                                    <span>Fiche Pompiste</span>
-                                </button>
+                                    {isPrintMenuOpen && (
+                                        <div className="absolute right-0 top-full mt-1.5 w-64 bg-white rounded-2xl shadow-xl border border-gray-200/90 py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                            <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                                                Documents Imprimables (Format A4)
+                                            </div>
 
-                                {/* Save Button */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsPrintMenuOpen(false);
+                                                    handlePrintCurrentDay();
+                                                }}
+                                                className="w-full text-left px-3.5 py-2.5 text-xs text-gray-700 hover:bg-sky-50 hover:text-sky-900 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                            >
+                                                <div className="w-8 h-8 rounded-xl bg-sky-100 flex items-center justify-center text-sky-700 shrink-0">
+                                                    <FileText size={15} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="font-bold text-gray-900">1. Arrêté du Jour</div>
+                                                    <div className="text-[10.5px] text-gray-400 truncate">Fiche de contrôle & caisse du {selectedDate}</div>
+                                                </div>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsPrintMenuOpen(false);
+                                                    setShowAttendantPrintModal(true);
+                                                }}
+                                                className="w-full text-left px-3.5 py-2.5 text-xs text-gray-700 hover:bg-indigo-50 hover:text-indigo-900 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-gray-50"
+                                            >
+                                                <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 shrink-0">
+                                                    <ClipboardList size={15} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="font-bold text-gray-900">2. Fiche Rendement Pompiste</div>
+                                                    <div className="text-[10.5px] text-gray-400 truncate">Feuille A4 vierge ou pré-remplie (date manuelle)</div>
+                                                </div>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="h-6 w-px bg-gray-200 mx-0.5 hidden sm:block"></div>
+
+                                {/* Bouton Primaire d'Enregistrement */}
                                 <button
                                     type="submit"
                                     disabled={loadingData || savingData}
-                                    className="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50"
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-md hover:shadow-lg transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                                    title={isDaySaved ? `Mettre à jour le contrôle du ${selectedDate}` : `Enregistrer le contrôle du ${selectedDate}`}
                                 >
-                                    {savingData ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                                    <span>{savingData ? 'Enregistrement...' : (isDaySaved ? `Mettre à jour (${selectedDate})` : `Enregistrer (${selectedDate})`)}</span>
+                                    {savingData ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                    <span>{savingData ? 'Enregistrement...' : (isDaySaved ? 'Mettre à jour' : 'Enregistrer')}</span>
                                 </button>
                             </div>
                         </div>
