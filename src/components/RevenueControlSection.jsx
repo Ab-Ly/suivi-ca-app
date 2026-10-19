@@ -1011,11 +1011,16 @@ export default function RevenueControlSection({
         });
     };
 
-    // Imprimer la fiche de comptage & rendement pompiste (Date Manuelle & Justification)
-    const handlePrintAttendantSheet = (attName = '', sLabel = '') => {
+    // Imprimer la fiche de comptage & rendement par TAG pompiste (Date Manuelle & Justification)
+    const handlePrintAttendantSheet = (attName = '', sLabel = '', amount = '') => {
+        let formattedAmount = '';
+        if (amount && Number(amount) > 0) {
+            formattedAmount = Number(amount).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
         printAttendantYieldSheet({
             attendantName: attName,
             shiftLabel: sLabel,
+            tagAmount: formattedAmount,
             stationName: 'STATION SERVICE PETROM'
         });
     };
@@ -1381,8 +1386,8 @@ export default function RevenueControlSection({
                                                     <ClipboardList size={15} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="font-bold text-gray-900">2. Fiche Rendement Pompiste</div>
-                                                    <div className="text-[10.5px] text-gray-400 truncate">Feuille A4 vierge ou pré-remplie (date manuelle)</div>
+                                                    <div className="font-bold text-gray-900">2. Fiche Rendement par TAG</div>
+                                                    <div className="text-[10.5px] text-gray-400 truncate">Feuille A4 vierge ou au nom du pompiste (date manuelle)</div>
                                                 </div>
                                             </button>
                                         </div>
@@ -1623,9 +1628,9 @@ export default function RevenueControlSection({
                                                                     {att.attendantName && (
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => handlePrintAttendantSheet(att.attendantName, shift.label)}
+                                                                            onClick={() => handlePrintAttendantSheet(att.attendantName, shift.label, att.amount)}
                                                                             className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                                                                            title={`Imprimer la fiche de comptage pour ${att.attendantName}`}
+                                                                            title={`Imprimer la fiche de rendement TAG pour ${att.attendantName}`}
                                                                         >
                                                                             <Printer size={14} />
                                                                         </button>
@@ -2783,11 +2788,11 @@ export default function RevenueControlSection({
                 </form>
             </Modal>
 
-            {/* MODALE D'IMPRESSION FICHE DE COMPTAGE & RENDEMENT POMPISTE */}
+            {/* MODALE D'IMPRESSION FICHE DE COMPTAGE & RENDEMENT PAR TAG */}
             <Modal
                 isOpen={showAttendantPrintModal}
                 onClose={() => setShowAttendantPrintModal(false)}
-                title="Imprimer Feuille de Comptage & Rendement Pompiste"
+                title="Imprimer Feuille de Rendement par TAG Pompiste"
                 maxWidth="max-w-lg"
             >
                 <div className="space-y-4">
@@ -2795,10 +2800,10 @@ export default function RevenueControlSection({
                     <div className="bg-indigo-50/70 border border-indigo-200/80 p-3.5 rounded-xl text-xs text-indigo-900 space-y-1">
                         <div className="font-bold flex items-center gap-1.5">
                             <ClipboardList size={15} className="text-indigo-600 shrink-0" />
-                            <span>Document officiel de traçabilité A4</span>
+                            <span>Document officiel de traçabilité A4 · Rendement par TAG</span>
                         </div>
                         <p className="text-indigo-800 leading-relaxed text-[11px]">
-                            Feuille officielle à émarger avec date à renseigner manuellement au stylo, relevé des volucompteurs, ventes annexes, justificatifs hors-espèces, décompte du billetage physique et 3 signatures (Pompiste, Chef de piste, Direction).
+                            Feuille officielle à émarger pour le contrôle de caisse basé sur le <b>rendement par TAG</b> (badge automate Istiraha) : date manuelle, N° de TAG, déclaration carburants, ventes annexes, justificatifs hors-espèces, décompte du billetage et 3 signatures.
                         </p>
                     </div>
 

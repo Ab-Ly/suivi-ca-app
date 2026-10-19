@@ -1,15 +1,17 @@
 /**
- * Fiche de Comptage & Rendement Pompiste (Imprimable A4 - 1 Seule Page Garantie)
- * Optimisée pour tenir strictement sur 1 seule feuille A4 sans débordement,
- * avec une excellente lisibilité et des cases adaptées à l'écriture manuelle.
+ * Fiche de Comptage & Justification du Rendement par TAG (Imprimable A4 - 1 Seule Page Garantie)
+ * Spécialement adaptée au contrôle par TAG électronique (badge pompiste / système Istiraha).
+ * Permet l'émargement manuscrit de la date, du N° de TAG, des volumes/montants TAG,
+ * des ventes annexes, des justificatifs hors-espèces et du billetage.
  */
 
 export const printAttendantYieldSheet = (options = {}) => {
     const {
         attendantName = '',
         shiftLabel = '',
-        stationName = 'STATION SERVICE PETROM',
-        defaultRowsCount = 5
+        tagNumber = '',
+        tagAmount = '',
+        stationName = 'STATION SERVICE PETROM'
     } = options;
 
     const printWindow = window.open('', '_blank');
@@ -18,29 +20,12 @@ export const printAttendantYieldSheet = (options = {}) => {
         return;
     }
 
-    // 5 lignes de volucompteurs (P1 à P5)
-    let indexRowsHtml = '';
-    for (let i = 1; i <= defaultRowsCount; i++) {
-        const defaultProduct = i <= 3 ? 'Gasoil' : (i <= 4 ? 'SSP (Super)' : '');
-        indexRowsHtml += `
-            <tr class="write-row">
-                <td class="cell-center font-bold">P${i}</td>
-                <td class="cell-product font-semibold">${defaultProduct}</td>
-                <td class="cell-blank"></td>
-                <td class="cell-blank"></td>
-                <td class="cell-blank"></td>
-                <td class="cell-blank"></td>
-                <td class="cell-blank"></td>
-            </tr>
-        `;
-    }
-
     const htmlContent = `
         <!DOCTYPE html>
         <html lang="fr">
         <head>
             <meta charset="UTF-8">
-            <title>Fiche de Rendement & Comptage Pompiste A4</title>
+            <title>Fiche de Rendement TAG & Comptage Pompiste A4</title>
             <style>
                 @page {
                     size: A4 portrait;
@@ -60,7 +45,7 @@ export const printAttendantYieldSheet = (options = {}) => {
                     -webkit-font-smoothing: antialiased;
                 }
 
-                /* Barre de prévisualisation (masquée à l'impression) */
+                /* Barre de contrôle prévisualisation (non imprimée) */
                 .no-print-bar {
                     background: #0f172a;
                     color: white;
@@ -94,7 +79,7 @@ export const printAttendantYieldSheet = (options = {}) => {
                 }
                 .btn-close:hover { background: #334155; }
 
-                /* Conteneur Feuille A4 */
+                /* Conteneur Feuille A4 STRICTEMENT 1 SEULE PAGE */
                 .sheet-container {
                     width: 100%;
                     max-width: 198mm;
@@ -127,13 +112,13 @@ export const printAttendantYieldSheet = (options = {}) => {
                     }
                 }
 
-                /* Anti-saut de page sur tous les blocs */
+                /* Anti-saut de page sur tous les éléments */
                 .header-table, .meta-box, table.data-table, .two-columns, .recap-box, .signatures-grid {
                     page-break-inside: avoid !important;
                     break-inside: avoid !important;
                 }
 
-                /* 1. EN-TÊTE */
+                /* 1. EN-TÊTE OFFICIEL */
                 .header-table {
                     width: 100%;
                     border-collapse: collapse;
@@ -183,7 +168,7 @@ export const printAttendantYieldSheet = (options = {}) => {
                     color: #0f172a;
                 }
 
-                /* 2. CADRE D'IDENTIFICATION & DATE MANUELLE */
+                /* 2. CADRE IDENTIFICATION POMPISTE & TAG */
                 .meta-box {
                     border: 1.5px solid #0f172a;
                     background: #f8fafc;
@@ -222,6 +207,16 @@ export const printAttendantYieldSheet = (options = {}) => {
                     letter-spacing: 1px;
                     display: inline-flex;
                     align-items: center;
+                }
+                .tag-badge-box {
+                    border: 1.5px solid #1e3a8a;
+                    background: #eff6ff;
+                    padding: 3px 10px;
+                    font-weight: 900;
+                    font-size: 11px;
+                    color: #1e3a8a;
+                    border-radius: 3px;
+                    letter-spacing: 0.5px;
                 }
                 .checkbox-item {
                     display: inline-flex;
@@ -285,22 +280,22 @@ export const printAttendantYieldSheet = (options = {}) => {
                     letter-spacing: 0.2px;
                 }
                 tr.write-row td {
-                    height: 22px; /* Hauteur nette et calibrée */
+                    height: 23px; /* Hauteur nette et calibrée pour l'écriture */
                 }
                 .cell-center { text-align: center; }
                 .cell-right { text-align: right; }
                 .cell-blank { background: white; }
-                .cell-product { font-size: 10px; }
+                .cell-product { font-size: 10.5px; }
 
                 table.data-table tr.total-row td {
                     background: #f1f5f9;
                     font-weight: 900;
                     font-size: 10px;
                     border-top: 2px solid #0f172a;
-                    height: 23px;
+                    height: 24px;
                 }
 
-                /* 5. DEUX COLONNES HORS-ESPÈCES + BILLETAGE */
+                /* 5. DISPOSITION EN DEUX COLONNES (HORS-ESPÈCES & BILLETAGE) */
                 .two-columns {
                     display: flex;
                     gap: 8px;
@@ -343,7 +338,7 @@ export const printAttendantYieldSheet = (options = {}) => {
                     color: #0f172a;
                     border: 1px solid #0f172a;
                     border-radius: 3px;
-                    min-height: 22px;
+                    min-height: 23px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -375,7 +370,7 @@ export const printAttendantYieldSheet = (options = {}) => {
                     min-height: 14px;
                 }
 
-                /* 7. CADRES DE SIGNATURES (STRICTEMENT SUR LA MÊME PAGE) */
+                /* 7. CADRES DE SIGNATURES (STRICTEMENT SUR LA MÊME PAGE UNIQUE) */
                 .signatures-grid {
                     display: grid;
                     grid-template-columns: repeat(3, 1fr);
@@ -387,7 +382,7 @@ export const printAttendantYieldSheet = (options = {}) => {
                     background: white;
                     border-radius: 4px;
                     padding: 5px 8px;
-                    height: 68px; /* Hauteur compacte pour ne jamais déborder */
+                    height: 68px;
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
@@ -420,7 +415,7 @@ export const printAttendantYieldSheet = (options = {}) => {
             <!-- BARRE DE COMMANDE SUPÉRIEURE (NON IMPRIMÉE) -->
             <div class="no-print-bar">
                 <div>
-                    <strong style="font-size: 14px;">📄 Fiche de Comptage & Rendement Pompiste</strong>
+                    <strong style="font-size: 14px;">📄 Fiche de Rendement par TAG & Justification de Caisse</strong>
                     <span style="font-size: 12px; opacity: 0.8; margin-left: 10px;">Format A4 Portrait · 1 Seule Page Garantie</span>
                 </div>
                 <div>
@@ -436,11 +431,11 @@ export const printAttendantYieldSheet = (options = {}) => {
                     <tr>
                         <td style="width: 65%;">
                             <div class="brand-title">${stationName}</div>
-                            <div class="main-title">Fiche de Rendement & Comptage Piste</div>
-                            <div class="sub-title">Contrôle Métrologique des Index · Justification des Recettes & Clôture de Quart</div>
+                            <div class="main-title">Fiche de Rendement par TAG & Caisse Piste</div>
+                            <div class="sub-title">Contrôle du Rendement Tag Automate (Istiraha) · Justificatifs & Clôture de Quart</div>
                         </td>
                         <td class="doc-ref-box" style="width: 35%;">
-                            <div class="doc-ref-badge">TRAÇABILITÉ INTERNE & AUDIT</div>
+                            <div class="doc-ref-badge">CONTRÔLE PAR TAG POMPISTE</div>
                             <div class="fiche-number">
                                 N° FICHE : <span class="field-underline" style="width: 80px;"></span>
                             </div>
@@ -448,7 +443,7 @@ export const printAttendantYieldSheet = (options = {}) => {
                     </tr>
                 </table>
 
-                <!-- 2. CADRE D'IDENTIFICATION & DATE MANUELLE -->
+                <!-- 2. CADRE IDENTIFICATION POMPISTE & TAG -->
                 <div class="meta-box">
                     <div class="meta-row">
                         <div class="meta-field">
@@ -465,61 +460,90 @@ export const printAttendantYieldSheet = (options = {}) => {
                         </div>
                     </div>
                     <div class="meta-row" style="margin-top: 5px;">
-                        <div class="meta-field" style="flex: 1.4;">
-                            <span class="field-label">👤 Nom du Pompiste :</span>
+                        <div class="meta-field" style="flex: 1.3;">
+                            <span class="field-label">👤 Pompiste :</span>
                             <span class="field-underline" style="flex: 1; font-weight: bold; font-size: 12px; padding-left: 6px;">
                                 ${attendantName || ''}
                             </span>
                         </div>
-                        <div class="meta-field" style="flex: 0.8; margin-left: 12px;">
-                            <span class="field-label">Îlot / Pistes :</span>
-                            <span class="field-underline" style="flex: 1;"></span>
+                        <div class="meta-field" style="flex: 1.1; margin-left: 12px;">
+                            <span class="field-label">🏷️ N° TAG RFID :</span>
+                            <span class="tag-badge-box" style="flex: 1; min-height: 16px;">
+                                ${tagNumber || 'TAG-.............'}
+                            </span>
                         </div>
-                        <div class="meta-field" style="flex: 1.2; margin-left: 12px;">
+                        <div class="meta-field" style="flex: 1.1; margin-left: 12px;">
                             <span class="field-label">Chef de Piste :</span>
                             <span class="field-underline" style="flex: 1;"></span>
                         </div>
                     </div>
                 </div>
 
-                <!-- 3. SECTION 1 : VOLUCOMPTEURS / INDEX (5 POMPES P1 À P5) -->
+                <!-- 3. SECTION 1 : RENDEMENT PAR TAG CARBURANTS (SYSTÈME ISTIRAHA) -->
                 <div class="section-header">
-                    <span>1. Relevé des Compteurs Volucompteurs & Ventes Carburants</span>
-                    <span class="section-badge">Index Métrologiques de Début & Fin de Quart</span>
+                    <span>1. Rendement Carburants par TAG Pompiste (Données Système Istiraha)</span>
+                    <span class="section-badge">Rapport Édité par Tag Automate</span>
                 </div>
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th style="width: 45px;">Pompe</th>
-                            <th style="width: 140px;">Carburant</th>
-                            <th style="width: 110px;">Index Départ (Prise)</th>
-                            <th style="width: 110px;">Index Arrivée (Fin)</th>
-                            <th style="width: 90px;">Volume Vendu (L)</th>
-                            <th style="width: 80px;">Prix / L (DH)</th>
-                            <th style="width: 115px;">Montant Total (DH)</th>
+                            <th style="width: 45px;">N°</th>
+                            <th style="width: 200px;">Carburant Servi par TAG</th>
+                            <th style="width: 120px;">Volume Vendu (Litres)</th>
+                            <th style="width: 110px;">Prix / Litre (DH)</th>
+                            <th style="width: 140px;">Montant Relevé TAG (DH)</th>
+                            <th style="width: 100px;">Visa / N° Ticket</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${indexRowsHtml}
+                        <tr class="write-row">
+                            <td class="cell-center font-bold">1</td>
+                            <td class="cell-product font-bold">Gasoil</td>
+                            <td class="cell-blank"></td>
+                            <td class="cell-blank"></td>
+                            <td class="cell-blank cell-right font-bold"></td>
+                            <td class="cell-blank"></td>
+                        </tr>
+                        <tr class="write-row">
+                            <td class="cell-center font-bold">2</td>
+                            <td class="cell-product font-bold">Super Sans Plomb (SSP)</td>
+                            <td class="cell-blank"></td>
+                            <td class="cell-blank"></td>
+                            <td class="cell-blank cell-right font-bold"></td>
+                            <td class="cell-blank"></td>
+                        </tr>
+                        <tr class="write-row">
+                            <td class="cell-center font-bold">3</td>
+                            <td class="cell-product text-gray-500 italic">Autre / Étalonnage piste</td>
+                            <td class="cell-blank"></td>
+                            <td class="cell-blank"></td>
+                            <td class="cell-blank cell-right"></td>
+                            <td class="cell-blank"></td>
+                        </tr>
                         <tr class="total-row">
-                            <td colspan="4" style="text-align: right; padding-right: 10px; font-weight: 900;">SOUS-TOTAL RENDEMENT CARBURANTS (A) :</td>
-                            <td class="cell-blank cell-center" style="font-weight: 800;">.......... L</td>
-                            <td style="background: #e2e8f0;"></td>
-                            <td class="cell-blank cell-right" style="font-weight: 900; font-size: 11px;">.................... DH</td>
+                            <td colspan="4" style="text-align: right; padding-right: 12px; font-weight: 900;">
+                                TOTAL RENDEMENT BRUT PAR TAG (A) :
+                            </td>
+                            <td class="cell-blank cell-right" style="font-weight: 900; font-size: 12px; color: #1e3a8a;">
+                                ${tagAmount ? `${tagAmount} DH` : '.................... DH'}
+                            </td>
+                            <td style="background: #e2e8f0; text-align: center; font-size: 8px; font-weight: bold; color: #475569;">
+                                TICKET ISTIRAHA
+                            </td>
                         </tr>
                     </tbody>
                 </table>
 
-                <!-- 4. SECTION 2 : VENTES ANNEXES PISTE (2 LIGNES) -->
+                <!-- 4. SECTION 2 : VENTES ANNEXES PISTE (HORS-TAG) -->
                 <div class="section-header">
                     <span>2. Ventes Annexes Réalisées sur Piste (Lubrifiants, Huiles & Services)</span>
-                    <span class="section-badge">Produits Piste</span>
+                    <span class="section-badge">Hors-Automate</span>
                 </div>
                 <table class="data-table">
                     <thead>
                         <tr>
                             <th style="width: 40px;">N°</th>
-                            <th style="width: 340px;">Désignation Produit (Lubrifiant, Bidon huile, Lave-glace, Lavage, Autre)</th>
+                            <th style="width: 340px;">Désignation Produit (Bidons Huile / Lubrifiant / Lave-glace / Lavage)</th>
                             <th style="width: 85px;">Quantité</th>
                             <th style="width: 100px;">Prix Unitaire</th>
                             <th style="width: 145px;">Montant Total (DH)</th>
@@ -547,13 +571,13 @@ export const printAttendantYieldSheet = (options = {}) => {
                     </tbody>
                 </table>
 
-                <!-- 5. SECTION 3 & 4 : DEUX COLONNES (HORS-ESPÈCES & BILLETAGE) -->
+                <!-- 5. SECTION 3 & 4 : DEUX COLONNES (HORS-ESPÈCES & BILLETAGE ESPÈCES) -->
                 <div class="two-columns">
-                    <!-- HORS-ESPÈCES -->
+                    <!-- HORS-ESPÈCES COUVRANT LE TAG -->
                     <div class="col-left">
                         <div class="section-header">
-                            <span>3. Justificatifs Hors-Espèces</span>
-                            <span class="section-badge">Monétique & Bons</span>
+                            <span>3. Justificatifs Hors-Espèces (Bons & Monétique)</span>
+                            <span class="section-badge">Couvrant le TAG</span>
                         </div>
                         <table class="data-table">
                             <thead>
@@ -597,11 +621,11 @@ export const printAttendantYieldSheet = (options = {}) => {
                         </table>
                     </div>
 
-                    <!-- BILLETAGE ESPÈCES -->
+                    <!-- BILLETAGE PHYSIQUE ESPÈCES -->
                     <div class="col-right">
                         <div class="section-header">
                             <span>4. Billetage Espèces Remises</span>
-                            <span class="section-badge">Comptage</span>
+                            <span class="section-badge">Comptage Physique</span>
                         </div>
                         <table class="data-table">
                             <thead>
@@ -646,11 +670,11 @@ export const printAttendantYieldSheet = (options = {}) => {
                     </div>
                 </div>
 
-                <!-- 6. CADRE RÉCAPITULATIF & ÉCART DE CAISSE -->
+                <!-- 6. CADRE RÉCAPITULATIF & ÉCART DE CAISSE (TAG VS VERSEMENTS) -->
                 <div class="recap-box">
                     <div class="recap-grid">
                         <div>
-                            <div class="recap-item-title">Total Ventes (A + B)</div>
+                            <div class="recap-item-title">Total Ventes (TAG A + Ann. B)</div>
                             <div class="recap-item-val">........................ DH</div>
                         </div>
                         <div>
@@ -669,7 +693,7 @@ export const printAttendantYieldSheet = (options = {}) => {
 
                     <div class="ecart-zone">
                         <div style="font-weight: 900; font-size: 10px; text-transform: uppercase; color: #0f172a;">
-                            RÉSULTAT DU CONTRÔLE DE CAISSE :
+                            VERDICT DU CONTRÔLE DE CAISSE TAG :
                         </div>
                         <div class="ecart-checks">
                             <span class="checkbox-item"><span class="check-square"></span> <strong>CAISSE CONFORME (0 DH)</strong></span>
@@ -687,20 +711,20 @@ export const printAttendantYieldSheet = (options = {}) => {
                 <!-- 7. CADRES DE SIGNATURES (STRICTEMENT SUR LA MÊME PAGE UNIQUE) -->
                 <div class="signatures-grid">
                     <div class="sig-box">
-                        <div class="sig-header">1. Le Pompiste</div>
-                        <div class="sig-subtext">« Je certifie sur l'honneur l'exactitude des index de compteurs relevés et du montant versé. »</div>
+                        <div class="sig-header">1. Le Pompiste (Titulaire du TAG)</div>
+                        <div class="sig-subtext">« Je certifie sur l'honneur l'exactitude du rendement TAG déclaré et des règlements remis. »</div>
                         <div class="sig-stamp">Date & Signature :</div>
                     </div>
 
                     <div class="sig-box">
                         <div class="sig-header">2. Chef de Piste / Caissier</div>
-                        <div class="sig-subtext">« Justificatifs hors-espèces et fonds physiques comptés, vérifiés et réceptionnés en présence du pompiste. »</div>
+                        <div class="sig-subtext">« Justificatifs hors-espèces vérifiés et espèces comptées en présence du pompiste. »</div>
                         <div class="sig-stamp">Date & Signature :</div>
                     </div>
 
                     <div class="sig-box">
                         <div class="sig-header">3. Direction / Gérant</div>
-                        <div class="sig-subtext">« Vu et visé pour rapprochement comptable, vérification du stock et contrôle des recettes. »</div>
+                        <div class="sig-subtext">« Vu et visé pour rapprochement avec le rapport global du système Istiraha. »</div>
                         <div class="sig-stamp">Cachet & Signature :</div>
                     </div>
                 </div>
