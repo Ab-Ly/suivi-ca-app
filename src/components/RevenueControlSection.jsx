@@ -24,12 +24,15 @@ import {
     Info,
     Banknote,
     ArrowRight,
-    CheckCheck
+    CheckCheck,
+    FileText,
+    ClipboardList
 } from 'lucide-react';
 import { DateInput } from './ui/DateInput';
 import { Modal } from './ui/Modal';
 import { exportRevenueControlToExcel, exportRevenueControlHistoryToExcel } from '../utils/revenueControlExcelExport';
 import { printRevenueControlSheet } from '../utils/revenueControlPrint';
+import { printAttendantYieldSheet } from '../utils/attendantYieldSheetPrint';
 
 export const ATTENDANTS_LIST = [
     "BILAL ELBOUKHARY",
@@ -128,6 +131,11 @@ export default function RevenueControlSection({
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [tableError, setTableError] = useState(false);
     const [focusedField, setFocusedField] = useState(null);
+
+    // Impression Fiche Rendement & Comptage Pompiste (Date Manuelle)
+    const [showAttendantPrintModal, setShowAttendantPrintModal] = useState(false);
+    const [attendantPrintName, setAttendantPrintName] = useState('');
+    const [attendantPrintShift, setAttendantPrintShift] = useState('');
 
     // History Server-Side Pagination & Filtering
     const [historyPage, setHistoryPage] = useState(1);
@@ -984,6 +992,15 @@ export default function RevenueControlSection({
         });
     };
 
+    // Imprimer la fiche de comptage & rendement pompiste (Date Manuelle & Justification)
+    const handlePrintAttendantSheet = (attName = '', sLabel = '') => {
+        printAttendantYieldSheet({
+            attendantName: attName,
+            shiftLabel: sLabel,
+            stationName: 'STATION SERVICE PETROM'
+        });
+    };
+
     // Imprimer la fiche de contrôle d'une journée de l'historique
     const handlePrintHistoryDay = (hist) => {
         if (!hist) return;
@@ -1300,7 +1317,18 @@ export default function RevenueControlSection({
                                     title="Imprimer la fiche de contrôle du jour avec mise en page professionnelle"
                                 >
                                     <Printer size={14} className="text-sky-600" />
-                                    <span>Imprimer</span>
+                                    <span>Imprimer Journée</span>
+                                </button>
+
+                                {/* Print Attendant Sheet Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAttendantPrintModal(true)}
+                                    className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100/70 transition-all cursor-pointer shadow-xs"
+                                    title="Imprimer une feuille de comptage et rendement pompiste A4 avec date manuelle"
+                                >
+                                    <ClipboardList size={14} className="text-indigo-600" />
+                                    <span>Fiche Pompiste</span>
                                 </button>
 
                                 {/* Save Button */}
@@ -1528,6 +1556,17 @@ export default function RevenueControlSection({
                                                                             title="Supprimer ce pompiste"
                                                                         >
                                                                             <Trash2 size={14} />
+                                                                        </button>
+                                                                    )}
+
+                                                                    {att.attendantName && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handlePrintAttendantSheet(att.attendantName, shift.label)}
+                                                                            className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                                                                            title={`Imprimer la fiche de comptage pour ${att.attendantName}`}
+                                                                        >
+                                                                            <Printer size={14} />
                                                                         </button>
                                                                     )}
                                                                 </div>
@@ -2681,6 +2720,105 @@ export default function RevenueControlSection({
                         </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* MODALE D'IMPRESSION FICHE DE COMPTAGE & RENDEMENT POMPISTE */}
+            <Modal
+                isOpen={showAttendantPrintModal}
+                onClose={() => setShowAttendantPrintModal(false)}
+                title="Imprimer Feuille de Comptage & Rendement Pompiste"
+                maxWidth="max-w-lg"
+            >
+                <div className="space-y-4">
+                    {/* Explication du document */}
+                    <div className="bg-indigo-50/70 border border-indigo-200/80 p-3.5 rounded-xl text-xs text-indigo-900 space-y-1">
+                        <div className="font-bold flex items-center gap-1.5">
+                            <ClipboardList size={15} className="text-indigo-600 shrink-0" />
+                            <span>Document officiel de traçabilité A4</span>
+                        </div>
+                        <p className="text-indigo-800 leading-relaxed text-[11px]">
+                            Feuille officielle à émarger avec date à renseigner manuellement au stylo, relevé des volucompteurs, ventes annexes, justificatifs hors-espèces, décompte du billetage physique et 3 signatures (Pompiste, Chef de piste, Direction).
+                        </p>
+                    </div>
+
+                    {/* Action Rapide : Fiche Vierge */}
+                    <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl space-y-1.5">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h5 className="text-xs font-black text-gray-800 uppercase tracking-wide">Option 1 : Fiche 100% Vierge</h5>
+                                <p className="text-[11px] text-gray-500">Pour constituer un stock de feuilles imprimées à remplir sur la piste.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    handlePrintAttendantSheet('', '');
+                                    setShowAttendantPrintModal(false);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-white bg-slate-800 hover:bg-slate-900 transition-all cursor-pointer shadow-sm"
+                            >
+                                <Printer size={13} />
+                                <span>Imprimer Vierge</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Option avec Pompiste Pré-rempli */}
+                    <div className="p-3.5 bg-white border border-indigo-100 rounded-xl space-y-3 shadow-2xs">
+                        <h5 className="text-xs font-black text-indigo-950 uppercase tracking-wide">Option 2 : Fiche avec Pompiste Pré-sélectionné</h5>
+                        <div className="space-y-1">
+                            <label className="block text-[11px] font-bold text-gray-700">Nom du Pompiste :</label>
+                            <select
+                                value={attendantPrintName}
+                                onChange={(e) => setAttendantPrintName(e.target.value)}
+                                className="w-full text-xs font-semibold py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                            >
+                                <option value="">-- Choisir un pompiste --</option>
+                                {ATTENDANTS_LIST.map((name) => (
+                                    <option key={name} value={name}>{name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="block text-[11px] font-bold text-gray-700">Quart / Shift :</label>
+                            <select
+                                value={attendantPrintShift}
+                                onChange={(e) => setAttendantPrintShift(e.target.value)}
+                                className="w-full text-xs font-semibold py-2 px-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                            >
+                                <option value="">-- Laisser vierge (à cocher à la main) --</option>
+                                <option value="Shift 1 : Nuit (00h00 à 08h00)">Shift 1 : Nuit (00h00 à 08h00)</option>
+                                <option value="Shift 2 : Journée (08h00 à 18h00)">Shift 2 : Journée (08h00 à 18h00)</option>
+                                <option value="Shift 3 : Soirée (18h00 à 00h00)">Shift 3 : Soirée (18h00 à 00h00)</option>
+                            </select>
+                        </div>
+
+                        <div className="pt-2 flex justify-end">
+                            <button
+                                type="button"
+                                disabled={!attendantPrintName}
+                                onClick={() => {
+                                    handlePrintAttendantSheet(attendantPrintName, attendantPrintShift);
+                                    setShowAttendantPrintModal(false);
+                                }}
+                                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition-all cursor-pointer shadow-sm disabled:opacity-40"
+                            >
+                                <Printer size={13} />
+                                <span>Imprimer pour {attendantPrintName || 'ce pompiste'}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2 border-t border-gray-100">
+                        <button
+                            type="button"
+                            onClick={() => setShowAttendantPrintModal(false)}
+                            className="px-4 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer"
+                        >
+                            Fermer
+                        </button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );
