@@ -11,7 +11,7 @@ export const printAttendantYieldSheet = (options = {}) => {
         shiftLabel = '',
         tagNumber = '',
         tagAmount = '',
-        stationName = 'STATION SERVICE PETROM'
+        stationName = 'ISTIRAHA STATION SERVICE PEPINIERE'
     } = options;
 
     const printWindow = window.open('', '_blank');

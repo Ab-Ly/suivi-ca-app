@@ -1021,7 +1021,7 @@ export default function RevenueControlSection({
             attendantName: attName,
             shiftLabel: sLabel,
             tagAmount: formattedAmount,
-            stationName: 'STATION SERVICE PETROM'
+            stationName: 'ISTIRAHA STATION SERVICE PEPINIERE'
         });
     };
 
