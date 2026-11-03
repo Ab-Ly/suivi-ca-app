@@ -148,7 +148,8 @@ export default function DailyCashTracking() {
 
     // Entity search and balance filter states
     const [entitySearchQuery, setEntitySearchQuery] = useState('');
-    const [entityBalanceFilter, setEntityBalanceFilter] = useState('all'); // all, positive, negative, zero
+    const [entityBalanceFilter, setEntityBalanceFilter] = useState('all'); // all, active, positive, negative, today, zero
+    const [entitySortBy, setEntitySortBy] = useState('active_first'); // active_first, debts_first, credits_first, today_activity, name_asc, unpointed_first
     const [exportBalanceFilter, setExportBalanceFilter] = useState('all'); // all, positive, negative, null
     const [isExportingHistoryExcel, setIsExportingHistoryExcel] = useState(false);
     const [editingOperation, setEditingOperation] = useState(null);
@@ -3077,7 +3078,24 @@ export default function DailyCashTracking() {
     const entityTotalCount = visibleEntities.length;
     const entityPositiveCount = visibleEntities.filter(e => (entityClosingBalances[e.id] || 0) > 0.01).length;
     const entityNegativeCount = visibleEntities.filter(e => (entityClosingBalances[e.id] || 0) < -0.01).length;
-    const entityZeroCount = visibleEntities.filter(e => Math.abs(entityClosingBalances[e.id] || 0) <= 0.01).length;
+    const entityActiveCount = entityPositiveCount + entityNegativeCount;
+
+    const totalEntityDebts = visibleEntities
+        .filter(e => (entityClosingBalances[e.id] || 0) < -0.01)
+        .reduce((sum, e) => sum + Math.abs(entityClosingBalances[e.id] || 0), 0);
+
+    const totalEntityCredits = visibleEntities
+        .filter(e => (entityClosingBalances[e.id] || 0) > 0.01)
+        .reduce((sum, e) => sum + (entityClosingBalances[e.id] || 0), 0);
+
+    const entitiesWithTodayMovement = visibleEntities.filter(e => {
+        const m = getDailyEntityMovement(e.id);
+        return m.in > 0 || m.out > 0;
+    });
+    const entityTodayMovementCount = entitiesWithTodayMovement.length;
+    const todayTotalEntityIn = visibleEntities.reduce((sum, e) => sum + getDailyEntityMovement(e.id).in, 0);
+    const todayTotalEntityOut = visibleEntities.reduce((sum, e) => sum + getDailyEntityMovement(e.id).out, 0);
+    const entityZeroCount = visibleEntities.filter(e => Math.abs(entityClosingBalances[e.id] || 0) <= 0.01 && getDailyEntityMovement(e.id).in === 0 && getDailyEntityMovement(e.id).out === 0).length;
 
     const normalizeString = (str) => {
         return str ? str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : "";
@@ -3092,10 +3110,59 @@ export default function DailyCashTracking() {
         return true;
     }).filter(entity => {
         const closingBalance = entityClosingBalances[entity.id] || 0;
+        const movement = getDailyEntityMovement(entity.id);
+        const hasTodayMov = movement.in > 0 || movement.out > 0;
+
+        if (entityBalanceFilter === 'active') return Math.abs(closingBalance) > 0.01 || hasTodayMov;
         if (entityBalanceFilter === 'positive') return closingBalance > 0.01;
         if (entityBalanceFilter === 'negative') return closingBalance < -0.01;
-        if (entityBalanceFilter === 'zero') return Math.abs(closingBalance) <= 0.01;
+        if (entityBalanceFilter === 'today') return hasTodayMov;
+        if (entityBalanceFilter === 'zero') return Math.abs(closingBalance) <= 0.01 && !hasTodayMov;
         return true;
+    });
+
+    const sortedFilteredEntities = [...filteredEntities].sort((a, b) => {
+        const balA = entityClosingBalances[a.id] || 0;
+        const balB = entityClosingBalances[b.id] || 0;
+        const movA = getDailyEntityMovement(a.id);
+        const movB = getDailyEntityMovement(b.id);
+        const hasTodayMovA = (movA.in > 0 || movA.out > 0) ? 1 : 0;
+        const hasTodayMovB = (movB.in > 0 || movB.out > 0) ? 1 : 0;
+        const isNonZeroA = Math.abs(balA) > 0.01 ? 1 : 0;
+        const isNonZeroB = Math.abs(balB) > 0.01 ? 1 : 0;
+
+        if (entitySortBy === 'active_first') {
+            if (hasTodayMovA !== hasTodayMovB) return hasTodayMovB - hasTodayMovA;
+            if (isNonZeroA !== isNonZeroB) return isNonZeroB - isNonZeroA;
+            if (Math.abs(balB) !== Math.abs(balA)) return Math.abs(balB) - Math.abs(balA);
+            return a.name.localeCompare(b.name);
+        }
+
+        if (entitySortBy === 'debts_first') {
+            if (balA !== balB) return balA - balB;
+            return a.name.localeCompare(b.name);
+        }
+
+        if (entitySortBy === 'credits_first') {
+            if (balB !== balA) return balB - balA;
+            return a.name.localeCompare(b.name);
+        }
+
+        if (entitySortBy === 'today_activity') {
+            const totA = movA.in + movA.out;
+            const totB = movB.in + movB.out;
+            if (totB !== totA) return totB - totA;
+            return a.name.localeCompare(b.name);
+        }
+
+        if (entitySortBy === 'unpointed_first') {
+            const pointedA = entityLatestClosings[a.id] ? 1 : 0;
+            const pointedB = entityLatestClosings[b.id] ? 1 : 0;
+            if (pointedA !== pointedB) return pointedA - pointedB;
+            return Math.abs(balB) - Math.abs(balA);
+        }
+
+        return a.name.localeCompare(b.name);
     });
 
     return (
@@ -3159,7 +3226,6 @@ export default function DailyCashTracking() {
                 message={getModalMessage()}
             />
 
-            {/* Tabs */}
             {/* Tabs - Pill/Segmented Design with Multicolor */}
             <div className="bg-gray-100/80 p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full">
                 {[
@@ -3198,10 +3264,14 @@ export default function DailyCashTracking() {
                     <>
                         {activeTab === 'entities' && (
                             <div className="space-y-6">
+                                {/* Top Title & Inactive Checkbox */}
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                    <h3 className="font-bold text-xl text-gray-800">Solde des Sociétés</h3>
-                                    <div className="flex flex-wrap items-center gap-4">
-                                        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                                    <div>
+                                        <h3 className="font-bold text-xl text-gray-800">Solde des Sociétés</h3>
+                                        <p className="text-xs text-gray-400 mt-0.5">Suivi des comptes, créances et pointages</p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200 hover:bg-gray-100 transition-colors">
                                             <input
                                                 type="checkbox"
                                                 checked={showInactive}
@@ -3210,80 +3280,219 @@ export default function DailyCashTracking() {
                                             />
                                             Afficher les inactives
                                         </label>
-                                        <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                                        <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-3 py-1.5 rounded-xl border border-gray-200">
                                             {entities.filter(e => e.is_active !== false).length} Sociétés actives
                                         </span>
                                     </div>
                                 </div>
 
-                                {/* Controls Bar */}
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
-                                    {/* Search Bar */}
-                                    <div className="relative flex-1 max-w-md w-full">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                        <input
-                                            type="text"
-                                            placeholder="Rechercher une société..."
-                                            className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 outline-none transition-all placeholder:text-gray-400 font-medium"
-                                            value={entitySearchQuery}
-                                            onChange={(e) => setEntitySearchQuery(e.target.value)}
-                                        />
+                                {/* Financial KPI Summary Cards */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {/* 1. Total Créances Clients (Dettes) */}
+                                    <div 
+                                        onClick={() => setEntityBalanceFilter('negative')}
+                                        className="p-4 rounded-2xl bg-gradient-to-br from-rose-50 to-red-50/40 border border-rose-100 shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center justify-between group"
+                                    >
+                                        <div>
+                                            <div className="text-xs font-bold text-rose-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                                                Créances Clients ({entityNegativeCount})
+                                            </div>
+                                            <div className="text-2xl font-black font-mono text-rose-700">
+                                                {formatPrice(totalEntityDebts)}
+                                            </div>
+                                            <div className="text-[11px] text-rose-500 mt-1">
+                                                Total dû par les sociétés
+                                            </div>
+                                        </div>
+                                        <div className="p-3 bg-white/90 rounded-xl text-rose-600 shadow-xs border border-rose-100 group-hover:scale-110 transition-transform">
+                                            <ArrowDownLeft size={22} />
+                                        </div>
                                     </div>
 
-                                    {/* Balance Filters */}
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    {/* 2. Total Avances Reçues (Crédits) */}
+                                    <div 
+                                        onClick={() => setEntityBalanceFilter('positive')}
+                                        className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/40 border border-emerald-100 shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center justify-between group"
+                                    >
+                                        <div>
+                                            <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                                Avances Reçues ({entityPositiveCount})
+                                            </div>
+                                            <div className="text-2xl font-black font-mono text-emerald-700">
+                                                {formatPrice(totalEntityCredits)}
+                                            </div>
+                                            <div className="text-[11px] text-emerald-600 mt-1">
+                                                Soldes créditeurs en compte
+                                            </div>
+                                        </div>
+                                        <div className="p-3 bg-white/90 rounded-xl text-emerald-600 shadow-xs border border-emerald-100 group-hover:scale-110 transition-transform">
+                                            <ArrowUpRight size={22} />
+                                        </div>
+                                    </div>
+
+                                    {/* 3. Activité du Jour */}
+                                    <div 
+                                        onClick={() => setEntityBalanceFilter('today')}
+                                        className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/40 border border-indigo-100 shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center justify-between group"
+                                    >
+                                        <div>
+                                            <div className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                                <Calendar size={13} className="text-indigo-600" />
+                                                Activité du Jour ({entityTodayMovementCount})
+                                            </div>
+                                            <div className="text-base font-black font-mono text-indigo-950 flex items-center gap-2">
+                                                <span className="text-emerald-700">+{formatPrice(todayTotalEntityIn)}</span>
+                                                <span className="text-gray-300">/</span>
+                                                <span className="text-rose-700">-{formatPrice(todayTotalEntityOut)}</span>
+                                            </div>
+                                            <div className="text-[11px] text-indigo-600 mt-1">
+                                                Entrées vs Sorties aujourd'hui
+                                            </div>
+                                        </div>
+                                        <div className="p-3 bg-white/90 rounded-xl text-indigo-600 shadow-xs border border-indigo-100 group-hover:scale-110 transition-transform">
+                                            <Scale size={22} />
+                                        </div>
+                                    </div>
+
+                                    {/* 4. Suivi des Arrêtés de Compte */}
+                                    <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-gray-50 border border-slate-200/80 shadow-xs flex items-center justify-between">
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                                                <ShieldCheck size={14} className="text-emerald-600" />
+                                                Arrêtés Pointés
+                                            </div>
+                                            <div className="text-2xl font-black font-mono text-slate-800">
+                                                {Object.keys(entityLatestClosings).length} <span className="text-xs font-semibold text-gray-500">/ {visibleEntities.length}</span>
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 mt-1">
+                                                Comptes vérifiés avec solde arrêté
+                                            </div>
+                                        </div>
+                                        <div className="p-3 bg-white/90 rounded-xl text-slate-700 shadow-xs border border-slate-200">
+                                            <ShieldCheck size={22} className="text-emerald-600" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Controls Bar: Search, Filters & Sorting */}
+                                <div className="space-y-3 bg-gray-50/60 p-4 rounded-2xl border border-gray-100">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                        {/* Search Input */}
+                                        <div className="relative flex-1 max-w-md w-full">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                            <input
+                                                type="text"
+                                                placeholder="Rechercher une société..."
+                                                className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 outline-none transition-all placeholder:text-gray-400 font-medium"
+                                                value={entitySearchQuery}
+                                                onChange={(e) => setEntitySearchQuery(e.target.value)}
+                                            />
+                                        </div>
+
+                                        {/* Sort By Selector */}
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-gray-500 shrink-0">Trier par :</span>
+                                            <select
+                                                value={entitySortBy}
+                                                onChange={(e) => setEntitySortBy(e.target.value)}
+                                                className="px-3 py-2 text-xs font-semibold bg-white border border-gray-200 rounded-xl text-gray-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 outline-none shadow-xs cursor-pointer"
+                                            >
+                                                <option value="active_first">⚡ Encours & Activité d'abord</option>
+                                                <option value="debts_first">🔴 Plus grosses créances d'abord</option>
+                                                <option value="credits_first">🟢 Plus grosses avances d'abord</option>
+                                                <option value="today_activity">📅 Mouvements du jour d'abord</option>
+                                                <option value="unpointed_first">🛡️ Non pointés d'abord</option>
+                                                <option value="name_asc">🔤 Alphabétique (A-Z)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Filter Pills */}
+                                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-gray-200/50">
                                         <button
                                             onClick={() => setEntityBalanceFilter('all')}
                                             className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 ${
                                                 entityBalanceFilter === 'all'
-                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-100'
+                                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                                                     : 'bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-gray-200'
                                             }`}
                                         >
                                             Tous ({entityTotalCount})
                                         </button>
+
+                                        {/* Bouton Clé : En cours / Non nuls */}
                                         <button
-                                            onClick={() => setEntityBalanceFilter('positive')}
-                                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
-                                                entityBalanceFilter === 'positive'
-                                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-100'
-                                                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100/70 border-emerald-100'
+                                            onClick={() => setEntityBalanceFilter('active')}
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
+                                                entityBalanceFilter === 'active'
+                                                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                                    : 'bg-white text-slate-800 hover:bg-slate-50 border-slate-300'
                                             }`}
+                                            title="Afficher uniquement les sociétés avec un solde actif ou des mouvements"
                                         >
-                                            <span className={`w-1.5 h-1.5 rounded-full ${entityBalanceFilter === 'positive' ? 'bg-white' : 'bg-emerald-500'}`}></span>
-                                            Positif ({entityPositiveCount})
+                                            <span className={`w-2 h-2 rounded-full ${entityBalanceFilter === 'active' ? 'bg-amber-400' : 'bg-slate-500'}`}></span>
+                                            ⭐ En cours ({entityActiveCount})
                                         </button>
+
                                         <button
                                             onClick={() => setEntityBalanceFilter('negative')}
                                             className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
                                                 entityBalanceFilter === 'negative'
-                                                    ? 'bg-rose-600 text-white border-rose-600 shadow-sm shadow-rose-100'
+                                                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
                                                     : 'bg-rose-50 text-rose-700 hover:bg-rose-100/70 border-rose-100'
                                             }`}
                                         >
                                             <span className={`w-1.5 h-1.5 rounded-full ${entityBalanceFilter === 'negative' ? 'bg-white' : 'bg-rose-500'}`}></span>
-                                            Négatif ({entityNegativeCount})
+                                            Créances ({entityNegativeCount})
                                         </button>
+
+                                        <button
+                                            onClick={() => setEntityBalanceFilter('positive')}
+                                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
+                                                entityBalanceFilter === 'positive'
+                                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100/70 border-emerald-100'
+                                            }`}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full ${entityBalanceFilter === 'positive' ? 'bg-white' : 'bg-emerald-500'}`}></span>
+                                            Avances ({entityPositiveCount})
+                                        </button>
+
+                                        <button
+                                            onClick={() => setEntityBalanceFilter('today')}
+                                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
+                                                entityBalanceFilter === 'today'
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100/70 border-blue-100'
+                                            }`}
+                                        >
+                                            <span className={`w-1.5 h-1.5 rounded-full ${entityBalanceFilter === 'today' ? 'bg-white' : 'bg-blue-500'}`}></span>
+                                            Actifs Aujourd'hui ({entityTodayMovementCount})
+                                        </button>
+
                                         <button
                                             onClick={() => setEntityBalanceFilter('zero')}
                                             className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 flex items-center gap-1.5 ${
                                                 entityBalanceFilter === 'zero'
-                                                    ? 'bg-gray-600 text-white border-gray-600 shadow-sm shadow-gray-100'
-                                                    : 'bg-white text-gray-600 hover:bg-gray-50 border-gray-200'
+                                                    ? 'bg-gray-600 text-white border-gray-600 shadow-xs'
+                                                    : 'bg-white text-gray-500 hover:bg-gray-50 border-gray-200'
                                             }`}
                                         >
                                             <span className={`w-1.5 h-1.5 rounded-full ${entityBalanceFilter === 'zero' ? 'bg-white' : 'bg-gray-400'}`}></span>
-                                            Nul ({entityZeroCount})
+                                            Soldés ({entityZeroCount})
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-sm bg-white">
+                                {/* Table */}
+                                <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-xs bg-white">
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left border-collapse">
                                             <thead>
                                                 <tr className="bg-gray-50/70 border-b border-gray-100 text-gray-400 uppercase text-[10px] font-bold tracking-wider">
-                                                    <th className="px-6 py-4">Société</th>
+                                                    <th className="px-6 py-4">Société & Statut</th>
                                                     <th className="px-6 py-4 text-right">Solde J-1</th>
                                                     <th className="px-6 py-4 text-right">Entrées (J)</th>
                                                     <th className="px-6 py-4 text-right">Sorties (J)</th>
@@ -3292,106 +3501,159 @@ export default function DailyCashTracking() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-50">
-                                                {filteredEntities.length === 0 ? (
+                                                {sortedFilteredEntities.length === 0 ? (
                                                     <tr>
                                                         <td colSpan="6" className="text-center py-12 text-gray-500 bg-gray-50/10">
                                                             <div className="flex flex-col items-center justify-center gap-2">
                                                                 <Building2 className="text-gray-300" size={36} />
                                                                 <p className="font-medium text-gray-600">Aucune société trouvée</p>
-                                                                <p className="text-xs text-gray-400">Essayez de modifier votre recherche ou vos filtres de solde</p>
+                                                                <p className="text-xs text-gray-400">Essayez de modifier votre recherche ou vos filtres</p>
                                                             </div>
                                                         </td>
                                                     </tr>
                                                 ) : (
-                                                    filteredEntities.map(entity => {
+                                                    sortedFilteredEntities.map(entity => {
                                                         const movement = getDailyEntityMovement(entity.id);
                                                         const openingBalance = entityOpeningBalances[entity.id] || 0;
                                                         const closingBalance = entityClosingBalances[entity.id] || 0;
+                                                        const hasTodayMov = movement.in > 0 || movement.out > 0;
+                                                        const isZero = Math.abs(closingBalance) <= 0.01 && !hasTodayMov;
+                                                        const closing = entityLatestClosings[entity.id];
 
                                                         return (
                                                             <tr 
                                                                 key={entity.id} 
                                                                 onClick={() => handleViewEntityHistory(entity)}
-                                                                className="group hover:bg-slate-50/60 cursor-pointer transition-colors"
+                                                                className={`group hover:bg-slate-50/70 cursor-pointer transition-colors ${isZero ? 'opacity-70 hover:opacity-100' : ''}`}
                                                             >
-                                                                <td className="px-6 py-4.5 whitespace-nowrap">
+                                                                {/* Société & Pointage */}
+                                                                <td className="px-6 py-4 whitespace-nowrap">
                                                                     <div className="flex items-center gap-3">
-                                                                        <div className={`p-2 rounded-xl group-hover:scale-110 transition-transform duration-200 ${entity.is_active !== false ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>
+                                                                        <div className={`p-2.5 rounded-xl group-hover:scale-105 transition-transform duration-200 ${
+                                                                            hasTodayMov 
+                                                                                ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-400/30' 
+                                                                                : (entity.is_active !== false ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-400')
+                                                                        }`}>
                                                                             <Building2 size={18} />
                                                                         </div>
-                                                                        <div className="flex items-center gap-2">
+                                                                        <div>
                                                                             <div className="flex items-center gap-2">
-                                                                                <div className={`font-bold text-base ${entity.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through decoration-gray-300'}`} title={entity.name}>
+                                                                                <div className={`font-bold text-sm sm:text-base ${entity.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through decoration-gray-300'}`} title={entity.name}>
                                                                                     {entity.name}
                                                                                 </div>
-                                                                                {entityLatestClosings[entity.id] && (
-                                                                                    <span 
-                                                                                        title={`Arrêté pointé au ${format(new Date(entityLatestClosings[entity.id].closing_date), 'dd/MM/yyyy')} : ${formatPrice(entityLatestClosings[entity.id].closing_balance)}`}
-                                                                                        className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-full"
-                                                                                    >
-                                                                                        <ShieldCheck size={11} className="text-emerald-600" />
-                                                                                        Pointé ${format(new Date(entityLatestClosings[entity.id].closing_date), 'dd/MM/yy')}
+                                                                                {entity.is_active === false && (
+                                                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200 uppercase tracking-wider">
+                                                                                        Inactive
                                                                                     </span>
                                                                                 )}
                                                                             </div>
-                                                                            {entity.is_active === false && (
-                                                                                <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200 uppercase tracking-wider">
-                                                                                    Inactive
-                                                                                </span>
-                                                                            )}
+
+                                                                            <div className="flex items-center gap-2 mt-0.5">
+                                                                                {closing ? (
+                                                                                    <span 
+                                                                                        title={`Arrêté pointé au ${format(new Date(closing.closing_date), 'dd/MM/yyyy')} : ${formatPrice(closing.closing_balance)}`}
+                                                                                        className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-full"
+                                                                                    >
+                                                                                        <ShieldCheck size={11} className="text-emerald-600" />
+                                                                                        Pointé {format(new Date(closing.closing_date), 'dd/MM/yy')}
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    Math.abs(closingBalance) > 0.01 && (
+                                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/70">
+                                                                                            À pointer
+                                                                                        </span>
+                                                                                    )
+                                                                                )}
+
+                                                                                {hasTodayMov && (
+                                                                                    <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full">
+                                                                                        Actif aujourd'hui
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 </td>
-                                                                <td className="px-6 py-4.5 text-right whitespace-nowrap">
-                                                                    <span className={`font-mono text-sm font-bold ${openingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+
+                                                                {/* Solde J-1 */}
+                                                                <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                                    <span className={`font-mono text-sm font-semibold ${openingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                                         {formatPrice(openingBalance)}
                                                                     </span>
                                                                 </td>
-                                                                <td className="px-6 py-4.5 text-right whitespace-nowrap">
+
+                                                                {/* Entrées J */}
+                                                                <td className="px-6 py-4 text-right whitespace-nowrap">
                                                                     {movement.in > 0 ? (
-                                                                        <span className="font-mono text-sm font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-lg">
+                                                                        <span className="font-mono text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-lg">
                                                                             +{formatPrice(movement.in)}
                                                                         </span>
                                                                     ) : (
-                                                                        <span className="font-mono text-sm text-gray-400">—</span>
+                                                                        <span className="font-mono text-sm text-gray-300">—</span>
                                                                     )}
                                                                 </td>
-                                                                <td className="px-6 py-4.5 text-right whitespace-nowrap">
+
+                                                                {/* Sorties J */}
+                                                                <td className="px-6 py-4 text-right whitespace-nowrap">
                                                                     {movement.out > 0 ? (
-                                                                        <span className="font-mono text-sm font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg">
+                                                                        <span className="font-mono text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
                                                                             -{formatPrice(movement.out)}
                                                                         </span>
                                                                     ) : (
-                                                                        <span className="font-mono text-sm text-gray-400">—</span>
+                                                                        <span className="font-mono text-sm text-gray-300">—</span>
                                                                     )}
                                                                 </td>
-                                                                <td className="px-6 py-4.5 text-right whitespace-nowrap">
-                                                                    <span className={`font-mono text-base font-black ${closingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                                        {formatPrice(closingBalance)}
-                                                                    </span>
+
+                                                                {/* Solde Actuel */}
+                                                                <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                                    <div className="flex flex-col items-end">
+                                                                        <span className={`font-mono text-base font-black ${
+                                                                            closingBalance < -0.01 
+                                                                                ? 'text-rose-600' 
+                                                                                : (closingBalance > 0.01 ? 'text-emerald-600' : 'text-gray-400')
+                                                                        }`}>
+                                                                            {formatPrice(closingBalance)}
+                                                                        </span>
+                                                                        {closingBalance < -0.01 && (
+                                                                            <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">
+                                                                                Créance
+                                                                            </span>
+                                                                        )}
+                                                                        {closingBalance > 0.01 && (
+                                                                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
+                                                                                Avance
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                 </td>
-                                                                <td className="px-6 py-4.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                                                    <div className="flex items-center justify-center gap-1">
+
+                                                                {/* Actions */}
+                                                                <td className="px-6 py-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                                                    <div className="flex items-center justify-center gap-1.5">
                                                                         <button
+                                                                            type="button"
                                                                             onClick={() => handleViewEntityHistory(entity)}
-                                                                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
-                                                                            title="Voir l'historique"
+                                                                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors shadow-2xs"
+                                                                            title="Consulter le relevé et pointer"
                                                                         >
-                                                                            <Table size={18} />
+                                                                            <Table size={13} />
+                                                                            <span>Relevé</span>
                                                                         </button>
                                                                         <button
+                                                                            type="button"
                                                                             onClick={(e) => handleOpenEditEntityModal(e, entity)}
-                                                                            className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors"
+                                                                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                                                                             title="Modifier la société"
                                                                         >
-                                                                            <Pencil size={18} />
+                                                                            <Pencil size={15} />
                                                                         </button>
                                                                         <button
+                                                                            type="button"
                                                                             onClick={(e) => handleDeleteEntity(e, entity.id)}
-                                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                                                             title="Supprimer la société"
                                                                         >
-                                                                            <Trash2 size={18} />
+                                                                            <Trash2 size={15} />
                                                                         </button>
                                                                     </div>
                                                                 </td>
