@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, ChevronDown, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet, CloudUpload, AlertTriangle, CheckCircle2, RefreshCw, Save, Scale } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, Wallet, Building2, Calendar, Table, Trash2, X, CreditCard, Banknote, Landmark, Check, CheckSquare, ChevronRight, ChevronDown, Printer, FileDown, Loader2, Pencil, Eye, EyeOff, Search, Filter, FileSpreadsheet, CloudUpload, AlertTriangle, CheckCircle2, RefreshCw, Save, Scale, ShieldCheck, History, RotateCcw, CheckCircle } from 'lucide-react';
 import PrepaidReloadModal from './PrepaidReloadModal';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -127,10 +127,17 @@ export default function DailyCashTracking() {
     // Grouped Operations State
     const [groupedExpenseOperations, setGroupedExpenseOperations] = useState({});
 
-    // State for Entity History Modal
+    // State for Entity History Modal & Pointage / Arrêtés
     const [selectedEntityHistory, setSelectedEntityHistory] = useState(null);
     const [historyOperations, setHistoryOperations] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
+    const [entityClosings, setEntityClosings] = useState([]);
+    const [historyViewMode, setHistoryViewMode] = useState('since_closing'); // 'since_closing' or 'all'
+    const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+    const [closingDateInput, setClosingDateInput] = useState('');
+    const [closingNotesInput, setClosingNotesInput] = useState('');
+    const [isSubmittingClosing, setIsSubmittingClosing] = useState(false);
+    const [entityLatestClosings, setEntityLatestClosings] = useState({});
 
     // Edit and Deactivate Entity States
     const [showInactive, setShowInactive] = useState(false);
@@ -148,10 +155,32 @@ export default function DailyCashTracking() {
     const [isExportingCashFlow, setIsExportingCashFlow] = useState(false);
     const [isBackingUp, setIsBackingUp] = useState(false);
 
+    // Helpers to compute active history dataset vs full history
+    const latestClosing = (!selectedEntityHistory?.isExpense && entityClosings.length > 0) ? entityClosings[0] : null;
+    const isFilteredByClosing = historyViewMode === 'since_closing' && latestClosing !== null;
+
+    const displayedHistoryOps = isFilteredByClosing
+        ? historyOperations.filter(op => op.date > latestClosing.closing_date || (op.date === latestClosing.closing_date && new Date(op.created_at) > new Date(latestClosing.created_at)))
+        : historyOperations;
+
+    const historyInAmount = displayedHistoryOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+    const historyOutAmount = displayedHistoryOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+    const startingBalance = isFilteredByClosing ? Number(latestClosing.closing_balance) : 0;
+    const historyCurrentBalance = isFilteredByClosing
+        ? startingBalance + historyInAmount - historyOutAmount
+        : historyInAmount - historyOutAmount;
+
+    // Consistency check with all-time total (guarantees zero discrepancy)
+    const totalAllTimeIn = historyOperations.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+    const totalAllTimeOut = historyOperations.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+    const totalAllTimeBalance = totalAllTimeIn - totalAllTimeOut;
+    const isBalanceConsistent = Math.abs(historyCurrentBalance - totalAllTimeBalance) < 0.01;
+
     const handleViewEntityHistory = async (entity) => {
         setSelectedEntityHistory(entity);
         setLoadingHistory(true);
         try {
+            // 1. Fetch all operations for this entity (always preserve complete history)
             let query = supabase
                 .from('daily_cash_operations')
                 .select('*')
@@ -167,6 +196,27 @@ export default function DailyCashTracking() {
             const { data, error } = await query;
             if (error) throw error;
             setHistoryOperations(data || []);
+
+            // 2. Fetch closings for this entity if applicable
+            let closings = [];
+            if (!entity.isExpense && entity.id) {
+                try {
+                    const { data: cData, error: cErr } = await supabase
+                        .from('daily_cash_entity_closings')
+                        .select('*')
+                        .eq('entity_id', entity.id)
+                        .order('closing_date', { ascending: false });
+                    if (!cErr && cData) {
+                        closings = cData;
+                    }
+                } catch (cErr) {
+                    console.warn('daily_cash_entity_closings table not loaded yet:', cErr);
+                }
+            }
+            setEntityClosings(closings);
+            setHistoryViewMode(closings.length > 0 ? 'since_closing' : 'all');
+            setClosingDateInput(selectedDate || format(new Date(), 'yyyy-MM-dd'));
+            setClosingNotesInput('');
         } catch (error) {
             console.error('Error fetching entity history:', error);
             alert("Erreur lors du chargement de l'historique");
@@ -175,12 +225,81 @@ export default function DailyCashTracking() {
         }
     };
 
+    const handleCreateClosing = async () => {
+        if (!selectedEntityHistory || !closingDateInput) return;
+        setIsSubmittingClosing(true);
+        try {
+            // Calculate balance strictly up to closingDateInput
+            const opsUpToDate = historyOperations.filter(op => op.date <= closingDateInput);
+            const sumIn = opsUpToDate.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
+            const sumOut = opsUpToDate.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
+            const balanceAtDate = sumIn - sumOut;
+
+            const { error } = await supabase
+                .from('daily_cash_entity_closings')
+                .upsert({
+                    entity_id: selectedEntityHistory.id,
+                    closing_date: closingDateInput,
+                    closing_balance: balanceAtDate,
+                    total_in: sumIn,
+                    total_out: sumOut,
+                    notes: closingNotesInput.trim() || null,
+                    closed_by: 'Gestionnaire'
+                }, { onConflict: 'entity_id, closing_date' });
+
+            if (error) throw error;
+
+            // Refresh closings for this entity
+            const { data: newClosings } = await supabase
+                .from('daily_cash_entity_closings')
+                .select('*')
+                .eq('entity_id', selectedEntityHistory.id)
+                .order('closing_date', { ascending: false });
+
+            setEntityClosings(newClosings || []);
+            setHistoryViewMode('since_closing');
+            setIsClosingModalOpen(false);
+            setClosingNotesInput('');
+
+            // Also refresh latest closings map for the main table
+            fetchData();
+        } catch (err) {
+            console.error('Error creating closing:', err);
+            alert("Erreur lors de l'enregistrement de l'arrêté : " + (err.message || 'Vérifiez la table Supabase'));
+        } finally {
+            setIsSubmittingClosing(false);
+        }
+    };
+
+    const handleDeleteClosing = async (closingId) => {
+        if (!window.confirm("Êtes-vous sûr de vouloir annuler cet arrêté ? L'historique complet sera restauré immédiatement sans aucune perte de données.")) return;
+        try {
+            const { error } = await supabase
+                .from('daily_cash_entity_closings')
+                .delete()
+                .eq('id', closingId);
+
+            if (error) throw error;
+
+            const updatedClosings = entityClosings.filter(c => c.id !== closingId);
+            setEntityClosings(updatedClosings);
+            if (updatedClosings.length === 0) {
+                setHistoryViewMode('all');
+            }
+            fetchData();
+        } catch (err) {
+            console.error('Error deleting closing:', err);
+            alert("Erreur lors de l'annulation de l'arrêté : " + (err.message || ''));
+        }
+    };
+
     const handlePrintHistory = () => {
         if (!selectedEntityHistory) return;
-        const entityOps = historyOperations;
-        const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
-        const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-        const netBalance = inAmount - outAmount;
+        const entityOps = displayedHistoryOps;
+        const inAmount = historyInAmount;
+        const outAmount = historyOutAmount;
+        const netBalance = historyCurrentBalance;
+        const isClosed = isFilteredByClosing;
 
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
@@ -218,14 +337,14 @@ export default function DailyCashTracking() {
                     }
                     .summary { 
                         display: grid; 
-                        grid-template-columns: repeat(3, 1fr); 
-                        gap: 20px; 
+                        grid-template-columns: repeat(${isClosed ? 4 : 3}, 1fr); 
+                        gap: 15px; 
                         margin-bottom: 30px; 
                     }
                     .card { 
                         border: 1px solid #e5e7eb; 
                         border-radius: 12px; 
-                        padding: 16px; 
+                        padding: 14px; 
                         background-color: #f9fafb;
                     }
                     .card-title { 
@@ -237,7 +356,7 @@ export default function DailyCashTracking() {
                         margin-bottom: 6px; 
                     }
                     .card-value { 
-                        font-size: 20px; 
+                        font-size: 18px; 
                         font-weight: 800; 
                         font-family: monospace; 
                     }
@@ -248,7 +367,7 @@ export default function DailyCashTracking() {
                     }
                     th, td { 
                         border-bottom: 1px solid #e5e7eb; 
-                        padding: 12px 14px; 
+                        padding: 11px 14px; 
                         text-align: left; 
                         font-size: 13px; 
                     }
@@ -274,10 +393,11 @@ export default function DailyCashTracking() {
                         border-radius: 9999px; 
                         font-size: 11px; 
                         font-weight: 600; 
-                        text-align: center;
+                        text-align: center; 
                     }
                     .badge-in { background-color: #dcfce7; color: #166534; }
                     .badge-out { background-color: #fee2e2; color: #991b1b; }
+                    .badge-report { background-color: #e0e7ff; color: #3730a3; }
                     @media print {
                         body { padding: 20px; }
                         @page { margin: 1.5cm; }
@@ -287,22 +407,46 @@ export default function DailyCashTracking() {
             <body>
                 <div class="header">
                     <h1 class="title">${selectedEntityHistory.name}</h1>
-                    <p class="subtitle">Historique des transactions - Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+                    <p class="subtitle">
+                        ${isClosed 
+                            ? `Relevé des opérations depuis l'arrêté du ${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}`
+                            : `Historique complet de toutes les opérations depuis la création`}
+                        — Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}
+                    </p>
                 </div>
                 
                 <div class="summary">
-                    <div class="card">
-                        <div class="card-title">Total Entrées</div>
-                        <div class="card-value in">+${formatPrice(inAmount)}</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Total Sorties</div>
-                        <div class="card-value out">-${formatPrice(outAmount)}</div>
-                    </div>
-                    <div class="card" style="border-color: ${netBalance >= 0 ? '#c7d2fe' : '#fed7aa'}; background-color: ${netBalance >= 0 ? '#e0e7ff' : '#ffedd5'};">
-                        <div class="card-title" style="color: ${netBalance >= 0 ? '#3730a3' : '#854d0e'};">Solde Global</div>
-                        <div class="card-value" style="color: ${netBalance >= 0 ? '#312e81' : '#7c2d12'};">${formatPrice(netBalance)}</div>
-                    </div>
+                    ${isClosed ? `
+                        <div class="card" style="background-color: #eef2ff; border-color: #c7d2fe;">
+                            <div class="card-title" style="color: #3730a3;">Solde Reporté (${format(new Date(latestClosing.closing_date), 'dd/MM/yy')})</div>
+                            <div class="card-value" style="color: #1e1b4b;">${formatPrice(startingBalance)}</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Entrées (Période)</div>
+                            <div class="card-value in">+${formatPrice(inAmount)}</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Sorties (Période)</div>
+                            <div class="card-value out">-${formatPrice(outAmount)}</div>
+                        </div>
+                        <div class="card" style="border-color: ${netBalance >= 0 ? '#10b981' : '#f43f5e'}; background-color: ${netBalance >= 0 ? '#ecfdf5' : '#fff1f2'};">
+                            <div class="card-title" style="color: ${netBalance >= 0 ? '#065f46' : '#9f1239'};">Solde Actuel</div>
+                            <div class="card-value" style="color: ${netBalance >= 0 ? '#064e3b' : '#881337'};">${formatPrice(netBalance)}</div>
+                        </div>
+                    ` : `
+                        <div class="card">
+                            <div class="card-title">Total Entrées</div>
+                            <div class="card-value in">+${formatPrice(inAmount)}</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Total Sorties</div>
+                            <div class="card-value out">-${formatPrice(outAmount)}</div>
+                        </div>
+                        <div class="card" style="border-color: ${netBalance >= 0 ? '#c7d2fe' : '#fed7aa'}; background-color: ${netBalance >= 0 ? '#e0e7ff' : '#ffedd5'};">
+                            <div class="card-title" style="color: ${netBalance >= 0 ? '#3730a3' : '#854d0e'};">Solde Global</div>
+                            <div class="card-value" style="color: ${netBalance >= 0 ? '#312e81' : '#7c2d12'};">${formatPrice(netBalance)}</div>
+                        </div>
+                    `}
                 </div>
                 
                 <table>
@@ -315,6 +459,22 @@ export default function DailyCashTracking() {
                         </tr>
                     </thead>
                     <tbody>
+                        ${isClosed ? `
+                            <tr style="background-color: #f5f3ff; font-weight: bold;">
+                                <td style="font-family: monospace; color: #4338ca;">
+                                    <strong>${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}</strong>
+                                </td>
+                                <td style="color: #312e81;">
+                                    REPORT À NOUVEAU (Arrêté validé au ${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}${latestClosing.notes ? ' - ' + latestClosing.notes : ''})
+                                </td>
+                                <td style="text-align: center;">
+                                    <span class="badge badge-report">Report</span>
+                                </td>
+                                <td class="amount" style="color: #312e81;">
+                                    ${formatPrice(startingBalance)}
+                                </td>
+                            </tr>
+                        ` : ''}
                         ${entityOps.map(op => `
                             <tr>
                                 <td style="font-family: monospace; color: #4b5563;">
@@ -350,10 +510,11 @@ export default function DailyCashTracking() {
 
     const handleExportPDF = () => {
         if (!selectedEntityHistory) return;
-        const entityOps = historyOperations;
-        const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
-        const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-        const netBalance = inAmount - outAmount;
+        const entityOps = displayedHistoryOps;
+        const inAmount = historyInAmount;
+        const outAmount = historyOutAmount;
+        const netBalance = historyCurrentBalance;
+        const isClosed = isFilteredByClosing;
 
         const doc = new jsPDF();
 
@@ -363,18 +524,25 @@ export default function DailyCashTracking() {
         
         doc.setFontSize(22);
         doc.setTextColor(17, 24, 39);
-        // Header title
         doc.text(selectedEntityHistory.name.toUpperCase(), 15, 20);
         
         doc.setFontSize(10);
         doc.setTextColor(107, 114, 128);
-        doc.text("HISTORIQUE DES OPÉRATIONS DE CAISSE", 15, 28);
+        const subTitle = isClosed 
+            ? `RELEVÉ DE COMPTE (Depuis l'arrêté du ${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')})`
+            : "HISTORIQUE COMPLET DES OPÉRATIONS DE CAISSE";
+        doc.text(subTitle, 15, 28);
         doc.text(`Généré le : ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, 15, 34);
 
         const startY = 55;
 
         // Print Summary Table
-        const summaryBody = [
+        const summaryBody = isClosed ? [
+            [`Solde Reporté (${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')})`, `${formatPrice(startingBalance)}`],
+            ["Entrées de la période", `+${formatPrice(inAmount)}`],
+            ["Sorties de la période", `-${formatPrice(outAmount)}`],
+            [{ content: "Solde Actuel", styles: { fontStyle: 'bold' } }, { content: `${formatPrice(netBalance)}`, styles: { fontStyle: 'bold', textColor: netBalance >= 0 ? [16, 185, 129] : [225, 29, 72] } }]
+        ] : [
             ["Total Entrées", `+${formatPrice(inAmount)}`],
             ["Total Sorties", `-${formatPrice(outAmount)}`],
             [{ content: "Solde Global", styles: { fontStyle: 'bold' } }, { content: `${formatPrice(netBalance)}`, styles: { fontStyle: 'bold', textColor: netBalance >= 0 ? [79, 70, 229] : [234, 88, 12] } }]
@@ -385,18 +553,30 @@ export default function DailyCashTracking() {
             head: [['Récapitulatif Financier', 'Montant (DH)']],
             body: summaryBody,
             theme: 'grid',
-            headStyles: { fillColor: [79, 70, 229], textColor: 255 },
+            headStyles: { fillColor: isClosed ? [16, 185, 129] : [79, 70, 229], textColor: 255 },
             styles: { fontSize: 10, cellPadding: 3.5 },
             columnStyles: { 0: { cellWidth: 100 }, 1: { cellWidth: 80, halign: 'right' } }
         });
 
         // Print Detail Table
-        const tableBody = entityOps.map(op => [
-            `${format(new Date(op.date), 'dd/MM/yyyy')} ${format(new Date(op.created_at), 'HH:mm')}`,
-            op.description,
-            op.type === 'IN' ? 'Recette' : 'Dépense',
-            { content: `${op.type === 'IN' ? '+' : '-'}${formatPrice(Number(op.amount))}`, styles: { fontStyle: 'bold', textColor: op.type === 'IN' ? [22, 163, 74] : [220, 38, 38] } }
-        ]);
+        const tableBody = [];
+        if (isClosed) {
+            tableBody.push([
+                format(new Date(latestClosing.closing_date), 'dd/MM/yyyy'),
+                `REPORT À NOUVEAU (Arrêté validé le ${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}${latestClosing.notes ? ' - ' + latestClosing.notes : ''})`,
+                'Report',
+                { content: `${formatPrice(startingBalance)}`, styles: { fontStyle: 'bold', textColor: [67, 56, 202] } }
+            ]);
+        }
+
+        entityOps.forEach(op => {
+            tableBody.push([
+                `${format(new Date(op.date), 'dd/MM/yyyy')} ${format(new Date(op.created_at), 'HH:mm')}`,
+                op.description,
+                op.type === 'IN' ? 'Recette' : 'Dépense',
+                { content: `${op.type === 'IN' ? '+' : '-'}${formatPrice(Number(op.amount))}`, styles: { fontStyle: 'bold', textColor: op.type === 'IN' ? [22, 163, 74] : [220, 38, 38] } }
+            ]);
+        });
 
         autoTable(doc, {
             startY: doc.lastAutoTable.finalY + 15,
@@ -420,10 +600,11 @@ export default function DailyCashTracking() {
         if (!selectedEntityHistory) return;
         setIsExportingHistoryExcel(true);
         try {
-            const entityOps = historyOperations;
-            const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
-            const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-            const netBalance = inAmount - outAmount;
+            const entityOps = displayedHistoryOps;
+            const inAmount = historyInAmount;
+            const outAmount = historyOutAmount;
+            const netBalance = historyCurrentBalance;
+            const isClosed = isFilteredByClosing;
 
             const ExcelJS = (await import('exceljs')).default;
             const workbook = new ExcelJS.Workbook();
@@ -447,7 +628,10 @@ export default function DailyCashTracking() {
             titleRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 14, color: { argb: 'FF111827' } };
             titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
 
-            sheet.addRow([`Historique complet des opérations - Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`]);
+            const subTitleExcel = isClosed 
+                ? `Relevé des opérations depuis l'arrêté du ${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')} - Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`
+                : `Historique complet des opérations - Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`;
+            sheet.addRow([subTitleExcel]);
             sheet.mergeCells('A2:D2');
             const subtitleRow = sheet.getRow(2);
             subtitleRow.height = 20;
@@ -465,76 +649,118 @@ export default function DailyCashTracking() {
             };
 
             // 2. Summary Cards labels (Row 4)
-            sheet.addRow(['Total Entrées', 'Total Sorties', 'Solde Global', '']);
-            sheet.mergeCells('C4:D4');
-            const labelRow = sheet.getRow(4);
-            labelRow.height = 22;
+            if (isClosed) {
+                sheet.addRow(['Solde Reporté', 'Entrées (Période)', 'Sorties (Période)', 'Solde Actuel']);
+                const labelRow = sheet.getRow(4);
+                labelRow.height = 22;
+                labelRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+                labelRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF3730A3' } };
+                labelRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+                labelRow.getCell(1).border = thinBorder;
 
-            // Green Card Label
-            labelRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
-            labelRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF166534' } };
-            labelRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-            labelRow.getCell(1).border = thinBorder;
+                labelRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                labelRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF166534' } };
+                labelRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+                labelRow.getCell(2).border = thinBorder;
 
-            // Red Card Label
-            labelRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
-            labelRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF991B1B' } };
-            labelRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
-            labelRow.getCell(2).border = thinBorder;
+                labelRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                labelRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF991B1B' } };
+                labelRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+                labelRow.getCell(3).border = thinBorder;
 
-            // Balance Card Label
-            const balColorBg = netBalance >= 0 ? 'FFE0E7FF' : 'FFFFF7ED';
-            const balColorText = netBalance >= 0 ? 'FF3730A3' : 'FFC2410C';
-            labelRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
-            labelRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: balColorText } };
-            labelRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
-            labelRow.getCell(3).border = thinBorder;
-            
-            // Apply border and fill to merged cell D4 as well
-            labelRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
-            labelRow.getCell(4).border = thinBorder;
+                const balBg = netBalance >= 0 ? 'FFECFDF5' : 'FFFFF1F2';
+                const balTxt = netBalance >= 0 ? 'FF065F46' : 'FF9F1239';
+                labelRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balBg } };
+                labelRow.getCell(4).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: balTxt } };
+                labelRow.getCell(4).alignment = { horizontal: 'center', vertical: 'middle' };
+                labelRow.getCell(4).border = thinBorder;
 
-            // 3. Summary Cards values (Row 5)
-            sheet.addRow([inAmount, outAmount, netBalance, '']);
-            sheet.mergeCells('C5:D5');
-            const valueRow = sheet.getRow(5);
-            valueRow.height = 28;
+                // Values (Row 5)
+                sheet.addRow([startingBalance, inAmount, outAmount, netBalance]);
+                const valueRow = sheet.getRow(5);
+                valueRow.height = 28;
+                valueRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FF312E81' } };
+                valueRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+                valueRow.getCell(1).numFmt = '#,##0.00 "DH"';
+                valueRow.getCell(1).border = thinBorder;
 
-            // Green Card Value
-            valueRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
-            valueRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF15803D' } };
-            valueRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-            valueRow.getCell(1).border = thinBorder;
-            valueRow.getCell(1).numFmt = '+#,##0.00 "DH"';
+                valueRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FF15803D' } };
+                valueRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+                valueRow.getCell(2).numFmt = '+#,##0.00 "DH"';
+                valueRow.getCell(2).border = thinBorder;
 
-            // Red Card Value
-            valueRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
-            valueRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FFB91C1C' } };
-            valueRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
-            valueRow.getCell(2).border = thinBorder;
-            valueRow.getCell(2).numFmt = '-#,##0.00 "DH"';
+                valueRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: 'FFB91C1C' } };
+                valueRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+                valueRow.getCell(3).numFmt = '-#,##0.00 "DH"';
+                valueRow.getCell(3).border = thinBorder;
 
-            // Balance Card Value
-            const balColorValueText = netBalance >= 0 ? 'FF312E81' : 'FF7C2D12';
-            valueRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
-            valueRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: balColorValueText } };
-            valueRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
-            valueRow.getCell(3).border = thinBorder;
-            valueRow.getCell(3).numFmt = '#,##0.00 "DH"';
+                valueRow.getCell(4).font = { name: 'Segoe UI', bold: true, size: 12, color: { argb: balTxt } };
+                valueRow.getCell(4).alignment = { horizontal: 'center', vertical: 'middle' };
+                valueRow.getCell(4).numFmt = '#,##0.00 "DH"';
+                valueRow.getCell(4).border = thinBorder;
+            } else {
+                sheet.addRow(['Total Entrées', 'Total Sorties', 'Solde Global', '']);
+                sheet.mergeCells('C4:D4');
+                const labelRow = sheet.getRow(4);
+                labelRow.height = 22;
 
-            // Border and fill for merged cell D5
-            valueRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
-            valueRow.getCell(4).border = thinBorder;
+                labelRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                labelRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF166534' } };
+                labelRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+                labelRow.getCell(1).border = thinBorder;
 
-            sheet.addRow([]); // Row 6 spacer
+                labelRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                labelRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: 'FF991B1B' } };
+                labelRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+                labelRow.getCell(2).border = thinBorder;
 
-            // 4. Operations Detail Header (Row 7)
+                const balColorBg = netBalance >= 0 ? 'FFE0E7FF' : 'FFFFF7ED';
+                const balColorText = netBalance >= 0 ? 'FF3730A3' : 'FFC2410C';
+                labelRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
+                labelRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 9, color: { argb: balColorText } };
+                labelRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+                labelRow.getCell(3).border = thinBorder;
+                
+                labelRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
+                labelRow.getCell(4).border = thinBorder;
+
+                sheet.addRow([inAmount, outAmount, netBalance, '']);
+                sheet.mergeCells('C5:D5');
+                const valueRow = sheet.getRow(5);
+                valueRow.height = 28;
+
+                valueRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                valueRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FF15803D' } };
+                valueRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+                valueRow.getCell(1).border = thinBorder;
+                valueRow.getCell(1).numFmt = '+#,##0.00 "DH"';
+
+                valueRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                valueRow.getCell(2).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: 'FFB91C1C' } };
+                valueRow.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' };
+                valueRow.getCell(2).border = thinBorder;
+                valueRow.getCell(2).numFmt = '-#,##0.00 "DH"';
+
+                const balColorValueText = netBalance >= 0 ? 'FF312E81' : 'FF7C2D12';
+                valueRow.getCell(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
+                valueRow.getCell(3).font = { name: 'Segoe UI', bold: true, size: 13, color: { argb: balColorValueText } };
+                valueRow.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
+                valueRow.getCell(3).border = thinBorder;
+                valueRow.getCell(3).numFmt = '#,##0.00 "DH"';
+
+                valueRow.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: balColorBg } };
+                valueRow.getCell(4).border = thinBorder;
+            }
+
+            sheet.addRow([]); // Spacer row
+
+            // 4. Operations Detail Header
             const detailHeaderRow = sheet.addRow(['Date & Heure', 'Description', 'Type', 'Montant (DH)']);
             detailHeaderRow.height = 26;
             for (let i = 1; i <= 4; i++) {
                 const cell = detailHeaderRow.getCell(i);
                 cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } }; // dark gray header
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
                 cell.alignment = { horizontal: i === 4 ? 'right' : (i === 2 ? 'left' : 'center'), vertical: 'middle' };
                 cell.border = {
                     top: { style: 'medium', color: { argb: 'FF111827' } },
@@ -542,7 +768,32 @@ export default function DailyCashTracking() {
                 };
             }
 
-            // 5. Operations Detail Rows (Row 8+)
+            // 5. Operations Detail Rows
+            let rowIndex = 0;
+            if (isClosed) {
+                const repRow = sheet.addRow([
+                    format(new Date(latestClosing.closing_date), 'dd/MM/yyyy'),
+                    `REPORT À NOUVEAU (Arrêté validé le ${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}${latestClosing.notes ? ' - ' + latestClosing.notes : ''})`,
+                    'Report',
+                    startingBalance
+                ]);
+                repRow.height = 22;
+                for (let i = 1; i <= 4; i++) {
+                    const cell = repRow.getCell(i);
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
+                    cell.border = { bottom: { style: 'thin', color: { argb: 'FFC7D2FE' } } };
+                    cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF3730A3' } };
+                    if (i === 1) cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    if (i === 2) cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                    if (i === 3) cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    if (i === 4) {
+                        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+                        cell.numFmt = '#,##0.00';
+                    }
+                }
+                rowIndex++;
+            }
+
             entityOps.forEach((op, index) => {
                 const formattedDate = `${format(new Date(op.date), 'dd/MM/yyyy')} ${format(new Date(op.created_at), 'HH:mm')}`;
                 const row = sheet.addRow([
@@ -553,8 +804,8 @@ export default function DailyCashTracking() {
                 ]);
                 row.height = 22;
 
-                const isEven = index % 2 === 0;
-                const rowBgColor = isEven ? 'FFFFFFFF' : 'FFF9FAFB'; // alternating striped style
+                const isEven = (index + rowIndex) % 2 === 0;
+                const rowBgColor = isEven ? 'FFFFFFFF' : 'FFF9FAFB';
 
                 for (let i = 1; i <= 4; i++) {
                     const cell = row.getCell(i);
@@ -583,10 +834,8 @@ export default function DailyCashTracking() {
                 }
             });
 
-            // Gridlines enabled
             sheet.views = [{ showGridLines: true }];
 
-            // Generate file buffer and export
             const buffer = await workbook.xlsx.writeBuffer();
             const safeName = selectedEntityHistory.name.replace(/\s+/g, '_');
             const fileName = `Historique_${safeName}_${new Date().toISOString().split('T')[0]}.xlsx`;
@@ -610,7 +859,6 @@ export default function DailyCashTracking() {
                     dialogTitle: 'Partager ou enregistrer le fichier',
                 });
             } else {
-                // Web download
                 const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -2003,6 +2251,25 @@ export default function DailyCashTracking() {
             if (entitiesError) throw entitiesError;
             setEntities(entitiesData || []);
 
+            // Fetch latest closings for entities
+            try {
+                const { data: closingsData, error: closingsError } = await supabase
+                    .from('daily_cash_entity_closings')
+                    .select('*')
+                    .order('closing_date', { ascending: false });
+                if (!closingsError && closingsData) {
+                    const closingsMap = {};
+                    closingsData.forEach(c => {
+                        if (!closingsMap[c.entity_id]) {
+                            closingsMap[c.entity_id] = c;
+                        }
+                    });
+                    setEntityLatestClosings(closingsMap);
+                }
+            } catch (cErr) {
+                console.warn('daily_cash_entity_closings not yet created:', cErr);
+            }
+
             // Dates
             const currentSelectedDate = new Date(selectedDate);
             const startOfMonthStr = new Date(currentSelectedDate.getFullYear(), currentSelectedDate.getMonth(), 1).toISOString().split('T')[0];
@@ -3053,8 +3320,19 @@ export default function DailyCashTracking() {
                                                                             <Building2 size={18} />
                                                                         </div>
                                                                         <div className="flex items-center gap-2">
-                                                                            <div className={`font-bold text-base ${entity.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through decoration-gray-300'}`} title={entity.name}>
-                                                                                {entity.name}
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div className={`font-bold text-base ${entity.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through decoration-gray-300'}`} title={entity.name}>
+                                                                                    {entity.name}
+                                                                                </div>
+                                                                                {entityLatestClosings[entity.id] && (
+                                                                                    <span 
+                                                                                        title={`Arrêté pointé au ${format(new Date(entityLatestClosings[entity.id].closing_date), 'dd/MM/yyyy')} : ${formatPrice(entityLatestClosings[entity.id].closing_balance)}`}
+                                                                                        className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-full"
+                                                                                    >
+                                                                                        <ShieldCheck size={11} className="text-emerald-600" />
+                                                                                        Pointé ${format(new Date(entityLatestClosings[entity.id].closing_date), 'dd/MM/yy')}
+                                                                                    </span>
+                                                                                )}
                                                                             </div>
                                                                             {entity.is_active === false && (
                                                                                 <span className="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200 uppercase tracking-wider">
@@ -4916,22 +5194,101 @@ export default function DailyCashTracking() {
             {
                 selectedEntityHistory && createPortal(
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 transition-opacity" onClick={() => setSelectedEntityHistory(null)}>
-                        <div className="bg-white rounded-2xl w-full max-w-2xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-white rounded-2xl w-full max-w-4xl p-0 shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                             {/* Header */}
-                            <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
+                            <div className="p-4 md:p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50 shrink-0">
                                 <div>
-                                    <h3 className="text-xl font-bold text-gray-900">{selectedEntityHistory.name}</h3>
-                                    <p className="text-gray-500 text-sm mt-1">
-                                        Historique complet des opérations
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h3 className="text-xl font-bold text-gray-900">{selectedEntityHistory.name}</h3>
+                                        {latestClosing && (
+                                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
+                                                <ShieldCheck size={13} className="text-emerald-600" />
+                                                Arrêté au {format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-gray-500 text-xs sm:text-sm mt-0.5">
+                                        {isFilteredByClosing 
+                                            ? `Relevé des mouvements depuis l'arrêté du ${format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}`
+                                            : `Historique complet de toutes les opérations depuis la création`}
                                     </p>
                                 </div>
-                                <button
-                                    onClick={() => setSelectedEntityHistory(null)}
-                                    className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-                                >
-                                    <X size={24} className="text-gray-500" />
-                                </button>
+                                <div className="flex items-center gap-2 self-end sm:self-center">
+                                    {!selectedEntityHistory.isExpense && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setClosingDateInput(selectedDate || format(new Date(), 'yyyy-MM-dd'));
+                                                setClosingNotesInput('');
+                                                setIsClosingModalOpen(true);
+                                            }}
+                                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm flex items-center gap-1.5"
+                                        >
+                                            <ShieldCheck size={16} />
+                                            Pointer / Arrêter le compte
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => setSelectedEntityHistory(null)}
+                                        className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
                             </div>
+
+                            {/* Switcher & Integrity Check */}
+                            {latestClosing && (
+                                <div className="px-4 md:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-white border-b border-gray-100 shrink-0">
+                                    <div className="flex items-center bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+                                        <button
+                                            type="button"
+                                            onClick={() => setHistoryViewMode('since_closing')}
+                                            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                                                historyViewMode === 'since_closing'
+                                                    ? 'bg-white text-indigo-700 shadow-sm'
+                                                    : 'text-gray-600 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            <ShieldCheck size={14} className={historyViewMode === 'since_closing' ? 'text-indigo-600' : 'text-gray-400'} />
+                                            Depuis l'arrêté ({format(new Date(latestClosing.closing_date), 'dd/MM/yy')})
+                                            <span className="ml-1 text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.2 rounded-full font-bold">
+                                                {displayedHistoryOps.length}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHistoryViewMode('all')}
+                                            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                                                historyViewMode === 'all'
+                                                    ? 'bg-white text-indigo-700 shadow-sm'
+                                                    : 'text-gray-600 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            <History size={14} className={historyViewMode === 'all' ? 'text-indigo-600' : 'text-gray-400'} />
+                                            Historique complet (Tous)
+                                            <span className="ml-1 text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.2 rounded-full font-bold">
+                                                {historyOperations.length}
+                                            </span>
+                                        </button>
+                                    </div>
+
+                                    {/* Verification Badge */}
+                                    <div className="flex items-center gap-2">
+                                        {isBalanceConsistent ? (
+                                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100" title="Calcul avec arrêté et calcul depuis l'origine rigoureusement conformes">
+                                                <CheckCircle2 size={13} className="text-emerald-600" />
+                                                Solde 100% conforme
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200" title="Une écriture passée a été ajoutée/modifiée avant la date d'arrêté">
+                                                <AlertTriangle size={13} className="text-amber-600" />
+                                                Écriture antérieure détectée (Diff : {formatPrice(historyCurrentBalance - totalAllTimeBalance)})
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Content */}
                             <div className="overflow-y-auto p-4 md:p-6">
@@ -4941,51 +5298,87 @@ export default function DailyCashTracking() {
                                             <div className="flex justify-center items-center py-20">
                                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
                                             </div>
-                                        )
+                                        );
                                     }
 
-                                    const entityOps = historyOperations;
-                                    let movement = { in: 0, out: 0 };
-
-                                    // Recalculate global movement from ALL history
-                                    const inAmount = entityOps.filter(op => op.type === 'IN').reduce((sum, op) => sum + Number(op.amount), 0);
-                                    const outAmount = entityOps.filter(op => op.type === 'OUT').reduce((sum, op) => sum + Number(op.amount), 0);
-                                    movement = { in: inAmount, out: outAmount };
-
-                                    return (<div className="space-y-4">
-                                        {/* Summary Cards (Global) */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                            <div className="p-4 bg-green-50 rounded-xl border border-green-100">
-                                                <div className="text-sm text-green-800 font-medium mb-1">Total Historique Entrées</div>
-                                                <div className="text-xl font-bold text-green-900">+{formatPrice(movement.in)}</div>
-                                            </div>
-                                            <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                                                <div className="text-sm text-red-800 font-medium mb-1">Total Historique Sorties</div>
-                                                <div className="text-xl font-bold text-red-900">-{formatPrice(movement.out)}</div>
-                                            </div>
-                                            <div className={`p-4 rounded-xl border ${movement.in - movement.out >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
-                                                <div className={`text-sm font-medium mb-1 ${movement.in - movement.out >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>Solde Global</div>
-                                                <div className={`text-xl font-bold ${movement.in - movement.out >= 0 ? 'text-emerald-900' : 'text-rose-900'}`}>
-                                                    {formatPrice(movement.in - movement.out)}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Operations List */}
-                                        <div>
-                                            <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                                                <Table size={18} className="text-gray-400" />
-                                                Historique complet ({entityOps.length})
-                                            </h4>
-
-                                            {entityOps.length === 0 ? (
-                                                <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                                                    <div className="p-3 bg-white rounded-full inline-block mb-3 shadow-sm">
-                                                        <Calendar size={24} className="text-gray-400" />
+                                    return (
+                                        <div className="space-y-4">
+                                            {/* Summary Cards */}
+                                            {isFilteredByClosing ? (
+                                                <div className="space-y-3">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                                        <div className="p-3.5 bg-indigo-50/70 rounded-xl border border-indigo-100">
+                                                            <div className="text-xs text-indigo-800 font-medium mb-1">
+                                                                Solde Reporté ({format(new Date(latestClosing.closing_date), 'dd/MM/yy')})
+                                                            </div>
+                                                            <div className={`text-lg font-bold font-mono ${startingBalance >= 0 ? 'text-indigo-900' : 'text-rose-900'}`}>
+                                                                {formatPrice(startingBalance)}
+                                                            </div>
+                                                        </div>
+                                                        <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-100">
+                                                            <div className="text-xs text-emerald-800 font-medium mb-1">Entrées (Période)</div>
+                                                            <div className="text-lg font-bold font-mono text-emerald-900">+{formatPrice(historyInAmount)}</div>
+                                                        </div>
+                                                        <div className="p-3.5 bg-rose-50/70 rounded-xl border border-rose-100">
+                                                            <div className="text-xs text-rose-800 font-medium mb-1">Sorties (Période)</div>
+                                                            <div className="text-lg font-bold font-mono text-rose-900">-{formatPrice(historyOutAmount)}</div>
+                                                        </div>
+                                                        <div className={`p-3.5 rounded-xl border ${historyCurrentBalance >= 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-rose-600 text-white border-rose-600'}`}>
+                                                            <div className="text-xs text-slate-200 font-medium mb-1">Solde Actuel</div>
+                                                            <div className="text-lg font-bold font-mono">
+                                                                {formatPrice(historyCurrentBalance)}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <p className="text-gray-500">Aucune opération enregistrée.</p>
+
+                                                    {/* Arrêté Info Banner */}
+                                                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200/80 rounded-xl text-xs">
+                                                        <div className="flex items-center gap-2">
+                                                            <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                                                            <span className="text-gray-700">
+                                                                Compte pointé & arrêté au <strong>{format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}</strong>
+                                                                {latestClosing.notes && <span> — « {latestClosing.notes} »</span>}
+                                                            </span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteClosing(latestClosing.id)}
+                                                            className="text-gray-400 hover:text-rose-600 font-medium transition-colors flex items-center gap-1"
+                                                            title="Annuler cet arrêté et restaurer l'affichage complet"
+                                                        >
+                                                            <RotateCcw size={13} />
+                                                            Annuler cet arrêté
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             ) : (
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                                    <div className="p-4 bg-green-50 rounded-xl border border-green-100">
+                                                        <div className="text-sm text-green-800 font-medium mb-1">Total Historique Entrées</div>
+                                                        <div className="text-xl font-bold text-green-900">+{formatPrice(historyInAmount)}</div>
+                                                    </div>
+                                                    <div className="p-4 bg-red-50 rounded-xl border border-red-100">
+                                                        <div className="text-sm text-red-800 font-medium mb-1">Total Historique Sorties</div>
+                                                        <div className="text-xl font-bold text-red-900">-{formatPrice(historyOutAmount)}</div>
+                                                    </div>
+                                                    <div className={`p-4 rounded-xl border ${historyCurrentBalance >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                                                        <div className={`text-sm font-medium mb-1 ${historyCurrentBalance >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>Solde Global</div>
+                                                        <div className={`text-xl font-bold ${historyCurrentBalance >= 0 ? 'text-emerald-900' : 'text-rose-900'}`}>
+                                                            {formatPrice(historyCurrentBalance)}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Operations List */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <h4 className="font-semibold text-gray-800 flex items-center gap-2">
+                                                        <Table size={18} className="text-gray-400" />
+                                                        {isFilteredByClosing ? 'Mouvements de la période' : 'Historique complet'} ({displayedHistoryOps.length})
+                                                    </h4>
+                                                </div>
+
                                                 <div className="border rounded-xl overflow-hidden shadow-sm">
                                                     <div className="max-h-[400px] overflow-y-auto">
                                                         <table className="w-full text-left border-collapse relative">
@@ -4998,45 +5391,85 @@ export default function DailyCashTracking() {
                                                                 </tr>
                                                             </thead>
                                                             <tbody className="divide-y divide-gray-100">
-                                                                {entityOps.map(op => (
-                                                                    <tr key={op.id} className="hover:bg-gray-50 transition-colors">
-                                                                        <td className="p-3 text-gray-500 font-mono text-sm whitespace-nowrap">
-                                                                            <div className="font-bold text-gray-700">{format(new Date(op.date), 'dd/MM/yyyy')}</div>
-                                                                            <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
+                                                                {/* Report à nouveau row when in since_closing mode */}
+                                                                {isFilteredByClosing && (
+                                                                    <tr className="bg-indigo-50/60 font-semibold border-b-2 border-indigo-100">
+                                                                        <td className="p-3 text-indigo-900 font-mono text-xs whitespace-nowrap">
+                                                                            <div className="font-bold">{format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')}</div>
+                                                                            <div className="text-[10px] text-indigo-500">Arrêté validé</div>
                                                                         </td>
-                                                                        <td className="p-3 font-medium text-gray-900">
-                                                                            {op.description}
+                                                                        <td className="p-3 text-indigo-950 font-bold">
+                                                                            REPORT À NOUVEAU (Solde arrêté au {format(new Date(latestClosing.closing_date), 'dd/MM/yyyy')})
+                                                                            {latestClosing.notes && (
+                                                                                <span className="block text-[11px] font-normal text-indigo-700 mt-0.5">
+                                                                                    Note : {latestClosing.notes}
+                                                                                </span>
+                                                                            )}
                                                                         </td>
-                                                                        <td className={`p-3 text-right font-bold font-mono whitespace-nowrap ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
-                                                                            {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
+                                                                        <td className={`p-3 text-right font-bold font-mono whitespace-nowrap ${startingBalance >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}>
+                                                                            {formatPrice(startingBalance)}
                                                                         </td>
                                                                         <td className="p-3 text-center">
-                                                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${op.type === 'IN'
-                                                                                ? 'bg-green-100 text-green-700'
-                                                                                : 'bg-red-100 text-red-700'
-                                                                                }`}>
-                                                                                {op.type === 'IN' ? 'Recette' : 'Dépense'}
+                                                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 uppercase tracking-wider">
+                                                                                Report
                                                                             </span>
                                                                         </td>
                                                                     </tr>
-                                                                ))}
+                                                                )}
+
+                                                                {displayedHistoryOps.length === 0 ? (
+                                                                    <tr>
+                                                                        <td colSpan="4" className="text-center py-10 text-gray-500 bg-gray-50/30">
+                                                                            <Calendar size={28} className="mx-auto text-gray-300 mb-2" />
+                                                                            <p className="font-medium text-sm text-gray-600">
+                                                                                {isFilteredByClosing 
+                                                                                    ? "Aucune nouvelle opération depuis cet arrêté. Le compte est au solde reporté."
+                                                                                    : "Aucune opération enregistrée pour cette société."}
+                                                                            </p>
+                                                                        </td>
+                                                                    </tr>
+                                                                ) : (
+                                                                    displayedHistoryOps.map(op => (
+                                                                        <tr key={op.id} className="hover:bg-gray-50 transition-colors">
+                                                                            <td className="p-3 text-gray-500 font-mono text-sm whitespace-nowrap">
+                                                                                <div className="font-bold text-gray-700">{format(new Date(op.date), 'dd/MM/yyyy')}</div>
+                                                                                <div className="text-xs text-gray-400">{format(new Date(op.created_at), 'HH:mm')}</div>
+                                                                            </td>
+                                                                            <td className="p-3 font-medium text-gray-900">
+                                                                                {op.description}
+                                                                            </td>
+                                                                            <td className={`p-3 text-right font-bold font-mono whitespace-nowrap ${op.type === 'IN' ? 'text-green-600' : 'text-red-600'}`}>
+                                                                                {op.type === 'IN' ? '+' : '-'}{formatPrice(Number(op.amount))}
+                                                                            </td>
+                                                                            <td className="p-3 text-center">
+                                                                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                                                                    op.type === 'IN'
+                                                                                        ? 'bg-green-100 text-green-700'
+                                                                                        : 'bg-red-100 text-red-700'
+                                                                                }`}>
+                                                                                    {op.type === 'IN' ? 'Recette' : 'Dépense'}
+                                                                                </span>
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))
+                                                                )}
                                                             </tbody>
                                                         </table>
                                                     </div>
                                                 </div>
-                                            )}
+                                            </div>
                                         </div>
-                                    </div>
                                     );
                                 })()}
                             </div>
 
                             {/* Footer */}
-                            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-                                <div className="flex gap-2">
-                                    {historyOperations.length > 0 && (
+                            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
+                                <div className="flex gap-2 flex-wrap">
+                                    {(displayedHistoryOps.length > 0 || isFilteredByClosing) && (
                                         <>
                                             <button
+                                                type="button"
                                                 onClick={handlePrintHistory}
                                                 className="px-4 py-2 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-xl hover:bg-indigo-100/70 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2"
                                             >
@@ -5044,6 +5477,7 @@ export default function DailyCashTracking() {
                                                 Imprimer
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={handleExportPDF}
                                                 className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2"
                                             >
@@ -5051,6 +5485,7 @@ export default function DailyCashTracking() {
                                                 Exporter PDF
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={handleExportExcel}
                                                 disabled={isExportingHistoryExcel}
                                                 className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 font-semibold text-sm transition-colors shadow-sm flex items-center gap-2"
@@ -5066,6 +5501,7 @@ export default function DailyCashTracking() {
                                     )}
                                 </div>
                                 <button
+                                    type="button"
                                     onClick={() => setSelectedEntityHistory(null)}
                                     className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium transition-colors shadow-sm"
                                 >
@@ -5077,6 +5513,110 @@ export default function DailyCashTracking() {
                     document.body
                 )
             }
+
+            {/* Modal de Pointage / Arrêté de Compte */}
+            {isClosingModalOpen && selectedEntityHistory && createPortal(
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 transition-opacity" onClick={() => setIsClosingModalOpen(false)}>
+                    <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex justify-between items-center">
+                            <div className="flex items-center gap-2.5">
+                                <ShieldCheck size={24} className="text-white" />
+                                <div>
+                                    <h4 className="font-bold text-lg">Pointer / Arrêter le compte</h4>
+                                    <p className="text-xs text-emerald-100">{selectedEntityHistory.name}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsClosingModalOpen(false)} className="text-white/80 hover:text-white p-1 rounded-lg">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-5">
+                            <div>
+                                <label className="block text-xs font-bold uppercase text-gray-500 mb-2">
+                                    Date de l'arrêté
+                                </label>
+                                <input
+                                    type="date"
+                                    value={closingDateInput}
+                                    onChange={(e) => setClosingDateInput(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                                />
+                                <p className="text-[11px] text-gray-400 mt-1">
+                                    Toutes les opérations jusqu'à cette date incluse seront consolidées dans cet arrêté.
+                                </p>
+                            </div>
+
+                            {/* Live balance calculation preview */}
+                            {(() => {
+                                const opsUpTo = historyOperations.filter(op => op.date <= (closingDateInput || selectedDate));
+                                const pIn = opsUpTo.filter(op => op.type === 'IN').reduce((s, op) => s + Number(op.amount), 0);
+                                const pOut = opsUpTo.filter(op => op.type === 'OUT').reduce((s, op) => s + Number(op.amount), 0);
+                                const pBal = pIn - pOut;
+                                return (
+                                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                            Calcul du Solde au {format(new Date(closingDateInput || selectedDate), 'dd/MM/yyyy')}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 pt-1">
+                                            <div>Total Entrées cumulées :</div>
+                                            <div className="text-right font-mono font-bold text-emerald-600">+{formatPrice(pIn)}</div>
+                                            <div>Total Sorties cumulées :</div>
+                                            <div className="text-right font-mono font-bold text-rose-600">-{formatPrice(pOut)}</div>
+                                        </div>
+                                        <div className="border-t border-slate-200 pt-2 flex justify-between items-center">
+                                            <span className="font-bold text-sm text-gray-800">Solde Arrêté à figer :</span>
+                                            <span className={`text-base font-bold font-mono ${pBal >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}>
+                                                {formatPrice(pBal)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            <div>
+                                <label className="block text-xs font-bold uppercase text-gray-500 mb-2">
+                                    Commentaire / Note de pointage <span className="text-gray-400 normal-case font-normal">(optionnel)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Ex: Pointé avec le relevé bancaire, chèque reçu N°..., etc."
+                                    value={closingNotesInput}
+                                    onChange={(e) => setClosingNotesInput(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                                />
+                            </div>
+
+                            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 text-xs flex items-start gap-2.5">
+                                <ShieldCheck size={18} className="shrink-0 mt-0.5 text-emerald-600" />
+                                <div>
+                                    <strong>Sécurité & Intégrité :</strong> Aucune opération du passé n'est modifiée ni supprimée. Le Cashflow journalier des jours passés reste 100% intact. Vous pouvez annuler cet arrêté à tout moment.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setIsClosingModalOpen(false)}
+                                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-100 transition-colors"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isSubmittingClosing}
+                                onClick={handleCreateClosing}
+                                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+                            >
+                                {isSubmittingClosing ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                                Valider l'Arrêté
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
 
             <PrepaidReloadModal
                 isOpen={isPrepaidModalOpen}
